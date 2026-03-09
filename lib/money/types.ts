@@ -4,6 +4,14 @@ export type BucketKind = "bill" | "credit" | "loan";
 
 export type PriorityLevel = 1 | 2 | 3 | 4 | 5;
 
+export type BucketCategory =
+  | "housing"
+  | "utilities"
+  | "transportation"
+  | "debt"
+  | "food"
+  | "other";
+
 export type Bucket = {
   key: BucketKey;
   name: string;
@@ -27,13 +35,7 @@ export type Bucket = {
   monthlyTarget?: number;
   dueDay?: number;
 
-  category?:
-    | "housing"
-    | "utilities"
-    | "transportation"
-    | "debt"
-    | "food"
-    | "other";
+  category?: BucketCategory;
 };
 
 export type IncomeSource = {
@@ -77,11 +79,24 @@ export type PaymentEntry = {
   note?: string;
 };
 
+export type DebtEntry = {
+  id: string;
+  name: string;
+  kind: "credit" | "loan";
+  balance: number;
+  minPayment?: number;
+  dueDate?: string;
+  apr?: number;
+  creditLimit?: number;
+  note?: string;
+};
+
 export type StorageShape = {
   buckets: Bucket[];
   entries: Entry[];
   spend: SpendEntry[];
   payments: PaymentEntry[];
+  debts: DebtEntry[];
   incomeSources: IncomeSource[];
   meta?: {
     lastMonthlyApplied?: string;
