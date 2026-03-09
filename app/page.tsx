@@ -26,11 +26,19 @@ export default function HomePage() {
             >
               Preview App
             </a>
+
             <a
               href="/signup"
               className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white hover:bg-white/5"
             >
               Start Free
+            </a>
+
+            <a
+              href="/bills"
+              className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white hover:bg-white/5"
+            >
+              Add Bills
             </a>
           </div>
         </div>
