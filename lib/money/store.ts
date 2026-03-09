@@ -5,14 +5,6 @@ import type { Bucket, Entry, PaymentEntry, SpendEntry, StorageShape } from "./ty
 import { STORAGE_KEY } from "./storageKey";
 import { clampMoney } from "./utils";
 
-const EMPTY_STORE: StorageShape = {
-  buckets: [],
-  entries: [],
-  spend: [],
-  payments: [],
-  meta: {},
-};
-
 export function useMoneyStore() {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -49,6 +41,7 @@ export function useMoneyStore() {
     const income = entries.reduce((sum, e) => sum + e.amount, 0);
     const spending = spend.reduce((sum, s) => sum + s.amount, 0);
     const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
+
     return {
       income: clampMoney(income),
       spending: clampMoney(spending),
