@@ -18,22 +18,29 @@ export default function DashboardPage() {
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5">
             <div className="text-sm text-zinc-500">Income</div>
-            <div className="mt-2 text-3xl font-black">${totals.income.toFixed(2)}</div>
+            <div className="mt-2 text-3xl font-black">
+              ${totals.income.toFixed(2)}
+            </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5">
             <div className="text-sm text-zinc-500">Spending</div>
-            <div className="mt-2 text-3xl font-black">${totals.spending.toFixed(2)}</div>
+            <div className="mt-2 text-3xl font-black">
+              ${totals.spending.toFixed(2)}
+            </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5">
             <div className="text-sm text-zinc-500">Payments</div>
-            <div className="mt-2 text-3xl font-black">${totals.payments.toFixed(2)}</div>
+            <div className="mt-2 text-3xl font-black">
+              ${totals.payments.toFixed(2)}
+            </div>
           </div>
         </div>
 
         <div className="mt-8 rounded-2xl border border-zinc-200 bg-white p-5">
           <h2 className="text-lg font-bold">Pay these first</h2>
+
           <div className="mt-4 grid gap-3">
             {priorities.length === 0 ? (
               <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
@@ -48,10 +55,13 @@ export default function DashboardPage() {
                   <div>
                     <div className="font-semibold">{bucket.name}</div>
                     <div className="text-sm text-zinc-500">
-                      Due {bucket.dueDate || "not set"} · {bucket.category || "other"}
+                      Due {bucket.dueDate || "not set"} ·{" "}
+                      {bucket.category || "other"}
                     </div>
                   </div>
-                  <div className="text-sm font-bold text-zinc-700">Score {score}</div>
+                  <div className="text-sm font-bold text-zinc-700">
+                    Score {score}
+                  </div>
                 </div>
               ))
             )}
