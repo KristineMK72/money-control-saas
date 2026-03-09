@@ -35,6 +35,27 @@ export default function DashboardPage() {
           </a>
 
           <a
+            href="/spend"
+            className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
+          >
+            Spending
+          </a>
+
+          <a
+            href="/debt"
+            className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
+          >
+            Credit & Loans
+          </a>
+
+          <a
+            href="/forecast"
+            className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
+          >
+            Forecast
+          </a>
+
+          <a
             href="/crisis"
             className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
           >
@@ -49,7 +70,7 @@ export default function DashboardPage() {
           </a>
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <div className="mt-8 grid gap-4 md:grid-cols-3 lg:grid-cols-5">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="text-sm text-zinc-500">Income</div>
             <div className="mt-2 text-3xl font-black">
@@ -68,6 +89,20 @@ export default function DashboardPage() {
             <div className="text-sm text-zinc-500">Payments</div>
             <div className="mt-2 text-3xl font-black">
               ${totals.payments.toFixed(2)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <div className="text-sm text-zinc-500">Debt Balance</div>
+            <div className="mt-2 text-3xl font-black">
+              ${totals.debtBalance.toFixed(2)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <div className="text-sm text-zinc-500">Debt Minimums</div>
+            <div className="mt-2 text-3xl font-black">
+              ${totals.debtMinimums.toFixed(2)}
             </div>
           </div>
         </div>
@@ -115,25 +150,32 @@ export default function DashboardPage() {
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold">How this works</h2>
             <p className="mt-3 text-sm leading-6 text-zinc-600">
-              Add your bills, set due dates, and let the app rank what matters
-              most first. Housing, utilities, and transportation rise to the top
-              faster because they affect real-life stability.
+              Add your bills, debt, and income, then let the app rank what
+              matters most first. Housing, utilities, and transportation rise
+              to the top faster because they affect real-life stability.
             </p>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold">Next step</h2>
             <p className="mt-3 text-sm leading-6 text-zinc-600">
-              Start by adding your most urgent real bill. Then open Crisis Mode
-              to get a simple 72-hour stabilization plan.
+              Start by adding your bills, then log income, spending, and debt.
+              Open Crisis Mode to get a simple stabilization plan.
             </p>
 
-            <div className="mt-4">
+            <div className="mt-4 flex flex-wrap gap-3">
               <a
                 href="/bills"
                 className="inline-flex rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
               >
                 Add your first bill
+              </a>
+
+              <a
+                href="/forecast"
+                className="inline-flex rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
+              >
+                View forecast
               </a>
             </div>
           </div>
