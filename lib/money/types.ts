@@ -12,8 +12,8 @@ export type Bucket = {
   target: number;
   saved: number;
 
-  dueDate?: string; // YYYY-MM-DD
-  due?: string; // human note
+  dueDate?: string;
+  due?: string;
   priority?: PriorityLevel;
 
   focus?: boolean;
@@ -27,7 +27,13 @@ export type Bucket = {
   monthlyTarget?: number;
   dueDay?: number;
 
-  category?: "housing" | "utilities" | "transportation" | "debt" | "food" | "other";
+  category?:
+    | "housing"
+    | "utilities"
+    | "transportation"
+    | "debt"
+    | "food"
+    | "other";
 };
 
 export type EntrySource = "Paycheck" | "Gig" | "Cash" | "Other";
