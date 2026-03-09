@@ -36,12 +36,15 @@ export type Bucket = {
     | "other";
 };
 
-export type EntrySource = "Paycheck" | "Gig" | "Cash" | "Other";
+export type IncomeSource = {
+  id: string;
+  name: string;
+};
 
 export type Entry = {
   id: string;
   dateISO: string;
-  source: EntrySource;
+  sourceName: string;
   amount: number;
   note?: string;
   allocations: Partial<Record<BucketKey, number>>;
@@ -79,6 +82,7 @@ export type StorageShape = {
   entries: Entry[];
   spend: SpendEntry[];
   payments: PaymentEntry[];
+  incomeSources: IncomeSource[];
   meta?: {
     lastMonthlyApplied?: string;
   };
