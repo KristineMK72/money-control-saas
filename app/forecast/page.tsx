@@ -60,7 +60,18 @@ type DebtRow = {
   apr: number | null;
   credit_limit: number | null;
   note: string | null;
+  is_monthly: boolean | null;
+  due_day: number | null;
+  monthly_min_payment: number | null;
   created_at: string;
+};
+
+type ForecastItem = {
+  id: string;
+  name: string;
+  category?: string | null;
+  due_date?: string | null;
+  amount: number;
 };
 
 function startOfToday() {
@@ -87,6 +98,42 @@ function parseDateSafe(dateISO?: string | null) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function getNextDueDateFromDay(dueDay?: number | null) {
+  if (!dueDay || dueDay < 1 || dueDay > 31) return null;
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  const startToday = startOfToday();
+
+  const lastDayThisMonth = new Date(year, month + 1, 0).getDate();
+  const safeDayThisMonth = Math.min(dueDay, lastDayThisMonth);
+  const thisMonthDue = new Date(year, month, safeDayThisMonth, 12, 0, 0, 0);
+
+  if (thisMonthDue >= startToday) {
+    return thisMonthDue.toISOString().slice(0, 10);
+  }
+
+  const nextMonthYear = month === 11 ? year + 1 : year;
+  const nextMonth = month === 11 ? 0 : month + 1;
+  const lastDayNextMonth = new Date(nextMonthYear, nextMonth + 1, 0).getDate();
+  const safeDayNextMonth = Math.min(dueDay, lastDayNextMonth);
+  const nextMonthDue = new Date(nextMonthYear, nextMonth, safeDayNextMonth, 12, 0, 0, 0);
+
+  return nextMonthDue.toISOString().slice(0, 10);
+}
+
+function effectiveDebtDueDate(debt: DebtRow) {
+  if (debt.due_date) return debt.due_date;
+  if (debt.is_monthly && debt.due_day) return getNextDueDateFromDay(debt.due_day);
+  return null;
+}
+
+function effectiveDebtPaymentAmount(debt: DebtRow) {
+  return Number(debt.monthly_min_payment || debt.min_payment || 0);
+}
+
 function formatUSD(n: number) {
   return `$${n.toFixed(2)}`;
 }
@@ -100,13 +147,7 @@ function SectionCard({
   title: string;
   subtitle: string;
   total: number;
-  items: Array<{
-    id: string;
-    name: string;
-    category?: string | null;
-    due_date?: string | null;
-    amount: number;
-  }>;
+  items: ForecastItem[];
 }) {
   return (
     <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
@@ -192,10 +233,7 @@ export default function ForecastPage() {
           supabase.from("income_entries").select("id, amount, date_iso"),
           supabase.from("spend_entries").select("id, amount, date_iso"),
           supabase.from("payments").select("id, amount, date_iso"),
-          supabase
-            .from("debts")
-            .select("*")
-            .order("due_date", { ascending: true, nullsFirst: false }),
+          supabase.from("debts").select("*").order("created_at", { ascending: false }),
         ]);
 
       if (billsRes.error) setMessage(billsRes.error.message);
@@ -212,29 +250,33 @@ export default function ForecastPage() {
     loadForecast();
   }, []);
 
-  const today = startOfToday();
   const weekEnd = endOfWindow(6);
   const monthEnd = endOfCurrentMonth();
 
-  const totalIncome = useMemo(() => {
-    return incomeEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-  }, [incomeEntries]);
+  const totalIncome = useMemo(
+    () => incomeEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [incomeEntries]
+  );
 
-  const totalSpending = useMemo(() => {
-    return spendEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-  }, [spendEntries]);
+  const totalSpending = useMemo(
+    () => spendEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [spendEntries]
+  );
 
-  const totalPayments = useMemo(() => {
-    return paymentEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-  }, [paymentEntries]);
+  const totalPayments = useMemo(
+    () => paymentEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [paymentEntries]
+  );
 
-  const debtBalanceTotal = useMemo(() => {
-    return debts.reduce((sum, row) => sum + Number(row.balance || 0), 0);
-  }, [debts]);
+  const debtBalanceTotal = useMemo(
+    () => debts.reduce((sum, row) => sum + Number(row.balance || 0), 0),
+    [debts]
+  );
 
-  const debtMinimumsTotal = useMemo(() => {
-    return debts.reduce((sum, row) => sum + Number(row.min_payment || 0), 0);
-  }, [debts]);
+  const debtMinimumsTotal = useMemo(
+    () => debts.reduce((sum, row) => sum + effectiveDebtPaymentAmount(row), 0),
+    [debts]
+  );
 
   const {
     dueThisWeek,
@@ -246,10 +288,10 @@ export default function ForecastPage() {
     laterTotal,
     unscheduledTotal,
   } = useMemo(() => {
-    const week: typeof bills = [];
-    const month: typeof bills = [];
-    const laterItems: typeof bills = [];
-    const unscheduledItems: typeof bills = [];
+    const week: BillRow[] = [];
+    const month: BillRow[] = [];
+    const laterItems: BillRow[] = [];
+    const unscheduledItems: BillRow[] = [];
 
     for (const bill of bills) {
       if (!bill.due_date) {
@@ -263,28 +305,18 @@ export default function ForecastPage() {
         continue;
       }
 
-      if (due <= weekEnd) {
-        week.push(bill);
-      } else if (due <= monthEnd) {
-        month.push(bill);
-      } else {
-        laterItems.push(bill);
-      }
+      if (due <= weekEnd) week.push(bill);
+      else if (due <= monthEnd) month.push(bill);
+      else laterItems.push(bill);
     }
 
-    const sumTargets = (items: typeof bills) =>
+    const sumTargets = (items: BillRow[]) =>
       items.reduce((sum, b) => sum + Number(b.target || 0), 0);
 
     return {
-      dueThisWeek: week.sort((a, b) =>
-        (a.due_date || "").localeCompare(b.due_date || "")
-      ),
-      dueThisMonth: month.sort((a, b) =>
-        (a.due_date || "").localeCompare(b.due_date || "")
-      ),
-      later: laterItems.sort((a, b) =>
-        (a.due_date || "").localeCompare(b.due_date || "")
-      ),
+      dueThisWeek: week.sort((a, b) => (a.due_date || "").localeCompare(b.due_date || "")),
+      dueThisMonth: month.sort((a, b) => (a.due_date || "").localeCompare(b.due_date || "")),
+      later: laterItems.sort((a, b) => (a.due_date || "").localeCompare(b.due_date || "")),
       unscheduled: unscheduledItems,
       dueThisWeekTotal: sumTargets(week),
       dueThisMonthTotal: sumTargets(month),
@@ -303,45 +335,36 @@ export default function ForecastPage() {
     debtLaterTotal,
     debtUnscheduledTotal,
   } = useMemo(() => {
-    const week: typeof debts = [];
-    const month: typeof debts = [];
-    const laterItems: typeof debts = [];
-    const unscheduledItems: typeof debts = [];
+    const week: DebtRow[] = [];
+    const month: DebtRow[] = [];
+    const laterItems: DebtRow[] = [];
+    const unscheduledItems: DebtRow[] = [];
 
     for (const debt of debts) {
-      if (!debt.due_date) {
+      const dueDate = effectiveDebtDueDate(debt);
+      if (!dueDate) {
         unscheduledItems.push(debt);
         continue;
       }
 
-      const due = parseDateSafe(debt.due_date);
+      const due = parseDateSafe(dueDate);
       if (!due) {
         unscheduledItems.push(debt);
         continue;
       }
 
-      if (due <= weekEnd) {
-        week.push(debt);
-      } else if (due <= monthEnd) {
-        month.push(debt);
-      } else {
-        laterItems.push(debt);
-      }
+      if (due <= weekEnd) week.push(debt);
+      else if (due <= monthEnd) month.push(debt);
+      else laterItems.push(debt);
     }
 
-    const sumMinimums = (items: typeof debts) =>
-      items.reduce((sum, d) => sum + Number(d.min_payment || 0), 0);
+    const sumMinimums = (items: DebtRow[]) =>
+      items.reduce((sum, d) => sum + effectiveDebtPaymentAmount(d), 0);
 
     return {
-      debtDueThisWeek: week.sort((a, b) =>
-        (a.due_date || "").localeCompare(b.due_date || "")
-      ),
-      debtDueThisMonth: month.sort((a, b) =>
-        (a.due_date || "").localeCompare(b.due_date || "")
-      ),
-      debtLater: laterItems.sort((a, b) =>
-        (a.due_date || "").localeCompare(b.due_date || "")
-      ),
+      debtDueThisWeek: week,
+      debtDueThisMonth: month,
+      debtLater: laterItems,
       debtUnscheduled: unscheduledItems,
       debtDueThisWeekTotal: sumMinimums(week),
       debtDueThisMonthTotal: sumMinimums(month),
@@ -502,8 +525,8 @@ export default function ForecastPage() {
               id: d.id,
               name: d.name,
               category: d.kind,
-              due_date: d.due_date,
-              amount: Number(d.min_payment || 0),
+              due_date: effectiveDebtDueDate(d),
+              amount: effectiveDebtPaymentAmount(d),
             }))}
           />
 
@@ -515,14 +538,14 @@ export default function ForecastPage() {
               id: d.id,
               name: d.name,
               category: d.kind,
-              due_date: d.due_date,
-              amount: Number(d.min_payment || 0),
+              due_date: effectiveDebtDueDate(d),
+              amount: effectiveDebtPaymentAmount(d),
             }))}
           />
 
           <SectionCard
             title="Later"
-            subtitle="Bills due after this month."
+            subtitle="Bills and minimum payments due after this month."
             total={laterTotal + debtLaterTotal}
             items={[
               ...later.map((b) => ({
@@ -536,15 +559,15 @@ export default function ForecastPage() {
                 id: `debt-${d.id}`,
                 name: d.name,
                 category: d.kind,
-                due_date: d.due_date,
-                amount: Number(d.min_payment || 0),
+                due_date: effectiveDebtDueDate(d),
+                amount: effectiveDebtPaymentAmount(d),
               })),
             ]}
           />
 
           <SectionCard
             title="No due date set"
-            subtitle="These need due dates so forecasting can prioritize them correctly."
+            subtitle="These need due dates or due days so forecasting can prioritize them correctly."
             total={unscheduledTotal + debtUnscheduledTotal}
             items={[
               ...unscheduled.map((b) => ({
@@ -558,8 +581,8 @@ export default function ForecastPage() {
                 id: `debt-unscheduled-${d.id}`,
                 name: d.name,
                 category: d.kind,
-                due_date: d.due_date,
-                amount: Number(d.min_payment || 0),
+                due_date: effectiveDebtDueDate(d),
+                amount: effectiveDebtPaymentAmount(d),
               })),
             ]}
           />
