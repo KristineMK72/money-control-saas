@@ -1,12 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { useMoneyStore } from "@/lib/money/store";
-import type { DebtEntry } from "@/lib/money/types";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import { ocrImageFile, parseDebtScreenshot } from "@/lib/money/receiptOcr";
 
+type DebtRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  kind: "credit" | "loan";
+  balance: number;
+  min_payment: number | null;
+  due_date: string | null;
+  apr: number | null;
+  credit_limit: number | null;
+  note: string | null;
+  created_at: string;
+};
+
 export default function DebtPage() {
-  const { debts, totals, addDebt, removeDebt } = useMoneyStore();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const [debts, setDebts] = useState<DebtRow[]>([]);
 
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"credit" | "loan">("credit");
@@ -22,23 +40,94 @@ export default function DebtPage() {
   const [ocrText, setOcrText] = useState("");
   const [ocrError, setOcrError] = useState("");
 
-  function handleAddDebt() {
-    const bal = Number(balance);
-    if (!name.trim() || !Number.isFinite(bal) || bal < 0) return;
+  useEffect(() => {
+    async function init() {
+      setLoading(true);
+      setMessage("");
 
-    const entry: DebtEntry = {
-      id: crypto.randomUUID(),
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        setMessage(sessionError.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!session?.user) {
+        setMessage("Please log in first.");
+        setLoading(false);
+        return;
+      }
+
+      setUserId(session.user.id);
+
+      const { data, error } = await supabase
+        .from("debts")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        setMessage(error.message);
+      } else {
+        setDebts((data || []) as DebtRow[]);
+      }
+
+      setLoading(false);
+    }
+
+    init();
+  }, []);
+
+  async function refreshDebts() {
+    const { data, error } = await supabase
+      .from("debts")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setDebts((data || []) as DebtRow[]);
+  }
+
+  async function handleAddDebt() {
+    setMessage("");
+
+    if (!userId) {
+      setMessage("You need to be logged in.");
+      return;
+    }
+
+    const bal = Number(balance);
+    if (!name.trim() || !Number.isFinite(bal) || bal < 0) {
+      setMessage("Please enter an account name and valid balance.");
+      return;
+    }
+
+    setSaving(true);
+
+    const { error } = await supabase.from("debts").insert({
+      user_id: userId,
       name: name.trim(),
       kind,
       balance: bal,
-      minPayment: minPayment ? Number(minPayment) : undefined,
-      dueDate: dueDate || undefined,
-      apr: apr ? Number(apr) : undefined,
-      creditLimit: creditLimit ? Number(creditLimit) : undefined,
-      note: note.trim() || undefined,
-    };
+      min_payment: minPayment ? Number(minPayment) : null,
+      due_date: dueDate || null,
+      apr: apr ? Number(apr) : null,
+      credit_limit: creditLimit ? Number(creditLimit) : null,
+      note: note.trim() || null,
+    });
 
-    addDebt(entry);
+    if (error) {
+      setMessage(error.message);
+      setSaving(false);
+      return;
+    }
 
     setName("");
     setKind("credit");
@@ -48,6 +137,23 @@ export default function DebtPage() {
     setApr("");
     setCreditLimit("");
     setNote("");
+    setMessage("Debt account added.");
+
+    await refreshDebts();
+    setSaving(false);
+  }
+
+  async function handleDeleteDebt(id: string) {
+    setMessage("");
+
+    const { error } = await supabase.from("debts").delete().eq("id", id);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setDebts((prev) => prev.filter((debt) => debt.id !== id));
   }
 
   async function handleExtractDebt() {
@@ -75,6 +181,17 @@ export default function DebtPage() {
     }
   }
 
+  const totals = useMemo(() => {
+    return debts.reduce(
+      (acc, debt) => {
+        acc.balance += Number(debt.balance || 0);
+        acc.minimums += Number(debt.min_payment || 0);
+        return acc;
+      },
+      { balance: 0, minimums: 0 }
+    );
+  }, [debts]);
+
   return (
     <main className="min-h-screen bg-zinc-50 text-zinc-900">
       <div className="mx-auto max-w-5xl px-6 py-10">
@@ -88,26 +205,58 @@ export default function DebtPage() {
             </p>
           </div>
 
-          <a
-            href="/dashboard"
-            className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-          >
-            Back to Dashboard
-          </a>
+          <div className="flex flex-wrap gap-3">
+            <a
+              href="/dashboard"
+              className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
+            >
+              Dashboard
+            </a>
+
+            <a
+              href="/forecast"
+              className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
+            >
+              Forecast
+            </a>
+          </div>
         </div>
+
+        {message ? (
+          <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600">
+            {message}
+          </div>
+        ) : null}
+
+        {!userId && !loading ? (
+          <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <div className="font-semibold">You are not logged in.</div>
+            <p className="mt-2 text-sm text-zinc-600">
+              Go to signup/login first, then come back here.
+            </p>
+            <div className="mt-4">
+              <a
+                href="/signup"
+                className="inline-flex rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
+              >
+                Go to Signup / Login
+              </a>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="text-sm text-zinc-500">Total debt balance</div>
             <div className="mt-2 text-3xl font-black">
-              ${totals.debtBalance.toFixed(2)}
+              ${totals.balance.toFixed(2)}
             </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="text-sm text-zinc-500">Minimums due</div>
             <div className="mt-2 text-3xl font-black">
-              ${totals.debtMinimums.toFixed(2)}
+              ${totals.minimums.toFixed(2)}
             </div>
           </div>
         </div>
@@ -185,9 +334,10 @@ export default function DebtPage() {
 
               <button
                 onClick={handleAddDebt}
-                className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white hover:bg-black md:col-span-2"
+                disabled={saving || !userId}
+                className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white hover:bg-black disabled:opacity-60 md:col-span-2"
               >
-                Add Credit / Loan
+                {saving ? "Saving..." : "Add Credit / Loan"}
               </button>
             </div>
           </div>
@@ -218,8 +368,8 @@ export default function DebtPage() {
               ) : null}
 
               <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-600">
-                Use screenshots of card/loan screens that show balance, payment due,
-                due date, APR, or credit limit.
+                Use screenshots of card or loan screens that show balance,
+                payment due, due date, APR, or credit limit.
               </div>
 
               {ocrText ? (
@@ -238,7 +388,11 @@ export default function DebtPage() {
           <h2 className="text-lg font-bold">Debt accounts</h2>
 
           <div className="mt-4 grid gap-3">
-            {debts.length === 0 ? (
+            {loading ? (
+              <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                Loading debts...
+              </div>
+            ) : debts.length === 0 ? (
               <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
                 No debt accounts added yet.
               </div>
@@ -251,17 +405,17 @@ export default function DebtPage() {
                   <div>
                     <div className="font-semibold">{debt.name}</div>
                     <div className="text-sm text-zinc-500">
-                      {debt.kind} · Balance ${debt.balance.toFixed(2)}
-                      {debt.minPayment != null
-                        ? ` · Min ${debt.minPayment.toFixed(2)}`
+                      {debt.kind} · Balance ${Number(debt.balance).toFixed(2)}
+                      {debt.min_payment != null
+                        ? ` · Min ${Number(debt.min_payment).toFixed(2)}`
                         : ""}
-                      {debt.dueDate ? ` · Due ${debt.dueDate}` : ""}
-                      {debt.apr != null ? ` · APR ${debt.apr}%` : ""}
+                      {debt.due_date ? ` · Due ${debt.due_date}` : ""}
+                      {debt.apr != null ? ` · APR ${Number(debt.apr).toFixed(2)}%` : ""}
                     </div>
                   </div>
 
                   <button
-                    onClick={() => removeDebt(debt.id)}
+                    onClick={() => handleDeleteDebt(debt.id)}
                     className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
                   >
                     Delete
