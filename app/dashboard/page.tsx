@@ -321,6 +321,12 @@ export default function DashboardPage() {
                 Forecast
               </a>
               <a
+  href="/payments"
+  className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+>
+  Payments
+</a>
+              <a
                 href="/crisis"
                 className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
               >
