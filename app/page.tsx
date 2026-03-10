@@ -33,13 +33,6 @@ export default function HomePage() {
             >
               Start Free
             </a>
-
-            <a
-              href="/bills"
-              className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white hover:bg-white/5"
-            >
-              Add Bills
-            </a>
           </div>
         </div>
 
@@ -66,6 +59,58 @@ export default function HomePage() {
               Import transactions from screenshots instead of typing everything
               by hand.
             </p>
+          </div>
+        </div>
+
+        <div className="mt-16 grid gap-6 lg:grid-cols-2">
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-8">
+            <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/50">
+              Pro Monthly
+            </div>
+            <div className="mt-3 text-4xl font-black">$5<span className="text-lg text-white/60">/month</span></div>
+            <p className="mt-4 text-sm leading-6 text-white/70">
+              Perfect for users who want screenshot import, smarter prioritization,
+              and a calm weekly money plan.
+            </p>
+
+            <ul className="mt-6 space-y-2 text-sm text-white/70">
+              <li>• Full dashboard + forecast</li>
+              <li>• Screenshot transaction import</li>
+              <li>• Crisis mode planning</li>
+              <li>• Shareable financial plan</li>
+            </ul>
+
+            <a
+              href="/signup?plan=monthly"
+              className="mt-8 inline-flex rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black hover:opacity-90"
+            >
+              Choose $5/month
+            </a>
+          </div>
+
+          <div className="rounded-3xl border border-cyan-300/30 bg-cyan-400/10 p-8">
+            <div className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200">
+              Pro Yearly
+            </div>
+            <div className="mt-3 text-4xl font-black">$39<span className="text-lg text-white/60">/year</span></div>
+            <p className="mt-4 text-sm leading-6 text-white/70">
+              Best value for users who want the full app all year and a lower
+              effective monthly price.
+            </p>
+
+            <ul className="mt-6 space-y-2 text-sm text-white/70">
+              <li>• Everything in Monthly</li>
+              <li>• Lower yearly price</li>
+              <li>• Better long-term planning</li>
+              <li>• Ideal for serious users</li>
+            </ul>
+
+            <a
+              href="/signup?plan=yearly"
+              className="mt-8 inline-flex rounded-xl bg-white px-5 py-3 font-semibold text-black hover:bg-zinc-100"
+            >
+              Choose $39/year
+            </a>
           </div>
         </div>
       </section>
