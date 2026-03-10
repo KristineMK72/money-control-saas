@@ -15,8 +15,35 @@ type DebtRow = {
   apr: number | null;
   credit_limit: number | null;
   note: string | null;
+  is_monthly: boolean | null;
+  due_day: number | null;
+  monthly_min_payment: number | null;
   created_at: string;
 };
+
+function getNextDueDateFromDay(dueDay?: number | null) {
+  if (!dueDay || dueDay < 1 || dueDay > 31) return null;
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  const lastDayThisMonth = new Date(year, month + 1, 0).getDate();
+  const safeDayThisMonth = Math.min(dueDay, lastDayThisMonth);
+  const thisMonthDue = new Date(year, month, safeDayThisMonth, 12, 0, 0, 0);
+
+  if (thisMonthDue >= new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)) {
+    return thisMonthDue.toISOString().slice(0, 10);
+  }
+
+  const nextMonthYear = month === 11 ? year + 1 : year;
+  const nextMonth = month === 11 ? 0 : month + 1;
+  const lastDayNextMonth = new Date(nextMonthYear, nextMonth + 1, 0).getDate();
+  const safeDayNextMonth = Math.min(dueDay, lastDayNextMonth);
+  const nextMonthDue = new Date(nextMonthYear, nextMonth, safeDayNextMonth, 12, 0, 0, 0);
+
+  return nextMonthDue.toISOString().slice(0, 10);
+}
 
 export default function DebtPage() {
   const [loading, setLoading] = useState(true);
@@ -34,6 +61,10 @@ export default function DebtPage() {
   const [apr, setApr] = useState("");
   const [creditLimit, setCreditLimit] = useState("");
   const [note, setNote] = useState("");
+
+  const [isMonthly, setIsMonthly] = useState(true);
+  const [dueDay, setDueDay] = useState("");
+  const [monthlyMinPayment, setMonthlyMinPayment] = useState("");
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
@@ -121,6 +152,9 @@ export default function DebtPage() {
       apr: apr ? Number(apr) : null,
       credit_limit: creditLimit ? Number(creditLimit) : null,
       note: note.trim() || null,
+      is_monthly: isMonthly,
+      due_day: dueDay ? Number(dueDay) : null,
+      monthly_min_payment: monthlyMinPayment ? Number(monthlyMinPayment) : null,
     });
 
     if (error) {
@@ -137,6 +171,9 @@ export default function DebtPage() {
     setApr("");
     setCreditLimit("");
     setNote("");
+    setIsMonthly(true);
+    setDueDay("");
+    setMonthlyMinPayment("");
     setMessage("Debt account added.");
 
     await refreshDebts();
@@ -170,7 +207,10 @@ export default function DebtPage() {
 
       if (parsed.name) setName(parsed.name);
       if (parsed.balance != null) setBalance(String(parsed.balance));
-      if (parsed.minPayment != null) setMinPayment(String(parsed.minPayment));
+      if (parsed.minPayment != null) {
+        setMinPayment(String(parsed.minPayment));
+        setMonthlyMinPayment(String(parsed.minPayment));
+      }
       if (parsed.dueDate) setDueDate(parsed.dueDate);
       if (parsed.apr != null) setApr(String(parsed.apr));
       if (parsed.creditLimit != null) setCreditLimit(String(parsed.creditLimit));
@@ -185,7 +225,7 @@ export default function DebtPage() {
     return debts.reduce(
       (acc, debt) => {
         acc.balance += Number(debt.balance || 0);
-        acc.minimums += Number(debt.min_payment || 0);
+        acc.minimums += Number(debt.monthly_min_payment || debt.min_payment || 0);
         return acc;
       },
       { balance: 0, minimums: 0 }
@@ -228,23 +268,6 @@ export default function DebtPage() {
           </div>
         ) : null}
 
-        {!userId && !loading ? (
-          <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <div className="font-semibold">You are not logged in.</div>
-            <p className="mt-2 text-sm text-zinc-600">
-              Go to signup/login first, then come back here.
-            </p>
-            <div className="mt-4">
-              <a
-                href="/signup"
-                className="inline-flex rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
-              >
-                Go to Signup / Login
-              </a>
-            </div>
-          </div>
-        ) : null}
-
         <div className="mt-8 grid gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="text-sm text-zinc-500">Total debt balance</div>
@@ -254,7 +277,7 @@ export default function DebtPage() {
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Minimums due</div>
+            <div className="text-sm text-zinc-500">Monthly minimums</div>
             <div className="mt-2 text-3xl font-black">
               ${totals.minimums.toFixed(2)}
             </div>
@@ -292,11 +315,38 @@ export default function DebtPage() {
               />
 
               <input
-                placeholder="Minimum payment"
+                placeholder="Minimum payment (current)"
                 type="number"
                 inputMode="decimal"
                 value={minPayment}
                 onChange={(e) => setMinPayment(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <label className="flex items-center gap-3 rounded-xl border border-zinc-200 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={isMonthly}
+                  onChange={(e) => setIsMonthly(e.target.checked)}
+                />
+                <span className="text-sm font-medium">Monthly recurring</span>
+              </label>
+
+              <input
+                placeholder="Due day (1-31)"
+                type="number"
+                inputMode="numeric"
+                value={dueDay}
+                onChange={(e) => setDueDay(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <input
+                placeholder="Monthly minimum payment"
+                type="number"
+                inputMode="decimal"
+                value={monthlyMinPayment}
+                onChange={(e) => setMonthlyMinPayment(e.target.value)}
                 className="rounded-xl border border-zinc-200 px-4 py-3"
               />
 
@@ -334,7 +384,7 @@ export default function DebtPage() {
 
               <button
                 onClick={handleAddDebt}
-                disabled={saving || !userId}
+                disabled={saving}
                 className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white hover:bg-black disabled:opacity-60 md:col-span-2"
               >
                 {saving ? "Saving..." : "Add Credit / Loan"}
@@ -397,31 +447,38 @@ export default function DebtPage() {
                 No debt accounts added yet.
               </div>
             ) : (
-              debts.map((debt) => (
-                <div
-                  key={debt.id}
-                  className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
-                >
-                  <div>
-                    <div className="font-semibold">{debt.name}</div>
-                    <div className="text-sm text-zinc-500">
-                      {debt.kind} · Balance ${Number(debt.balance).toFixed(2)}
-                      {debt.min_payment != null
-                        ? ` · Min ${Number(debt.min_payment).toFixed(2)}`
-                        : ""}
-                      {debt.due_date ? ` · Due ${debt.due_date}` : ""}
-                      {debt.apr != null ? ` · APR ${Number(debt.apr).toFixed(2)}%` : ""}
-                    </div>
-                  </div>
+              debts.map((debt) => {
+                const nextDue =
+                  debt.due_date || getNextDueDateFromDay(debt.due_day);
 
-                  <button
-                    onClick={() => handleDeleteDebt(debt.id)}
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
+                return (
+                  <div
+                    key={debt.id}
+                    className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
                   >
-                    Delete
-                  </button>
-                </div>
-              ))
+                    <div>
+                      <div className="font-semibold">{debt.name}</div>
+                      <div className="text-sm text-zinc-500">
+                        {debt.kind} · Balance ${Number(debt.balance).toFixed(2)}
+                        {debt.monthly_min_payment != null
+                          ? ` · Monthly Min $${Number(debt.monthly_min_payment).toFixed(2)}`
+                          : debt.min_payment != null
+                          ? ` · Min $${Number(debt.min_payment).toFixed(2)}`
+                          : ""}
+                        {nextDue ? ` · Next Due ${nextDue}` : ""}
+                        {debt.apr != null ? ` · APR ${Number(debt.apr).toFixed(2)}%` : ""}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleDeleteDebt(debt.id)}
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
