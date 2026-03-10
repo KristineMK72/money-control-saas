@@ -33,13 +33,20 @@ export default function HomePage() {
             >
               Start Free
             </a>
+
             <a
               href="/login"
               className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white hover:bg-white/5"
-           >
-             Login
-           </a>
+            >
+              Login
+            </a>
+          </div>
+
+          <p className="mt-4 text-sm text-white/60">
+            Free trial feel. Upgrade later when you want smarter planning tools.
+          </p>
         </div>
+
         <div className="mt-16 grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
             <h2 className="text-lg font-bold">Priority engine</h2>
@@ -71,10 +78,12 @@ export default function HomePage() {
             <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/50">
               Pro Monthly
             </div>
-            <div className="mt-3 text-4xl font-black">$5<span className="text-lg text-white/60">/month</span></div>
+            <div className="mt-3 text-4xl font-black">
+              $5<span className="text-lg text-white/60">/month</span>
+            </div>
             <p className="mt-4 text-sm leading-6 text-white/70">
-              Perfect for users who want screenshot import, smarter prioritization,
-              and a calm weekly money plan.
+              Perfect for users who want screenshot import, smarter
+              prioritization, and a calm weekly money plan.
             </p>
 
             <ul className="mt-6 space-y-2 text-sm text-white/70">
@@ -96,7 +105,9 @@ export default function HomePage() {
             <div className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200">
               Pro Yearly
             </div>
-            <div className="mt-3 text-4xl font-black">$39<span className="text-lg text-white/60">/year</span></div>
+            <div className="mt-3 text-4xl font-black">
+              $39<span className="text-lg text-white/60">/year</span>
+            </div>
             <p className="mt-4 text-sm leading-6 text-white/70">
               Best value for users who want the full app all year and a lower
               effective monthly price.
