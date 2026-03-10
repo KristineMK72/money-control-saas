@@ -2,96 +2,157 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { getPriorityBuckets } from "@/lib/money/priority";
-import type { Bucket } from "@/lib/money/types";
-
-type BillRow = {
-  id: string;
-  user_id: string;
-  name: string;
-  kind: "bill" | "credit" | "loan";
-  category:
-    | "housing"
-    | "utilities"
-    | "transportation"
-    | "debt"
-    | "food"
-    | "other"
-    | null;
-  target: number;
-  saved: number;
-  due_date: string | null;
-  due: string | null;
-  priority: number | null;
-  focus: boolean | null;
-  balance: number | null;
-  apr: number | null;
-  min_payment: number | null;
-  credit_limit: number | null;
-  is_monthly: boolean | null;
-  monthly_target: number | null;
-  due_day: number | null;
-  created_at: string;
-};
-
-type IncomeRow = {
-  id: string;
-  amount: number;
-};
+import { todayISO } from "@/lib/money/utils";
+import type { SpendCategory } from "@/lib/money/types";
+import {
+  guessCategoryFromMerchant,
+  ocrImageFile,
+  parseTransactionsScreenshot,
+  type ParsedTxn,
+} from "@/lib/money/receiptOcr";
 
 type SpendRow = {
   id: string;
+  user_id: string;
+  date_iso: string;
+  merchant: string | null;
   amount: number;
+  category: SpendCategory;
+  note: string | null;
+  created_at: string;
 };
 
-type PaymentRow = {
-  id: string;
-  amount: number;
+const categories: SpendCategory[] = [
+  "groceries",
+  "gas",
+  "eating_out",
+  "kids",
+  "business",
+  "self_care",
+  "subscriptions",
+  "misc",
+];
+
+const CATEGORY_LABEL: Record<SpendCategory, string> = {
+  groceries: "Groceries",
+  gas: "Gas",
+  eating_out: "Eating Out",
+  kids: "Kids",
+  business: "Business",
+  self_care: "Self Care",
+  subscriptions: "Subscriptions",
+  misc: "Misc",
 };
 
-type DebtRow = {
-  id: string;
-  balance: number;
-  min_payment: number | null;
-};
+function DonutChart({
+  values,
+  size = 180,
+  stroke = 22,
+}: {
+  values: { label: string; value: number }[];
+  size?: number;
+  stroke?: number;
+}) {
+  const total = values.reduce((sum, v) => sum + v.value, 0);
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
 
-function mapBillToBucket(row: BillRow): Bucket {
-  return {
-    key: row.id,
-    name: row.name,
-    kind: row.kind,
-    target: Number(row.target || 0),
-    saved: Number(row.saved || 0),
-    dueDate: row.due_date || undefined,
-    due: row.due || undefined,
-    priority: (row.priority as 1 | 2 | 3 | 4 | 5 | null) || undefined,
-    focus: !!row.focus,
-    balance: row.balance == null ? undefined : Number(row.balance),
-    apr: row.apr == null ? undefined : Number(row.apr),
-    minPayment: row.min_payment == null ? undefined : Number(row.min_payment),
-    creditLimit: row.credit_limit == null ? undefined : Number(row.credit_limit),
-    isMonthly: !!row.is_monthly,
-    monthlyTarget:
-      row.monthly_target == null ? undefined : Number(row.monthly_target),
-    dueDay: row.due_day == null ? undefined : Number(row.due_day),
-    category: row.category || undefined,
-  };
+  const palette = [
+    "#06b6d4",
+    "#3b82f6",
+    "#8b5cf6",
+    "#f59e0b",
+    "#ef4444",
+    "#22c55e",
+    "#e11d48",
+    "#71717a",
+  ];
+
+  let cumulative = 0;
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="rgba(0,0,0,0.08)"
+        strokeWidth={stroke}
+      />
+
+      {values.map((v, i) => {
+        const fraction = total === 0 ? 0 : v.value / total;
+        const dash = fraction * circumference;
+        const gap = circumference - dash;
+        const offset = -cumulative * circumference;
+        cumulative += fraction;
+
+        return (
+          <circle
+            key={v.label}
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={palette[i % palette.length]}
+            strokeWidth={stroke}
+            strokeDasharray={`${dash} ${gap}`}
+            strokeDashoffset={offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            strokeLinecap="butt"
+          />
+        );
+      })}
+
+      <text
+        x="50%"
+        y="48%"
+        dominantBaseline="middle"
+        textAnchor="middle"
+        fontSize="16"
+        fill="currentColor"
+        style={{ fontWeight: 800 }}
+      >
+        ${total.toFixed(2)}
+      </text>
+      <text
+        x="50%"
+        y="60%"
+        dominantBaseline="middle"
+        textAnchor="middle"
+        fontSize="11"
+        fill="rgba(0,0,0,0.55)"
+      >
+        total spend
+      </text>
+    </svg>
+  );
 }
 
-export default function DashboardPage() {
+export default function SpendPage() {
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
 
-  const [buckets, setBuckets] = useState<Bucket[]>([]);
-  const [incomeTotal, setIncomeTotal] = useState(0);
-  const [spendingTotal, setSpendingTotal] = useState(0);
-  const [paymentsTotal, setPaymentsTotal] = useState(0);
-  const [debtBalanceTotal, setDebtBalanceTotal] = useState(0);
-  const [debtMinimumsTotal, setDebtMinimumsTotal] = useState(0);
+  const [entries, setEntries] = useState<SpendRow[]>([]);
+
+  const [dateISO, setDateISO] = useState(todayISO());
+  const [merchant, setMerchant] = useState("");
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState<SpendCategory>("misc");
+  const [note, setNote] = useState("");
+
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrText, setOcrText] = useState("");
+  const [foundTxns, setFoundTxns] = useState<ParsedTxn[]>([]);
+  const [selectedTxns, setSelectedTxns] = useState<Record<number, boolean>>({});
+  const [ocrError, setOcrError] = useState("");
 
   useEffect(() => {
-    async function loadDashboard() {
+    async function init() {
       setLoading(true);
       setMessage("");
 
@@ -107,86 +168,273 @@ export default function DashboardPage() {
       }
 
       if (!session?.user) {
-        setMessage("Please log in to view your dashboard.");
+        setMessage("Please log in first.");
         setLoading(false);
         return;
       }
 
       setUserId(session.user.id);
 
-      const [billsRes, incomeRes, spendRes, paymentsRes, debtsRes] =
-        await Promise.all([
-          supabase
-            .from("bills")
-            .select("*")
-            .order("due_date", { ascending: true, nullsFirst: false }),
-          supabase.from("income_entries").select("id, amount"),
-          supabase.from("spend_entries").select("id, amount"),
-          supabase.from("payments").select("id, amount"),
-          supabase.from("debts").select("id, balance, min_payment"),
-        ]);
+      const { data, error } = await supabase
+        .from("spend_entries")
+        .select("*")
+        .order("date_iso", { ascending: false });
 
-      if (billsRes.error) {
-        setMessage(billsRes.error.message);
+      if (error) {
+        setMessage(error.message);
       } else {
-        const mapped = ((billsRes.data || []) as BillRow[]).map(mapBillToBucket);
-        setBuckets(mapped);
-      }
-
-      if (!incomeRes.error) {
-        const total = ((incomeRes.data || []) as IncomeRow[]).reduce(
-          (sum, row) => sum + Number(row.amount || 0),
-          0
-        );
-        setIncomeTotal(total);
-      }
-
-      if (!spendRes.error) {
-        const total = ((spendRes.data || []) as SpendRow[]).reduce(
-          (sum, row) => sum + Number(row.amount || 0),
-          0
-        );
-        setSpendingTotal(total);
-      }
-
-      if (!paymentsRes.error) {
-        const total = ((paymentsRes.data || []) as PaymentRow[]).reduce(
-          (sum, row) => sum + Number(row.amount || 0),
-          0
-        );
-        setPaymentsTotal(total);
-      }
-
-      if (!debtsRes.error) {
-        const balanceTotal = ((debtsRes.data || []) as DebtRow[]).reduce(
-          (sum, row) => sum + Number(row.balance || 0),
-          0
-        );
-        const minimumsTotal = ((debtsRes.data || []) as DebtRow[]).reduce(
-          (sum, row) => sum + Number(row.min_payment || 0),
-          0
-        );
-        setDebtBalanceTotal(balanceTotal);
-        setDebtMinimumsTotal(minimumsTotal);
+        setEntries((data || []) as SpendRow[]);
       }
 
       setLoading(false);
     }
 
-    loadDashboard();
+    init();
   }, []);
 
-  const priorities = useMemo(() => getPriorityBuckets(buckets).slice(0, 3), [buckets]);
+  async function refreshSpend() {
+    const { data, error } = await supabase
+      .from("spend_entries")
+      .select("*")
+      .order("date_iso", { ascending: false });
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setEntries((data || []) as SpendRow[]);
+  }
+
+  async function handleAddSpend() {
+    setMessage("");
+
+    if (!userId) {
+      setMessage("You need to be logged in.");
+      return;
+    }
+
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setMessage("Please enter a valid amount.");
+      return;
+    }
+
+    setSaving(true);
+
+    const { error } = await supabase.from("spend_entries").insert({
+      user_id: userId,
+      date_iso: dateISO,
+      merchant: merchant.trim() || null,
+      amount: amt,
+      category,
+      note: note.trim() || null,
+    });
+
+    if (error) {
+      setMessage(error.message);
+      setSaving(false);
+      return;
+    }
+
+    setDateISO(todayISO());
+    setMerchant("");
+    setAmount("");
+    setCategory("misc");
+    setNote("");
+    setMessage("Spending added.");
+
+    await refreshSpend();
+    setSaving(false);
+  }
+
+  async function handleDeleteSpend(id: string) {
+    setMessage("");
+
+    const { error } = await supabase.from("spend_entries").delete().eq("id", id);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setEntries((prev) => prev.filter((entry) => entry.id !== id));
+  }
+
+  async function handleExtractScreenshot() {
+    if (!imageFile) return;
+
+    setOcrBusy(true);
+    setOcrError("");
+    setFoundTxns([]);
+    setSelectedTxns({});
+
+    try {
+      const { text } = await ocrImageFile(imageFile);
+      setOcrText(text);
+
+      const parsed = parseTransactionsScreenshot(text);
+      setFoundTxns(parsed);
+
+      const nextSelected: Record<number, boolean> = {};
+      parsed.forEach((txn, idx) => {
+        nextSelected[idx] = txn.direction === "debit";
+      });
+      setSelectedTxns(nextSelected);
+    } catch (err: any) {
+      setOcrError(err?.message || "Failed to extract screenshot.");
+    } finally {
+      setOcrBusy(false);
+    }
+  }
+
+  function toggleTxn(idx: number) {
+    setSelectedTxns((prev) => ({ ...prev, [idx]: !prev[idx] }));
+  }
+
+  async function importSelectedTxns() {
+    if (!userId) {
+      setMessage("You need to be logged in.");
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+
+    try {
+      const spendInserts: Array<{
+        user_id: string;
+        date_iso: string;
+        merchant: string;
+        amount: number;
+        category: SpendCategory;
+        note: string;
+      }> = [];
+
+      const paymentInserts: Array<{
+        user_id: string;
+        date_iso: string;
+        merchant: string;
+        amount: number;
+        note: string;
+      }> = [];
+
+      foundTxns.forEach((txn, idx) => {
+        if (!selectedTxns[idx]) return;
+
+        if (txn.direction === "debit") {
+          spendInserts.push({
+            user_id: userId,
+            date_iso: todayISO(),
+            merchant: txn.merchant,
+            amount: txn.amount,
+            category: guessCategoryFromMerchant(txn.merchant),
+            note: txn.pending
+              ? "Imported from screenshot · pending"
+              : "Imported from screenshot",
+          });
+        } else {
+          paymentInserts.push({
+            user_id: userId,
+            date_iso: todayISO(),
+            merchant: txn.merchant,
+            amount: txn.amount,
+            note: "Imported payment/credit from screenshot",
+          });
+        }
+      });
+
+      if (spendInserts.length > 0) {
+        const { error } = await supabase.from("spend_entries").insert(spendInserts);
+        if (error) throw new Error(error.message);
+      }
+
+      if (paymentInserts.length > 0) {
+        const { error } = await supabase.from("payments").insert(paymentInserts);
+        if (error) throw new Error(error.message);
+      }
+
+      setFoundTxns([]);
+      setSelectedTxns({});
+      setImageFile(null);
+      setOcrText("");
+      setMessage("Imported selected screenshot items.");
+
+      await refreshSpend();
+    } catch (err: any) {
+      setMessage(err?.message || "Failed to import screenshot items.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const totalSpend = useMemo(() => {
+    return entries.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  }, [entries]);
+
+  const categoryTotals = useMemo(() => {
+    const totals: Record<SpendCategory, number> = {
+      groceries: 0,
+      gas: 0,
+      eating_out: 0,
+      kids: 0,
+      business: 0,
+      self_care: 0,
+      subscriptions: 0,
+      misc: 0,
+    };
+
+    entries.forEach((entry) => {
+      totals[entry.category] += Number(entry.amount || 0);
+    });
+
+    return totals;
+  }, [entries]);
+
+  const donutData = useMemo(() => {
+    return Object.entries(categoryTotals)
+      .map(([key, value]) => ({
+        label: CATEGORY_LABEL[key as SpendCategory],
+        value,
+      }))
+      .filter((item) => item.value > 0);
+  }, [categoryTotals]);
+
+  const sortedCategoryRows = useMemo(() => {
+    return (Object.entries(categoryTotals) as [SpendCategory, number][])
+      .map(([key, value]) => ({
+        key,
+        label: CATEGORY_LABEL[key],
+        value,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [categoryTotals]);
 
   return (
     <main className="min-h-screen bg-zinc-50 text-zinc-900">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-3xl font-black tracking-tight">Dashboard</h1>
+            <h1 className="text-3xl font-black tracking-tight">Spending</h1>
             <p className="mt-2 text-zinc-600">
-              Calm overview of what matters most right now.
+              Add spending manually or import it from screenshots.
             </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <a
+              href="/dashboard"
+              className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
+            >
+              Dashboard
+            </a>
+
+            <a
+              href="/forecast"
+              className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
+            >
+              Forecast
+            </a>
           </div>
         </div>
 
@@ -213,168 +461,228 @@ export default function DashboardPage() {
           </div>
         ) : null}
 
-        <div className="mt-4 flex flex-wrap gap-3">
-          <a
-            href="/bills"
-            className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
-          >
-            Add Bills
-          </a>
-
-          <a
-            href="/income"
-            className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-          >
-            Add Income
-          </a>
-
-          <a
-            href="/spend"
-            className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-          >
-            Spending
-          </a>
-
-          <a
-            href="/debt"
-            className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-          >
-            Credit & Loans
-          </a>
-
-          <a
-            href="/forecast"
-            className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-          >
-            Forecast
-          </a>
-
-          <a
-            href="/crisis"
-            className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-          >
-            Crisis Mode
-          </a>
-
-          <a
-            href="/signup"
-            className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-          >
-            Account
-          </a>
-        </div>
-
-        <div className="mt-8 grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Income</div>
+            <div className="text-sm text-zinc-500">Total spending</div>
             <div className="mt-2 text-3xl font-black">
-              ${incomeTotal.toFixed(2)}
+              ${totalSpend.toFixed(2)}
             </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Spending</div>
-            <div className="mt-2 text-3xl font-black">
-              ${spendingTotal.toFixed(2)}
-            </div>
+            <div className="text-sm text-zinc-500">Entries</div>
+            <div className="mt-2 text-3xl font-black">{entries.length}</div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Payments</div>
+            <div className="text-sm text-zinc-500">Top category</div>
             <div className="mt-2 text-3xl font-black">
-              ${paymentsTotal.toFixed(2)}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Debt Balance</div>
-            <div className="mt-2 text-3xl font-black">
-              ${debtBalanceTotal.toFixed(2)}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Debt Minimums</div>
-            <div className="mt-2 text-3xl font-black">
-              ${debtMinimumsTotal.toFixed(2)}
+              {sortedCategoryRows.find((row) => row.value > 0)?.label || "—"}
             </div>
           </div>
         </div>
 
-        <div className="mt-8 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-bold">Pay these first</h2>
-            <a
-              href="/bills"
-              className="text-sm font-semibold text-zinc-700 hover:text-black"
-            >
-              Manage bills
-            </a>
+        <div className="mt-8 grid gap-8 lg:grid-cols-2">
+          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-bold">Add spending manually</h2>
+
+            <div className="mt-4 grid gap-3">
+              <input
+                type="date"
+                value={dateISO}
+                onChange={(e) => setDateISO(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <input
+                placeholder="Merchant (McDonald's, Target, Speedway)"
+                value={merchant}
+                onChange={(e) => setMerchant(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <input
+                placeholder="Amount"
+                type="number"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as SpendCategory)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              >
+                {categories.map((item) => (
+                  <option key={item} value={item}>
+                    {item.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                placeholder="Note (optional)"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <button
+                onClick={handleAddSpend}
+                disabled={saving || !userId}
+                className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white hover:bg-black disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Add Spending"}
+              </button>
+            </div>
           </div>
 
-          <div className="mt-4 grid gap-3">
-            {loading ? (
-              <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                Loading dashboard...
-              </div>
-            ) : priorities.length === 0 ? (
-              <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                No bills yet. Add bills to generate a priority plan.
-              </div>
-            ) : (
-              priorities.map(({ bucket, score }) => (
-                <div
-                  key={bucket.key}
-                  className="flex items-center justify-between rounded-xl bg-zinc-50 p-4"
-                >
-                  <div>
-                    <div className="font-semibold">{bucket.name}</div>
-                    <div className="text-sm text-zinc-500">
-                      ${bucket.target.toFixed(2)} · Due{" "}
-                      {bucket.dueDate || "not set"} ·{" "}
-                      {bucket.category || "other"}
+          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-bold">Import from screenshot</h2>
+
+            <div className="mt-4 grid gap-3">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <button
+                onClick={handleExtractScreenshot}
+                disabled={!imageFile || ocrBusy}
+                className="rounded-xl border border-zinc-200 bg-white px-4 py-3 font-semibold hover:bg-zinc-100 disabled:opacity-50"
+              >
+                {ocrBusy ? "Extracting..." : "Extract from screenshot"}
+              </button>
+
+              {ocrError ? (
+                <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                  {ocrError}
+                </div>
+              ) : null}
+
+              {foundTxns.length > 0 ? (
+                <div className="rounded-2xl bg-zinc-50 p-4">
+                  <div className="mb-3 font-semibold">
+                    Found {foundTxns.length} transactions
+                  </div>
+
+                  <div className="grid gap-3">
+                    {foundTxns.map((txn, idx) => (
+                      <label
+                        key={idx}
+                        className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-white p-3"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!selectedTxns[idx]}
+                          onChange={() => toggleTxn(idx)}
+                          className="mt-1"
+                        />
+
+                        <div className="flex-1">
+                          <div className="font-semibold">{txn.merchant}</div>
+                          <div className="text-sm text-zinc-500">
+                            {txn.direction === "credit" ? "Payment/Credit" : "Spend"} · $
+                            {txn.amount.toFixed(2)}
+                            {txn.pending ? " · Pending" : ""}
+                            {txn.dateText ? ` · ${txn.dateText}` : ""}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={importSelectedTxns}
+                    disabled={saving}
+                    className="mt-4 rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white hover:bg-black disabled:opacity-60"
+                  >
+                    {saving ? "Importing..." : "Import Selected"}
+                  </button>
+                </div>
+              ) : null}
+
+              {ocrText ? (
+                <details className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600">
+                  <summary className="cursor-pointer font-semibold">
+                    View extracted text
+                  </summary>
+                  <pre className="mt-3 whitespace-pre-wrap text-xs">{ocrText}</pre>
+                </details>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-bold">Spending entries</h2>
+
+            <div className="mt-4 grid gap-3">
+              {loading ? (
+                <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                  Loading spending...
+                </div>
+              ) : entries.length === 0 ? (
+                <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                  No spending logged yet.
+                </div>
+              ) : (
+                entries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
+                  >
+                    <div>
+                      <div className="font-semibold">
+                        {entry.merchant || "Unnamed purchase"}
+                      </div>
+                      <div className="text-sm text-zinc-500">
+                        {entry.date_iso} · {CATEGORY_LABEL[entry.category]}
+                        {entry.note ? ` · ${entry.note}` : ""}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="font-semibold">
+                        ${Number(entry.amount).toFixed(2)}
+                      </div>
+                      <button
+                        onClick={() => handleDeleteSpend(entry.id)}
+                        className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </div>
-                  <div className="text-sm font-bold text-zinc-700">
-                    Score {score}
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-bold">Where your money is going</h2>
+
+            <div className="mt-6 flex flex-col items-center gap-6">
+              <DonutChart values={donutData} />
+
+              <div className="w-full grid gap-2">
+                {sortedCategoryRows.map((row) => (
+                  <div
+                    key={row.key}
+                    className="flex items-center justify-between rounded-xl bg-zinc-50 px-4 py-3"
+                  >
+                    <div className="text-sm font-medium">{row.label}</div>
+                    <div className="text-sm font-semibold">
+                      ${row.value.toFixed(2)}
+                    </div>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold">How this works</h2>
-            <p className="mt-3 text-sm leading-6 text-zinc-600">
-              Add your bills, debt, and income, then let the app rank what
-              matters most first. Housing, utilities, and transportation rise
-              to the top faster because they affect real-life stability.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold">Next step</h2>
-            <p className="mt-3 text-sm leading-6 text-zinc-600">
-              Start by adding your bills, then log income, spending, and debt.
-              Open Crisis Mode to get a simple stabilization plan.
-            </p>
-
-            <div className="mt-4 flex flex-wrap gap-3">
-              <a
-                href="/bills"
-                className="inline-flex rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
-              >
-                Add your first bill
-              </a>
-
-              <a
-                href="/forecast"
-                className="inline-flex rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-              >
-                View forecast
-              </a>
+                ))}
+              </div>
             </div>
           </div>
         </div>
