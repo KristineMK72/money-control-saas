@@ -16,9 +16,9 @@ type BillRow = {
   due_day: number | null;
 };
 
-type IncomeRow = { id: string; amount: number };
-type SpendRow = { id: string; amount: number };
-type PaymentRow = { id: string; amount: number };
+type IncomeRow = { id: string; amount: number; date_iso?: string };
+type SpendRow = { id: string; amount: number; date_iso?: string };
+type PaymentRow = { id: string; amount: number; date_iso?: string };
 
 type DebtRow = {
   id: string;
@@ -29,6 +29,17 @@ type DebtRow = {
   due_day: number | null;
   is_monthly: boolean | null;
   name: string;
+};
+
+type SideHustleRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  income_type: "hourly" | "item" | "project" | "fixed";
+  rate: number;
+  planned_quantity: number;
+  note: string | null;
+  created_at: string;
 };
 
 type PriorityItem = {
@@ -44,6 +55,13 @@ type PriorityItem = {
 function startOfToday() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfWindow(daysFromNow: number) {
+  const d = startOfToday();
+  d.setDate(d.getDate() + daysFromNow);
+  d.setHours(23, 59, 59, 999);
   return d;
 }
 
@@ -153,6 +171,25 @@ function StatCard({
   );
 }
 
+function ProgressBar({ current, goal }: { current: number; goal: number }) {
+  const pct = goal <= 0 ? 100 : Math.min(100, Math.max(0, (current / goal) * 100));
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between text-sm">
+        <span className="text-zinc-500">Goal progress</span>
+        <span className="font-semibold text-zinc-950">{pct.toFixed(0)}%</span>
+      </div>
+      <div className="h-4 overflow-hidden rounded-full bg-zinc-200">
+        <div
+          className="h-full rounded-full bg-emerald-500 transition-all"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -160,10 +197,10 @@ export default function DashboardPage() {
 
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
-  const [incomeTotal, setIncomeTotal] = useState(0);
-  const [spendingTotal, setSpendingTotal] = useState(0);
-  const [paymentsTotal, setPaymentsTotal] = useState(0);
-  const [debtBalanceTotal, setDebtBalanceTotal] = useState(0);
+  const [incomeEntries, setIncomeEntries] = useState<IncomeRow[]>([]);
+  const [spendEntries, setSpendEntries] = useState<SpendRow[]>([]);
+  const [paymentEntries, setPaymentEntries] = useState<PaymentRow[]>([]);
+  const [sideHustles, setSideHustles] = useState<SideHustleRow[]>([]);
 
   useEffect(() => {
     async function loadDashboard() {
@@ -186,57 +223,56 @@ export default function DashboardPage() {
 
       setUserId(session.user.id);
 
-      const [billsRes, incomeRes, spendRes, paymentsRes, debtsRes] = await Promise.all([
+      const [
+        billsRes,
+        incomeRes,
+        spendRes,
+        paymentsRes,
+        debtsRes,
+        hustlesRes,
+      ] = await Promise.all([
         supabase.from("bills").select("*").order("created_at", { ascending: false }),
-        supabase.from("income_entries").select("id, amount"),
-        supabase.from("spend_entries").select("id, amount"),
-        supabase.from("payments").select("id, amount"),
+        supabase.from("income_entries").select("id, amount, date_iso"),
+        supabase.from("spend_entries").select("id, amount, date_iso"),
+        supabase.from("payments").select("id, amount, date_iso"),
         supabase.from("debts").select("*").order("created_at", { ascending: false }),
+        supabase.from("side_hustles").select("*").order("created_at", { ascending: false }),
       ]);
 
       if (billsRes.error) setMessage(billsRes.error.message);
       else setBills((billsRes.data || []) as BillRow[]);
 
-      if (!incomeRes.error) {
-        setIncomeTotal(
-          ((incomeRes.data || []) as IncomeRow[]).reduce(
-            (sum, row) => sum + Number(row.amount || 0),
-            0
-          )
-        );
-      }
-
-      if (!spendRes.error) {
-        setSpendingTotal(
-          ((spendRes.data || []) as SpendRow[]).reduce(
-            (sum, row) => sum + Number(row.amount || 0),
-            0
-          )
-        );
-      }
-
-      if (!paymentsRes.error) {
-        setPaymentsTotal(
-          ((paymentsRes.data || []) as PaymentRow[]).reduce(
-            (sum, row) => sum + Number(row.amount || 0),
-            0
-          )
-        );
-      }
-
-      if (!debtsRes.error) {
-        const rows = (debtsRes.data || []) as DebtRow[];
-        setDebts(rows);
-        setDebtBalanceTotal(
-          rows.reduce((sum, row) => sum + Number(row.balance || 0), 0)
-        );
-      }
+      if (!incomeRes.error) setIncomeEntries((incomeRes.data || []) as IncomeRow[]);
+      if (!spendRes.error) setSpendEntries((spendRes.data || []) as SpendRow[]);
+      if (!paymentsRes.error) setPaymentEntries((paymentsRes.data || []) as PaymentRow[]);
+      if (!debtsRes.error) setDebts((debtsRes.data || []) as DebtRow[]);
+      if (!hustlesRes.error) setSideHustles((hustlesRes.data || []) as SideHustleRow[]);
 
       setLoading(false);
     }
 
     loadDashboard();
   }, []);
+
+  const incomeTotal = useMemo(
+    () => incomeEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [incomeEntries]
+  );
+
+  const spendingTotal = useMemo(
+    () => spendEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [spendEntries]
+  );
+
+  const paymentsTotal = useMemo(
+    () => paymentEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [paymentEntries]
+  );
+
+  const debtBalanceTotal = useMemo(
+    () => debts.reduce((sum, row) => sum + Number(row.balance || 0), 0),
+    [debts]
+  );
 
   const priorities = useMemo(() => {
     const billItems = bills.map((bill) => {
@@ -271,6 +307,48 @@ export default function DashboardPage() {
   }, [bills, debts]);
 
   const remaining = incomeTotal - spendingTotal - paymentsTotal;
+
+  const weekEnd = endOfWindow(6);
+
+  const billsThisWeekTotal = useMemo(() => {
+    return bills
+      .map((bill) => ({
+        dueDate: effectiveBillDueDate(bill),
+        amount: effectiveBillAmount(bill),
+      }))
+      .filter((bill) => {
+        const due = parseDateSafe(bill.dueDate);
+        return due && due <= weekEnd;
+      })
+      .reduce((sum, bill) => sum + bill.amount, 0);
+  }, [bills, weekEnd]);
+
+  const debtThisWeekTotal = useMemo(() => {
+    return debts
+      .map((debt) => ({
+        dueDate: effectiveDebtDueDate(debt),
+        amount: effectiveDebtAmount(debt),
+      }))
+      .filter((debt) => {
+        const due = parseDateSafe(debt.dueDate);
+        return due && due <= weekEnd;
+      })
+      .reduce((sum, debt) => sum + debt.amount, 0);
+  }, [debts, weekEnd]);
+
+  const gapThisWeek = Math.max(
+    0,
+    billsThisWeekTotal + debtThisWeekTotal + spendingTotal + paymentsTotal - incomeTotal
+  );
+
+  const plannedIncome = useMemo(() => {
+    return sideHustles.reduce(
+      (sum, row) => sum + Number(row.rate || 0) * Number(row.planned_quantity || 0),
+      0
+    );
+  }, [sideHustles]);
+
+  const remainingGap = Math.max(0, gapThisWeek - plannedIncome);
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -309,6 +387,12 @@ export default function DashboardPage() {
                 Spending
               </a>
               <a
+                href="/payments"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Payments
+              </a>
+              <a
                 href="/debt"
                 className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
               >
@@ -321,16 +405,16 @@ export default function DashboardPage() {
                 Forecast
               </a>
               <a
-  href="/payments"
-  className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
->
-  Payments
-</a>
-              <a
                 href="/crisis"
                 className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
               >
                 Crisis Mode
+              </a>
+              <a
+                href="/income-plan"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Close the Gap
               </a>
             </div>
           </div>
@@ -424,6 +508,50 @@ export default function DashboardPage() {
                       {formatUSD(remaining)}
                     </span>
                   </div>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-black">Close the Gap</h2>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      Track whether your side hustle plan covers this week’s shortfall.
+                    </p>
+                  </div>
+                  <a
+                    href="/income-plan"
+                    className="rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
+                  >
+                    Open
+                  </a>
+                </div>
+
+                <div className="mt-5">
+                  <ProgressBar current={plannedIncome} goal={gapThisWeek} />
+                </div>
+
+                <div className="mt-5 grid gap-3">
+                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
+                    <span className="text-zinc-500">Gap this week</span>
+                    <span className="font-bold">{formatUSD(gapThisWeek)}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
+                    <span className="text-zinc-500">Planned income</span>
+                    <span className="font-bold">{formatUSD(plannedIncome)}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl bg-emerald-50 p-4">
+                    <span className="text-emerald-700">Remaining gap</span>
+                    <span className="font-bold text-emerald-700">{formatUSD(remainingGap)}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl bg-zinc-50 p-4 text-sm leading-6 text-zinc-700">
+                  {gapThisWeek === 0
+                    ? "You currently have no weekly gap based on your entries."
+                    : remainingGap === 0
+                    ? "Your current income plan covers the full gap."
+                    : `You still need ${formatUSD(remainingGap)} to fully cover this week.`}
                 </div>
               </div>
 
