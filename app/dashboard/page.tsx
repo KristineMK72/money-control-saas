@@ -1,11 +1,182 @@
 "use client";
 
-import { useMoneyStore } from "@/lib/money/store";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import { getPriorityBuckets } from "@/lib/money/priority";
+import type { Bucket } from "@/lib/money/types";
+
+type BillRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  kind: "bill" | "credit" | "loan";
+  category:
+    | "housing"
+    | "utilities"
+    | "transportation"
+    | "debt"
+    | "food"
+    | "other"
+    | null;
+  target: number;
+  saved: number;
+  due_date: string | null;
+  due: string | null;
+  priority: number | null;
+  focus: boolean | null;
+  balance: number | null;
+  apr: number | null;
+  min_payment: number | null;
+  credit_limit: number | null;
+  is_monthly: boolean | null;
+  monthly_target: number | null;
+  due_day: number | null;
+  created_at: string;
+};
+
+type IncomeRow = {
+  id: string;
+  amount: number;
+};
+
+type SpendRow = {
+  id: string;
+  amount: number;
+};
+
+type PaymentRow = {
+  id: string;
+  amount: number;
+};
+
+type DebtRow = {
+  id: string;
+  balance: number;
+  min_payment: number | null;
+};
+
+function mapBillToBucket(row: BillRow): Bucket {
+  return {
+    key: row.id,
+    name: row.name,
+    kind: row.kind,
+    target: Number(row.target || 0),
+    saved: Number(row.saved || 0),
+    dueDate: row.due_date || undefined,
+    due: row.due || undefined,
+    priority: (row.priority as 1 | 2 | 3 | 4 | 5 | null) || undefined,
+    focus: !!row.focus,
+    balance: row.balance == null ? undefined : Number(row.balance),
+    apr: row.apr == null ? undefined : Number(row.apr),
+    minPayment: row.min_payment == null ? undefined : Number(row.min_payment),
+    creditLimit: row.credit_limit == null ? undefined : Number(row.credit_limit),
+    isMonthly: !!row.is_monthly,
+    monthlyTarget:
+      row.monthly_target == null ? undefined : Number(row.monthly_target),
+    dueDay: row.due_day == null ? undefined : Number(row.due_day),
+    category: row.category || undefined,
+  };
+}
 
 export default function DashboardPage() {
-  const { buckets, totals } = useMoneyStore();
-  const priorities = getPriorityBuckets(buckets).slice(0, 3);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const [buckets, setBuckets] = useState<Bucket[]>([]);
+  const [incomeTotal, setIncomeTotal] = useState(0);
+  const [spendingTotal, setSpendingTotal] = useState(0);
+  const [paymentsTotal, setPaymentsTotal] = useState(0);
+  const [debtBalanceTotal, setDebtBalanceTotal] = useState(0);
+  const [debtMinimumsTotal, setDebtMinimumsTotal] = useState(0);
+
+  useEffect(() => {
+    async function loadDashboard() {
+      setLoading(true);
+      setMessage("");
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        setMessage(sessionError.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!session?.user) {
+        setMessage("Please log in to view your dashboard.");
+        setLoading(false);
+        return;
+      }
+
+      setUserId(session.user.id);
+
+      const [billsRes, incomeRes, spendRes, paymentsRes, debtsRes] =
+        await Promise.all([
+          supabase
+            .from("bills")
+            .select("*")
+            .order("due_date", { ascending: true, nullsFirst: false }),
+          supabase.from("income_entries").select("id, amount"),
+          supabase.from("spend_entries").select("id, amount"),
+          supabase.from("payments").select("id, amount"),
+          supabase.from("debts").select("id, balance, min_payment"),
+        ]);
+
+      if (billsRes.error) {
+        setMessage(billsRes.error.message);
+      } else {
+        const mapped = ((billsRes.data || []) as BillRow[]).map(mapBillToBucket);
+        setBuckets(mapped);
+      }
+
+      if (!incomeRes.error) {
+        const total = ((incomeRes.data || []) as IncomeRow[]).reduce(
+          (sum, row) => sum + Number(row.amount || 0),
+          0
+        );
+        setIncomeTotal(total);
+      }
+
+      if (!spendRes.error) {
+        const total = ((spendRes.data || []) as SpendRow[]).reduce(
+          (sum, row) => sum + Number(row.amount || 0),
+          0
+        );
+        setSpendingTotal(total);
+      }
+
+      if (!paymentsRes.error) {
+        const total = ((paymentsRes.data || []) as PaymentRow[]).reduce(
+          (sum, row) => sum + Number(row.amount || 0),
+          0
+        );
+        setPaymentsTotal(total);
+      }
+
+      if (!debtsRes.error) {
+        const balanceTotal = ((debtsRes.data || []) as DebtRow[]).reduce(
+          (sum, row) => sum + Number(row.balance || 0),
+          0
+        );
+        const minimumsTotal = ((debtsRes.data || []) as DebtRow[]).reduce(
+          (sum, row) => sum + Number(row.min_payment || 0),
+          0
+        );
+        setDebtBalanceTotal(balanceTotal);
+        setDebtMinimumsTotal(minimumsTotal);
+      }
+
+      setLoading(false);
+    }
+
+    loadDashboard();
+  }, []);
+
+  const priorities = useMemo(() => getPriorityBuckets(buckets).slice(0, 3), [buckets]);
 
   return (
     <main className="min-h-screen bg-zinc-50 text-zinc-900">
@@ -18,6 +189,29 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
+
+        {message ? (
+          <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600">
+            {message}
+          </div>
+        ) : null}
+
+        {!userId && !loading ? (
+          <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <div className="font-semibold">You are not logged in.</div>
+            <p className="mt-2 text-sm text-zinc-600">
+              Go to signup/login first, then come back here.
+            </p>
+            <div className="mt-4">
+              <a
+                href="/signup"
+                className="inline-flex rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
+              >
+                Go to Signup / Login
+              </a>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap gap-3">
           <a
@@ -74,35 +268,35 @@ export default function DashboardPage() {
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="text-sm text-zinc-500">Income</div>
             <div className="mt-2 text-3xl font-black">
-              ${totals.income.toFixed(2)}
+              ${incomeTotal.toFixed(2)}
             </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="text-sm text-zinc-500">Spending</div>
             <div className="mt-2 text-3xl font-black">
-              ${totals.spending.toFixed(2)}
+              ${spendingTotal.toFixed(2)}
             </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="text-sm text-zinc-500">Payments</div>
             <div className="mt-2 text-3xl font-black">
-              ${totals.payments.toFixed(2)}
+              ${paymentsTotal.toFixed(2)}
             </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="text-sm text-zinc-500">Debt Balance</div>
             <div className="mt-2 text-3xl font-black">
-              ${totals.debtBalance.toFixed(2)}
+              ${debtBalanceTotal.toFixed(2)}
             </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="text-sm text-zinc-500">Debt Minimums</div>
             <div className="mt-2 text-3xl font-black">
-              ${totals.debtMinimums.toFixed(2)}
+              ${debtMinimumsTotal.toFixed(2)}
             </div>
           </div>
         </div>
@@ -119,7 +313,11 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-4 grid gap-3">
-            {priorities.length === 0 ? (
+            {loading ? (
+              <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                Loading dashboard...
+              </div>
+            ) : priorities.length === 0 ? (
               <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
                 No bills yet. Add bills to generate a priority plan.
               </div>
