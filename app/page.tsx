@@ -33,9 +33,13 @@ export default function HomePage() {
             >
               Start Free
             </a>
-          </div>
+            <a
+              href="/login"
+              className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white hover:bg-white/5"
+           >
+             Login
+           </a>
         </div>
-
         <div className="mt-16 grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
             <h2 className="text-lg font-bold">Priority engine</h2>
