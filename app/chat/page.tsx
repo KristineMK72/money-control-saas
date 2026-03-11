@@ -15,7 +15,7 @@ export default function ChatPage() {
     {
       role: "assistant",
       content:
-        "Hi — I can help you decide what to pay first, estimate your 7-day risk, and turn your bills into a practical plan.",
+        "Hi!! I'm Ben your assistant — I can help you decide what to pay first, estimate your 7-day risk, and turn your bills into a practical plan.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -145,7 +145,7 @@ export default function ChatPage() {
         <div style={styles.header}>
           <div>
             <div style={styles.eyebrow}>Money Control Board</div>
-            <h1 style={styles.title}>Money AI Assistant</h1>
+            <h1 style={styles.title}>Ben the Money AI Guy</h1>
             <p style={styles.subtitle}>
               Ask about bills, weekly funding, daily targets, or what to prioritize.
             </p>
