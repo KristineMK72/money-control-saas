@@ -14,4 +14,6 @@ export type AiRequestBody = {
   mode?: AiMode;
   messages?: ChatMessage[];
   context?: string;
+  stressScore?: number;
+  financialSummary?: string;
 };
