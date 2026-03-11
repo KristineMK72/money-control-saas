@@ -1,6 +1,5 @@
 "use client";
 
-
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -17,6 +16,7 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -31,6 +31,23 @@ export default function SignupPage() {
     if (plan === "yearly") return "$39/year";
     return "Free";
   }, [plan]);
+
+  async function signInWithGoogle() {
+    setMessage("");
+    setGoogleLoading(true);
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: "https://www.askben.buzz/dashboard",
+      },
+    });
+
+    if (error) {
+      setMessage(error.message);
+      setGoogleLoading(false);
+    }
+  }
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
@@ -169,9 +186,22 @@ export default function SignupPage() {
 
             <p className="mt-3 text-sm text-zinc-500">
               {mode === "signup"
-                ? "Use your email and create a password to get started."
-                : "Enter your email and password to continue."}
+                ? "Use Google for the fastest setup, or create an account with email."
+                : "Continue with Google or enter your email and password."}
             </p>
+
+            <div className="mt-6 space-y-4">
+              <button
+                type="button"
+                onClick={signInWithGoogle}
+                disabled={googleLoading}
+                className="w-full rounded-xl border border-zinc-300 bg-white p-3 font-semibold text-zinc-900 hover:bg-zinc-100 disabled:opacity-60"
+              >
+                {googleLoading ? "Opening Google..." : "Continue with Google"}
+              </button>
+
+              <div className="text-center text-sm text-zinc-400">or</div>
+            </div>
 
             <form
               onSubmit={mode === "signup" ? handleSignup : handleLogin}
