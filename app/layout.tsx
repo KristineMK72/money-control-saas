@@ -6,6 +6,30 @@ export const metadata: Metadata = {
   description: "Stop financial chaos. See exactly what to pay first.",
 };
 
+function NavLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      style={{
+        padding: "8px 14px",
+        borderRadius: 999,
+        textDecoration: "none",
+        fontWeight: 600,
+        color: "#1c1917",
+        fontSize: 14,
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
 export default function RootLayout({
   children,
 }: {
@@ -21,9 +45,39 @@ export default function RootLayout({
           background: "#f5f5f4",
         }}
       >
+        {/* Top navigation */}
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            background: "#ffffff",
+            borderBottom: "1px solid #e7e5e4",
+            padding: "14px 20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            zIndex: 100,
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: 16,
+              color: "#1c1917",
+            }}
+          >
+            Financial Triage
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <NavLink href="/">Dashboard</NavLink>
+            <NavLink href="/chat">Ask Ben</NavLink>
+          </div>
+        </div>
+
         {children}
 
-        {/* Floating AI assistant */}
+        {/* Floating Ask Ben button */}
         <a
           href="/chat"
           style={{
@@ -39,7 +93,6 @@ export default function RootLayout({
             boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
             zIndex: 9999,
             fontSize: 15,
-            letterSpacing: 0.2,
           }}
         >
           Ask Ben 💰
