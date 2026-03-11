@@ -1,9 +1,11 @@
 "use client";
 
+
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function AppTabs() {
+  const supabase = createSupabaseBrowserClient();
   const router = useRouter();
 
   async function handleLogout() {

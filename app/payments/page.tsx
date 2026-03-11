@@ -1,8 +1,9 @@
 "use client";
 
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type PaymentRow = {
   id: string;
@@ -19,6 +20,7 @@ function todayISO() {
 }
 
 export default function PaymentsPage() {
+  const supabase = createSupabaseBrowserClient();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);

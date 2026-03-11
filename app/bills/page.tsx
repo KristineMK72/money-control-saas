@@ -1,7 +1,8 @@
 "use client";
 
+
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import AppTabs from "@/components/AppTabs";
 import { getNextDueDateFromDay } from "@/lib/money/recurring";
 
@@ -38,6 +39,7 @@ function effectiveBillAmount(bill: BillRow) {
 }
 
 export default function BillsPage() {
+  const supabase = createSupabaseBrowserClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");

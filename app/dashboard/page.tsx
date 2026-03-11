@@ -1,7 +1,8 @@
 "use client";
 
+
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type BillRow = {
   id: string;
@@ -191,6 +192,7 @@ function ProgressBar({ current, goal }: { current: number; goal: number }) {
 }
 
 export default function DashboardPage() {
+  const supabase = createSupabaseBrowserClient();
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [userId, setUserId] = useState<string | null>(null);

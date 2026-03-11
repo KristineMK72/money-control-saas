@@ -1,7 +1,8 @@
 "use client";
 
+
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/money/utils";
 import type { SpendCategory } from "@/lib/money/types";
 import {
@@ -131,6 +132,7 @@ function DonutChart({
 }
 
 export default function SpendPage() {
+  const supabase = createSupabaseBrowserClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");

@@ -1,5 +1,6 @@
 "use client";
 
+
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { ocrImageFile, parseDebtScreenshot } from "@/lib/money/receiptOcr";
@@ -57,6 +58,7 @@ function getNextDueDateFromDay(dueDay?: number | null) {
 }
 
 export default function DebtPage() {
+  const supabase = createSupabaseBrowserClient();
   const supabase = createSupabaseBrowserClient();
 
   const [loading, setLoading] = useState(true);
