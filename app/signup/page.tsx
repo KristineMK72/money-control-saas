@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Mode = "signup" | "login";
 
 export default function SignupPage() {
+  const supabase = createSupabaseBrowserClient();
+
   const [mode, setMode] = useState<Mode>("signup");
   const [plan, setPlan] = useState<string>("free");
 
