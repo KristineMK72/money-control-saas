@@ -1,27 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ChatMessage } from "@/lib/ai/types";
+import { buildFinancialSnapshot } from "@/lib/ai/finance";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type SummaryData = {
   next7BillsTotal: number;
   next14BillsTotal: number;
   next7IncomeTotal: number;
   shortfall7: number;
+  availableCash: number;
 };
 
 export default function ChatPage() {
+  const supabase = createSupabaseBrowserClient();
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
       content:
-        "Hi!! I'm Ben your assistant — I can help you decide what to pay first, estimate your 7-day risk, and turn your bills into a practical plan.",
+        "Hi — I’m Ben, your Money Control AI. I can help you decide what to pay first, estimate your 7-day risk, and turn your bills into a practical plan.",
     },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [stressScore, setStressScore] = useState<number | null>(null);
   const [summary, setSummary] = useState<SummaryData | null>(null);
+  const [financialSummary, setFinancialSummary] = useState<string>("");
+  const [dataReady, setDataReady] = useState(false);
 
   function stressLabel(score: number | null) {
     if (score === null) return "Loading";
@@ -32,6 +39,163 @@ export default function ChatPage() {
     return "Critical";
   }
 
+  useEffect(() => {
+    async function loadFinancialContext() {
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError || !user) {
+          setFinancialSummary("No signed-in user found.");
+          setDataReady(true);
+          return;
+        }
+
+        const userId = user.id;
+
+        const { data: bills } = await supabase
+          .from("bills")
+          .select(
+            "name, kind, category, target, saved, due_date, due, priority, focus, balance, min_payment, is_monthly, monthly_target, due_day"
+          )
+          .eq("user_id", userId);
+
+        const { data: debts } = await supabase
+          .from("debts")
+          .select(
+            "name, kind, balance, min_payment, due_date, monthly_min_payment, is_monthly, due_day"
+          )
+          .eq("user_id", userId);
+
+        const { data: incomeEntries } = await supabase
+          .from("income_entries")
+          .select("source_name, amount, date_iso")
+          .eq("user_id", userId)
+          .order("date_iso", { ascending: false });
+
+        const { data: payments } = await supabase
+          .from("payments")
+          .select("merchant, amount, date_iso")
+          .eq("user_id", userId)
+          .order("date_iso", { ascending: false })
+          .limit(10);
+
+        const { data: spendEntries } = await supabase
+          .from("spend_entries")
+          .select("merchant, amount, category, date_iso")
+          .eq("user_id", userId)
+          .order("date_iso", { ascending: false })
+          .limit(10);
+
+        const availableCash =
+          bills?.reduce((sum, b) => sum + Number(b.saved || 0), 0) ?? 0;
+
+        const mappedBills = [
+          ...(bills?.map((b) => ({
+            name: b.name,
+            amount:
+              Number(
+                b.min_payment ??
+                  b.monthly_target ??
+                  b.balance ??
+                  b.target ??
+                  0
+              ) || 0,
+            dueDate: b.due_date ?? undefined,
+            kind: b.kind ?? b.category ?? undefined,
+            essential: [
+              "power",
+              "utility",
+              "insurance",
+              "rent",
+              "housing",
+              "phone",
+              "internet",
+            ].some((word) =>
+              `${b.name || ""} ${b.category || ""}`.toLowerCase().includes(word)
+            ),
+          })) ?? []),
+
+          ...(debts?.map((d) => ({
+            name: d.name,
+            amount:
+              Number(d.min_payment ?? d.monthly_min_payment ?? d.balance ?? 0) ||
+              0,
+            dueDate: d.due_date ?? undefined,
+            kind: d.kind ?? "debt",
+            essential: false,
+          })) ?? []),
+        ];
+
+        const mappedIncome =
+          incomeEntries?.map((i) => ({
+            name: i.source_name || "Income",
+            amount: Number(i.amount || 0),
+            expectedDate: i.date_iso ?? undefined,
+          })) ?? [];
+
+        const mappedBuckets =
+          bills
+            ?.filter((b) => b.focus || Number(b.saved || 0) > 0)
+            .map((b) => ({
+              name: b.name,
+              saved: Number(b.saved || 0),
+              focus: !!b.focus,
+            })) ?? [];
+
+        const snapshot = buildFinancialSnapshot({
+          availableCash,
+          bills: mappedBills,
+          expectedIncome: mappedIncome,
+          buckets: mappedBuckets,
+        });
+
+        const recentPaymentsSummary =
+          payments?.map(
+            (p) =>
+              `- ${p.merchant}: $${Number(p.amount || 0).toFixed(2)} on ${p.date_iso}`
+          ) ?? [];
+
+        const recentSpendingSummary =
+          spendEntries?.map(
+            (s) =>
+              `- ${s.merchant}: $${Number(s.amount || 0).toFixed(2)}${
+                s.category ? ` (${s.category})` : ""
+              } on ${s.date_iso}`
+          ) ?? [];
+
+        const fullSummary = `
+${snapshot.summaryText}
+
+Recent Payments:
+${recentPaymentsSummary.length ? recentPaymentsSummary.join("\n") : "- No recent payments found."}
+
+Recent Spending:
+${recentSpendingSummary.length ? recentSpendingSummary.join("\n") : "- No recent spending found."}
+`.trim();
+
+        setStressScore(snapshot.stressScore);
+        setSummary({
+          next7BillsTotal: snapshot.next7BillsTotal,
+          next14BillsTotal: snapshot.next14BillsTotal,
+          next7IncomeTotal: snapshot.next7IncomeTotal,
+          shortfall7: snapshot.shortfall7,
+          availableCash,
+        });
+        setFinancialSummary(fullSummary);
+        setDataReady(true);
+      } catch (error) {
+        console.error("Failed to load financial context:", error);
+        setFinancialSummary("Failed to load financial context.");
+        setDataReady(true);
+      }
+    }
+
+    loadFinancialContext();
+  }, [supabase]);
+
   async function sendToAI(nextMessages: ChatMessage[]) {
     const res = await fetch("/api/ai", {
       method: "POST",
@@ -41,6 +205,8 @@ export default function ChatPage() {
       body: JSON.stringify({
         mode: "money",
         messages: nextMessages,
+        stressScore,
+        financialSummary,
       }),
     });
 
@@ -50,20 +216,12 @@ export default function ChatPage() {
       throw new Error(data.error || "Request failed");
     }
 
-    if (typeof data.stressScore === "number") {
-      setStressScore(data.stressScore);
-    }
-
-    if (data.summary) {
-      setSummary(data.summary);
-    }
-
     return data;
   }
 
   async function sendMessage(customText?: string) {
     const text = (customText ?? input).trim();
-    if (!text || loading) return;
+    if (!text || loading || !dataReady) return;
 
     const userMessage: ChatMessage = {
       role: "user",
@@ -82,11 +240,10 @@ export default function ChatPage() {
         ...nextMessages,
         {
           role: "assistant",
-          content:
-            data.reply || "Sorry, I couldn’t generate a response.",
+          content: data.reply || "Sorry, I couldn’t generate a response.",
         },
       ]);
-    } catch (error) {
+    } catch {
       setMessages([
         ...nextMessages,
         {
@@ -101,6 +258,8 @@ export default function ChatPage() {
   }
 
   useEffect(() => {
+    if (!dataReady || !financialSummary) return;
+
     async function loadInitialOutlook() {
       setLoading(true);
 
@@ -118,12 +277,10 @@ export default function ChatPage() {
         setMessages([
           {
             role: "assistant",
-            content:
-              data.reply ||
-              "I couldn’t load your 7-day outlook yet.",
+            content: data.reply || "I couldn’t load your 7-day outlook yet.",
           },
         ]);
-      } catch (error) {
+      } catch {
         setMessages([
           {
             role: "assistant",
@@ -137,17 +294,17 @@ export default function ChatPage() {
     }
 
     loadInitialOutlook();
-  }, []);
+  }, [dataReady, financialSummary]);
 
   return (
     <main style={styles.page}>
       <section style={styles.card}>
         <div style={styles.header}>
           <div>
-            <div style={styles.eyebrow}>Money Control Board</div>
-            <h1 style={styles.title}>Ben the Money AI Guy</h1>
+            <div style={styles.eyebrow}>Ask Ben</div>
+            <h1 style={styles.title}>Money AI Assistant</h1>
             <p style={styles.subtitle}>
-              Ask about bills, weekly funding, daily targets, or what to prioritize.
+              Ask Ben about bills, weekly funding, daily targets, or what to prioritize.
             </p>
           </div>
         </div>
@@ -206,7 +363,7 @@ export default function ChatPage() {
             type="button"
             style={styles.quickBtn}
             onClick={() => sendMessage("What should I pay first?")}
-            disabled={loading}
+            disabled={loading || !dataReady}
           >
             What should I pay first?
           </button>
@@ -215,7 +372,7 @@ export default function ChatPage() {
             type="button"
             style={styles.quickBtn}
             onClick={() => sendMessage("Give me a 7-day survival plan.")}
-            disabled={loading}
+            disabled={loading || !dataReady}
           >
             7-day survival plan
           </button>
@@ -226,7 +383,7 @@ export default function ChatPage() {
             onClick={() =>
               sendMessage("How much do I need to earn per day this week?")
             }
-            disabled={loading}
+            disabled={loading || !dataReady}
           >
             Daily target
           </button>
@@ -242,7 +399,7 @@ export default function ChatPage() {
               }}
             >
               <div style={styles.messageLabel}>
-                {msg.role === "user" ? "You" : "AI"}
+                {msg.role === "user" ? "You" : "Ben"}
               </div>
               <div style={styles.messageText}>{msg.content}</div>
             </div>
@@ -250,7 +407,7 @@ export default function ChatPage() {
 
           {loading && (
             <div style={{ ...styles.message, ...styles.assistant }}>
-              <div style={styles.messageLabel}>AI</div>
+              <div style={styles.messageLabel}>Ben</div>
               <div style={styles.messageText}>Thinking...</div>
             </div>
           )}
@@ -267,12 +424,12 @@ export default function ChatPage() {
             }}
             placeholder="Ask what to pay first, your 7-day risk, or your daily target..."
             style={styles.input}
-            disabled={loading}
+            disabled={loading || !dataReady}
           />
           <button
             type="button"
             onClick={() => sendMessage()}
-            disabled={loading}
+            disabled={loading || !dataReady}
             style={styles.button}
           >
             Send
@@ -286,8 +443,7 @@ export default function ChatPage() {
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
-    background:
-      "linear-gradient(180deg, #f8f5ef 0%, #f4efe7 100%)",
+    background: "linear-gradient(180deg, #f8f5ef 0%, #f4efe7 100%)",
     padding: 24,
   },
   card: {
