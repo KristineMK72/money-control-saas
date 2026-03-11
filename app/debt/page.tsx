@@ -3,14 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { ocrImageFile, parseDebtScreenshot } from "@/lib/money/receiptOcr";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
 
 type DebtRow = {
   id: string;
@@ -28,18 +20,6 @@ type DebtRow = {
   monthly_min_payment: number | null;
   created_at: string;
 };
-
-const PIE_COLORS = [
-  "#111827",
-  "#2563eb",
-  "#10b981",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#06b6d4",
-  "#84cc16",
-  "#f97316",
-];
 
 function getNextDueDateFromDay(dueDay?: number | null) {
   if (!dueDay || dueDay < 1 || dueDay > 31) return null;
@@ -76,130 +56,13 @@ function getNextDueDateFromDay(dueDay?: number | null) {
   return nextMonthDue.toISOString().slice(0, 10);
 }
 
-function DebtPieChart({ debts }: { debts: DebtRow[] }) {
-  const chartData = debts
-    .filter((d) => Number(d.balance || 0) > 0)
-    .map((d) => ({
-      name: d.name,
-      value: Number(d.balance || 0),
-    }));
-
-  if (chartData.length === 0) {
-    return (
-      <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-        No debt balances yet for charting.
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ width: "100%", height: 320 }}>
-      <ResponsiveContainer>
-        <PieChart>
-          <Pie
-            data={chartData}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            outerRadius={95}
-            label={({ name, percent }) =>
-              `${name} ${((percent || 0) * 100).toFixed(0)}%`
-            }
-          >
-            {chartData.map((_, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={PIE_COLORS[index % PIE_COLORS.length]}
-              />
-            ))}
-          </Pie>
-          <Tooltip
-            formatter={(value: number) => [
-              `$${Number(value).toFixed(2)}`,
-              "Balance",
-            ]}
-          />
-          <Legend />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function UtilizationList({ debts }: { debts: DebtRow[] }) {
-  const creditCards = debts
-    .filter((d) => d.kind === "credit" && Number(d.credit_limit || 0) > 0)
-    .map((d) => {
-      const balance = Number(d.balance || 0);
-      const limit = Number(d.credit_limit || 0);
-      const utilization = limit > 0 ? (balance / limit) * 100 : 0;
-
-      return {
-        id: d.id,
-        name: d.name,
-        balance,
-        limit,
-        utilization,
-      };
-    })
-    .sort((a, b) => b.utilization - a.utilization);
-
-  if (creditCards.length === 0) {
-    return (
-      <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-        Add a credit limit to your cards to see utilization.
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid gap-3">
-      {creditCards.map((card) => (
-        <div
-          key={card.id}
-          className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4"
-        >
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="font-semibold">{card.name}</div>
-              <div className="text-sm text-zinc-500">
-                ${card.balance.toFixed(2)} of ${card.limit.toFixed(2)}
-              </div>
-            </div>
-
-            <div className="text-right">
-              <div className="text-lg font-black">
-                {card.utilization.toFixed(0)}%
-              </div>
-              <div className="text-xs text-zinc-500">utilization</div>
-            </div>
-          </div>
-
-          <div className="mt-3 h-3 overflow-hidden rounded-full bg-zinc-200">
-            <div
-              className={`h-full rounded-full ${
-                card.utilization >= 90
-                  ? "bg-red-500"
-                  : card.utilization >= 70
-                  ? "bg-amber-500"
-                  : "bg-zinc-900"
-              }`}
-              style={{ width: `${Math.min(card.utilization, 100)}%` }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export default function DebtPage() {
   const supabase = createSupabaseBrowserClient();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [debugUser, setDebugUser] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
 
   const [debts, setDebts] = useState<DebtRow[]>([]);
@@ -238,6 +101,8 @@ export default function DebtPage() {
   }
 
   useEffect(() => {
+    let mounted = true;
+
     async function init() {
       setLoading(true);
       setMessage("");
@@ -246,6 +111,8 @@ export default function DebtPage() {
         data: { user },
         error,
       } = await supabase.auth.getUser();
+
+      if (!mounted) return;
 
       if (error) {
         setMessage(error.message);
@@ -258,30 +125,20 @@ export default function DebtPage() {
         return;
       }
 
+      setDebugUser(`${user.email || "unknown"} · ${user.id}`);
       setUserId(user.id);
+
       await refreshDebts(user.id);
-      setLoading(false);
+
+      if (mounted) {
+        setLoading(false);
+      }
     }
 
     init();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const nextUserId = session?.user?.id ?? null;
-
-      if (!nextUserId) {
-        setUserId(null);
-        setDebts([]);
-        return;
-      }
-
-      setUserId(nextUserId);
-      await refreshDebts(nextUserId);
-    });
-
     return () => {
-      subscription.unsubscribe();
+      mounted = false;
     };
   }, [supabase]);
 
@@ -407,7 +264,7 @@ export default function DebtPage() {
 
   return (
     <main className="min-h-screen bg-zinc-50 text-zinc-900">
-      <div className="mx-auto max-w-6xl px-6 py-10">
+      <div className="mx-auto max-w-5xl px-6 py-10">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-3xl font-black tracking-tight">
@@ -416,6 +273,9 @@ export default function DebtPage() {
             <p className="mt-2 text-zinc-600">
               Add debt accounts manually or use screenshots to fill the details.
             </p>
+            {debugUser ? (
+              <p className="mt-2 text-xs text-zinc-400">Logged in as: {debugUser}</p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -453,31 +313,6 @@ export default function DebtPage() {
             <div className="text-sm text-zinc-500">Monthly minimums</div>
             <div className="mt-2 text-3xl font-black">
               ${totals.minimums.toFixed(2)}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8 grid gap-8 lg:grid-cols-2">
-          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold">Debt balance breakdown</h2>
-            <p className="mt-2 text-sm text-zinc-500">
-              See which accounts hold the biggest share of your total debt.
-            </p>
-
-            <div className="mt-4">
-              <DebtPieChart debts={debts} />
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold">Credit utilization</h2>
-            <p className="mt-2 text-sm text-zinc-500">
-              Higher utilization can hurt your credit more. This helps show
-              which cards are under the most pressure.
-            </p>
-
-            <div className="mt-4">
-              <UtilizationList debts={debts} />
             </div>
           </div>
         </div>
