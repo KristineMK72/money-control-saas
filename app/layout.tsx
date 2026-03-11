@@ -16,7 +16,7 @@ export const metadata: Metadata = {
         url: "/ben.png",
         width: 1200,
         height: 1200,
-        alt: "Ben AI financial assistant",
+        alt: "AskBen AI financial assistant",
       },
     ],
     type: "website",
@@ -28,7 +28,6 @@ export const metadata: Metadata = {
     images: ["/ben.png"],
   },
 };
-
 function NavLink({
   href,
   children,
