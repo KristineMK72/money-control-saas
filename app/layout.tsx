@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import LogoutButton from "@/components/LogoutButton";
 
 export const metadata: Metadata = {
   title: "Financial Triage",
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
       {
         url: "/ben.png",
         width: 1200,
-        height: 630,
+        height: 1200,
         alt: "Ben AI financial assistant",
       },
     ],
@@ -46,6 +47,9 @@ function NavLink({
         fontWeight: 600,
         color: "#1c1917",
         fontSize: 14,
+        border: "1px solid #e7e5e4",
+        background: "#fff",
+        whiteSpace: "nowrap",
       }}
     >
       {children}
@@ -68,7 +72,6 @@ export default function RootLayout({
           background: "#f5f5f4",
         }}
       >
-        {/* Top navigation */}
         <div
           style={{
             position: "sticky",
@@ -79,6 +82,7 @@ export default function RootLayout({
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            gap: 16,
             zIndex: 100,
           }}
         >
@@ -87,20 +91,32 @@ export default function RootLayout({
               fontWeight: 800,
               fontSize: 16,
               color: "#1c1917",
+              whiteSpace: "nowrap",
             }}
           >
-            Financial Triage
+            AskBen
           </div>
 
-          <div style={{ display: "flex", gap: 10 }}>
-            <NavLink href="/">Dashboard</NavLink>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+            }}
+          >
+            <NavLink href="/">Home</NavLink>
+            <NavLink href="/dashboard">Dashboard</NavLink>
             <NavLink href="/chat">Ask Ben</NavLink>
+            <NavLink href="/forecast">Forecast</NavLink>
+            <NavLink href="/signup">Signup / Login</NavLink>
+            <LogoutButton />
           </div>
         </div>
 
         {children}
 
-        {/* Floating Ask Ben button */}
         <a
           href="/chat"
           style={{
