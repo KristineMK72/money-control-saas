@@ -16,7 +16,6 @@ type SummaryData = {
 
 export default function ChatPage() {
   const supabase = createSupabaseBrowserClient();
-  const supabase = createSupabaseBrowserClient();
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {

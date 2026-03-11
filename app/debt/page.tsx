@@ -59,7 +59,6 @@ function getNextDueDateFromDay(dueDay?: number | null) {
 
 export default function DebtPage() {
   const supabase = createSupabaseBrowserClient();
-  const supabase = createSupabaseBrowserClient();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

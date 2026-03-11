@@ -8,7 +8,6 @@ type Mode = "signup" | "login";
 
 export default function SignupPage() {
   const supabase = createSupabaseBrowserClient();
-  const supabase = createSupabaseBrowserClient();
 
   const [mode, setMode] = useState<Mode>("signup");
   const [plan, setPlan] = useState<string>("free");
