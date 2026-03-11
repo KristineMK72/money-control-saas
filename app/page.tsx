@@ -54,10 +54,10 @@ export default function HomePage() {
             <div className="w-full max-w-md rounded-3xl border border-cyan-300/20 bg-white/5 p-6 shadow-2xl shadow-cyan-500/10 backdrop-blur">
               <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
                 <Image
-                  src="/ben-social.png"
+                  src="/ben.png"
                   alt="Ben, your AI financial guide"
                   width={1200}
-                  height={630}
+                  height={1200}
                   className="h-auto w-full object-cover"
                   priority
                 />
