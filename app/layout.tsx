@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     siteName: "AskBen",
     images: [
       {
-        url: "/ben.png",
+        url: "https://www.askben.buzz/ben.png",
         width: 1200,
         height: 1200,
         alt: "AskBen AI financial assistant",
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
-    images: ["/ben.png"],
+    images: ["https://www.askben.buzz/ben.png"],
   },
 };
 function NavLink({
