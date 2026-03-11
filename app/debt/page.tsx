@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { ocrImageFile, parseDebtScreenshot } from "@/lib/money/receiptOcr";
 
 type DebtRow = {
@@ -32,7 +32,10 @@ function getNextDueDateFromDay(dueDay?: number | null) {
   const safeDayThisMonth = Math.min(dueDay, lastDayThisMonth);
   const thisMonthDue = new Date(year, month, safeDayThisMonth, 12, 0, 0, 0);
 
-  if (thisMonthDue >= new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)) {
+  if (
+    thisMonthDue >=
+    new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+  ) {
     return thisMonthDue.toISOString().slice(0, 10);
   }
 
@@ -40,12 +43,22 @@ function getNextDueDateFromDay(dueDay?: number | null) {
   const nextMonth = month === 11 ? 0 : month + 1;
   const lastDayNextMonth = new Date(nextMonthYear, nextMonth + 1, 0).getDate();
   const safeDayNextMonth = Math.min(dueDay, lastDayNextMonth);
-  const nextMonthDue = new Date(nextMonthYear, nextMonth, safeDayNextMonth, 12, 0, 0, 0);
+  const nextMonthDue = new Date(
+    nextMonthYear,
+    nextMonth,
+    safeDayNextMonth,
+    12,
+    0,
+    0,
+    0
+  );
 
   return nextMonthDue.toISOString().slice(0, 10);
 }
 
 export default function DebtPage() {
+  const supabase = createSupabaseBrowserClient();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -71,51 +84,11 @@ export default function DebtPage() {
   const [ocrText, setOcrText] = useState("");
   const [ocrError, setOcrError] = useState("");
 
-  useEffect(() => {
-    async function init() {
-      setLoading(true);
-      setMessage("");
-
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      if (sessionError) {
-        setMessage(sessionError.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!session?.user) {
-        setMessage("Please log in first.");
-        setLoading(false);
-        return;
-      }
-
-      setUserId(session.user.id);
-
-      const { data, error } = await supabase
-        .from("debts")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        setMessage(error.message);
-      } else {
-        setDebts((data || []) as DebtRow[]);
-      }
-
-      setLoading(false);
-    }
-
-    init();
-  }, []);
-
-  async function refreshDebts() {
+  async function refreshDebts(currentUserId: string) {
     const { data, error } = await supabase
       .from("debts")
       .select("*")
+      .eq("user_id", currentUserId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -125,6 +98,54 @@ export default function DebtPage() {
 
     setDebts((data || []) as DebtRow[]);
   }
+
+  useEffect(() => {
+    async function init() {
+      setLoading(true);
+      setMessage("");
+
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+
+      if (error) {
+        setMessage(error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!user) {
+        window.location.href = "/signup";
+        return;
+      }
+
+      setUserId(user.id);
+      await refreshDebts(user.id);
+      setLoading(false);
+    }
+
+    init();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const nextUserId = session?.user?.id ?? null;
+
+      if (!nextUserId) {
+        setUserId(null);
+        setDebts([]);
+        return;
+      }
+
+      setUserId(nextUserId);
+      await refreshDebts(nextUserId);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   async function handleAddDebt() {
     setMessage("");
@@ -154,7 +175,9 @@ export default function DebtPage() {
       note: note.trim() || null,
       is_monthly: isMonthly,
       due_day: dueDay ? Number(dueDay) : null,
-      monthly_min_payment: monthlyMinPayment ? Number(monthlyMinPayment) : null,
+      monthly_min_payment: monthlyMinPayment
+        ? Number(monthlyMinPayment)
+        : null,
     });
 
     if (error) {
@@ -176,14 +199,23 @@ export default function DebtPage() {
     setMonthlyMinPayment("");
     setMessage("Debt account added.");
 
-    await refreshDebts();
+    await refreshDebts(userId);
     setSaving(false);
   }
 
   async function handleDeleteDebt(id: string) {
     setMessage("");
 
-    const { error } = await supabase.from("debts").delete().eq("id", id);
+    if (!userId) {
+      setMessage("You need to be logged in.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("debts")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
 
     if (error) {
       setMessage(error.message);
@@ -225,7 +257,9 @@ export default function DebtPage() {
     return debts.reduce(
       (acc, debt) => {
         acc.balance += Number(debt.balance || 0);
-        acc.minimums += Number(debt.monthly_min_payment || debt.min_payment || 0);
+        acc.minimums += Number(
+          debt.monthly_min_payment || debt.min_payment || 0
+        );
         return acc;
       },
       { balance: 0, minimums: 0 }
@@ -384,7 +418,7 @@ export default function DebtPage() {
 
               <button
                 onClick={handleAddDebt}
-                disabled={saving}
+                disabled={saving || !userId}
                 className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white hover:bg-black disabled:opacity-60 md:col-span-2"
               >
                 {saving ? "Saving..." : "Add Credit / Loan"}
@@ -427,7 +461,9 @@ export default function DebtPage() {
                   <summary className="cursor-pointer font-semibold">
                     View extracted text
                   </summary>
-                  <pre className="mt-3 whitespace-pre-wrap text-xs">{ocrText}</pre>
+                  <pre className="mt-3 whitespace-pre-wrap text-xs">
+                    {ocrText}
+                  </pre>
                 </details>
               ) : null}
             </div>
@@ -459,14 +495,19 @@ export default function DebtPage() {
                     <div>
                       <div className="font-semibold">{debt.name}</div>
                       <div className="text-sm text-zinc-500">
-                        {debt.kind} · Balance ${Number(debt.balance).toFixed(2)}
+                        {debt.kind} · Balance $
+                        {Number(debt.balance).toFixed(2)}
                         {debt.monthly_min_payment != null
-                          ? ` · Monthly Min $${Number(debt.monthly_min_payment).toFixed(2)}`
+                          ? ` · Monthly Min $${Number(
+                              debt.monthly_min_payment
+                            ).toFixed(2)}`
                           : debt.min_payment != null
                           ? ` · Min $${Number(debt.min_payment).toFixed(2)}`
                           : ""}
                         {nextDue ? ` · Next Due ${nextDue}` : ""}
-                        {debt.apr != null ? ` · APR ${Number(debt.apr).toFixed(2)}%` : ""}
+                        {debt.apr != null
+                          ? ` · APR ${Number(debt.apr).toFixed(2)}%`
+                          : ""}
                       </div>
                     </div>
 
