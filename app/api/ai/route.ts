@@ -9,6 +9,8 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+const TEST_USER_ID = "YOUR-REAL-USER-ID-HERE";
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as AiRequestBody;
@@ -18,23 +20,14 @@ export async function POST(req: Request) {
 
     const supabase = createSupabaseServerClient();
 
-    // TEMP: while auth/session wiring is still being finalized,
-    // replace this with a real user id or remove this block.
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const userId = TEST_USER_ID;
 
     const { data: debts, error: debtsError } = await supabase
       .from("debts")
       .select(
         "name, kind, balance, min_payment, due_date, monthly_min_payment, is_monthly"
       )
-      .eq("user_id", user.id);
+      .eq("user_id", userId);
 
     if (debtsError) {
       console.error("debts query error:", debtsError);
@@ -43,7 +36,7 @@ export async function POST(req: Request) {
     const { data: incomeEntries, error: incomeError } = await supabase
       .from("income_entries")
       .select("source, amount, date")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .order("date", { ascending: false });
 
     if (incomeError) {
@@ -53,7 +46,7 @@ export async function POST(req: Request) {
     const { data: buckets, error: bucketsError } = await supabase
       .from("buckets")
       .select("name, saved, focus")
-      .eq("user_id", user.id);
+      .eq("user_id", userId);
 
     if (bucketsError) {
       console.error("buckets query error:", bucketsError);
@@ -115,7 +108,7 @@ Financial Snapshot:
 ${snapshot.summaryText}
 
 Instructions:
-- Use the snapshot as the source of truth.
+- Use the snapshot as source of truth.
 - Do not invent numbers.
 - Prioritize essentials and near-term due dates.
 - Explain the safest next actions.
