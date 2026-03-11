@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getSystemPrompt } from "@/lib/ai/systemPrompts";
 import type { AiRequestBody } from "@/lib/ai/types";
 import { buildFinancialSnapshot } from "@/lib/ai/finance";
-import { createSupabaseServerClient } from "@/lib/supabase/server"; // adapt to your app
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -16,8 +16,10 @@ export async function POST(req: Request) {
     const messages = body.messages ?? [];
     const context = body.context?.trim() ?? "";
 
-    const supabase = await createSupabaseServerClient();
+    const supabase = createSupabaseServerClient();
 
+    // TEMP: while auth/session wiring is still being finalized,
+    // replace this with a real user id or remove this block.
     const {
       data: { user },
       error: userError,
@@ -27,7 +29,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // ---- fetch bills / debt
     const { data: debts, error: debtsError } = await supabase
       .from("debts")
       .select(
@@ -39,7 +40,6 @@ export async function POST(req: Request) {
       console.error("debts query error:", debtsError);
     }
 
-    // ---- fetch income entries
     const { data: incomeEntries, error: incomeError } = await supabase
       .from("income_entries")
       .select("source, amount, date")
@@ -50,7 +50,6 @@ export async function POST(req: Request) {
       console.error("income query error:", incomeError);
     }
 
-    // ---- fetch buckets
     const { data: buckets, error: bucketsError } = await supabase
       .from("buckets")
       .select("name, saved, focus")
@@ -60,7 +59,7 @@ export async function POST(req: Request) {
       console.error("buckets query error:", bucketsError);
     }
 
-    const availableCash = 0; // replace with checking / unassigned / cash field if you already store it
+    const availableCash = 0;
 
     const mappedBills =
       debts?.map((d) => ({
@@ -105,11 +104,18 @@ The goal is to reduce financial stress, prioritize bills, and create practical s
 
 Money Stress Score: ${snapshot.stressScore}/100
 
+Stress score scale:
+- 80 to 100 = safe
+- 60 to 79 = stable
+- 40 to 59 = tight
+- 20 to 39 = high stress
+- 0 to 19 = critical
+
 Financial Snapshot:
 ${snapshot.summaryText}
 
 Instructions:
-- Use the snapshot as source of truth.
+- Use the snapshot as the source of truth.
 - Do not invent numbers.
 - Prioritize essentials and near-term due dates.
 - Explain the safest next actions.
