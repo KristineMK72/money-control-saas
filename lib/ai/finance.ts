@@ -69,20 +69,11 @@ export function buildFinancialSnapshot(
   const shortfall7 = Math.max(0, next7BillsTotal - totalAvailable);
 
   let score = 100;
-
-  // pressure from upcoming bills
   score -= Math.min(40, next7BillsTotal * 0.08);
-
-  // relief from available money + expected income
   score += Math.min(20, totalAvailable * 0.05);
-
-  // relief from reserves
   score += Math.min(10, focusBucketReserve * 0.03);
-
-  // penalty for shortfall
   score -= Math.min(35, shortfall7 * 0.12);
 
-  // extra penalty for bills due very soon
   const urgentCount = bills.filter((b) => daysUntil(b.dueDate) <= 3).length;
   score -= urgentCount * 6;
 
