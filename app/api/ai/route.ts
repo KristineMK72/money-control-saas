@@ -9,8 +9,6 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const TEST_USER_ID = "YOUR-REAL-USER-ID-HERE";
-
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as AiRequestBody;
@@ -18,9 +16,19 @@ export async function POST(req: Request) {
     const messages = body.messages ?? [];
     const context = body.context?.trim() ?? "";
 
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
 
-    const userId = TEST_USER_ID;
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.error("auth.getUser error:", userError);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = user.id;
 
     const { data: debts, error: debtsError } = await supabase
       .from("debts")
@@ -51,6 +59,11 @@ export async function POST(req: Request) {
     if (bucketsError) {
       console.error("buckets query error:", bucketsError);
     }
+
+    console.log("AI userId:", userId);
+    console.log("debts:", debts);
+    console.log("incomeEntries:", incomeEntries);
+    console.log("buckets:", buckets);
 
     const availableCash = 0;
 
@@ -86,6 +99,8 @@ export async function POST(req: Request) {
       expectedIncome: mappedIncome,
       buckets: mappedBuckets,
     });
+
+    console.log("snapshot:", snapshot);
 
     const systemPrompt = getSystemPrompt(mode);
 
