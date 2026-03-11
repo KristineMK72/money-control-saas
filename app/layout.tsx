@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     siteName: "Financial Triage",
     images: [
       {
-        url: "/ben-social.png",
+        url: "/ben.png",
         width: 1200,
         height: 630,
         alt: "Ben AI financial assistant",
