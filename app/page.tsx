@@ -35,7 +35,7 @@ export default function HomePage() {
             </a>
 
             <a
-              href="/login"
+              href="/signup"
               className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white hover:bg-white/5"
             >
               Login
