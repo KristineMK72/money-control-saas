@@ -4,6 +4,29 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Financial Triage",
   description: "Stop financial chaos. See exactly what to pay first.",
+
+  openGraph: {
+    title: "Financial Triage",
+    description: "Stop financial chaos. See exactly what to pay first.",
+    url: "https://money-control-saas.vercel.app",
+    siteName: "Financial Triage",
+    images: [
+      {
+        url: "/ben-social.png",
+        width: 1200,
+        height: 630,
+        alt: "Ben AI financial assistant",
+      },
+    ],
+    type: "website",
+  },
+
+  twitter: {
+    card: "summary_large_image",
+    title: "Financial Triage",
+    description: "Stop financial chaos. See exactly what to pay first.",
+    images: ["/ben.png"],
+  },
 };
 
 function NavLink({
