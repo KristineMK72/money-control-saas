@@ -3,14 +3,14 @@ import type { Metadata } from "next";
 import LogoutButton from "@/components/LogoutButton";
 
 export const metadata: Metadata = {
-  title: "Financial Triage",
+  title: "AskBen — Financial Triage",
   description: "Stop financial chaos. See exactly what to pay first.",
-
+  metadataBase: new URL("https://www.askben.buzz"),
   openGraph: {
-    title: "Financial Triage",
-    description: "Stop financial chaos. See exactly what to pay first.",
-    url: "https://money-control-saas.vercel.app",
-    siteName: "Financial Triage",
+    title: "AskBen",
+    description: "AI financial triage. Know what bill to pay first.",
+    url: "https://www.askben.buzz",
+    siteName: "AskBen",
     images: [
       {
         url: "/ben.png",
@@ -21,11 +21,10 @@ export const metadata: Metadata = {
     ],
     type: "website",
   },
-
   twitter: {
     card: "summary_large_image",
-    title: "Financial Triage",
-    description: "Stop financial chaos. See exactly what to pay first.",
+    title: "AskBen",
+    description: "AI financial triage. Know what bill to pay first.",
     images: ["/ben.png"],
   },
 };
