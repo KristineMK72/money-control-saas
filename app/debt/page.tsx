@@ -56,6 +56,92 @@ function getNextDueDateFromDay(dueDay?: number | null) {
   return nextMonthDue.toISOString().slice(0, 10);
 }
 
+function DonutChart({
+  values,
+  size = 180,
+  stroke = 22,
+  centerLabel = "total debt",
+}: {
+  values: { label: string; value: number }[];
+  size?: number;
+  stroke?: number;
+  centerLabel?: string;
+}) {
+  const total = values.reduce((sum, v) => sum + v.value, 0);
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+
+  const palette = [
+    "#06b6d4",
+    "#3b82f6",
+    "#8b5cf6",
+    "#f59e0b",
+    "#ef4444",
+    "#22c55e",
+    "#e11d48",
+    "#71717a",
+  ];
+
+  let cumulative = 0;
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="#e5e7eb"
+        strokeWidth={stroke}
+      />
+
+      {values.map((v, i) => {
+        const fraction = total === 0 ? 0 : v.value / total;
+        const dash = fraction * circumference;
+        const gap = circumference - dash;
+        const offset = -cumulative * circumference;
+        cumulative += fraction;
+
+        return (
+          <circle
+            key={v.label}
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={palette[i % palette.length]}
+            strokeWidth={stroke}
+            strokeLinecap="butt"
+            strokeDasharray={`${dash} ${gap}`}
+            strokeDashoffset={offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        );
+      })}
+
+      <text
+        x="50%"
+        y="48%"
+        textAnchor="middle"
+        className="fill-zinc-950"
+        style={{ fontSize: 20, fontWeight: 800 }}
+      >
+        ${total.toFixed(0)}
+      </text>
+
+      <text
+        x="50%"
+        y="60%"
+        textAnchor="middle"
+        className="fill-zinc-500"
+        style={{ fontSize: 12, fontWeight: 600 }}
+      >
+        {centerLabel}
+      </text>
+    </svg>
+  );
+}
+
 export default function DebtPage() {
   const supabase = createSupabaseBrowserClient();
 
@@ -66,6 +152,7 @@ export default function DebtPage() {
   const [userId, setUserId] = useState<string | null>(null);
 
   const [debts, setDebts] = useState<DebtRow[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"credit" | "loan">("credit");
@@ -84,6 +171,58 @@ export default function DebtPage() {
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrText, setOcrText] = useState("");
   const [ocrError, setOcrError] = useState("");
+
+  function resetForm() {
+    setEditingId(null);
+    setName("");
+    setKind("credit");
+    setBalance("");
+    setMinPayment("");
+    setDueDate("");
+    setApr("");
+    setCreditLimit("");
+    setNote("");
+    setIsMonthly(true);
+    setDueDay("");
+    setMonthlyMinPayment("");
+    setImageFile(null);
+    setOcrText("");
+    setOcrError("");
+  }
+
+  function loadDebtIntoForm(debt: DebtRow) {
+    setEditingId(debt.id);
+    setName(debt.name || "");
+    setKind(debt.kind || "credit");
+    setBalance(String(debt.balance ?? ""));
+    setMinPayment(
+      debt.min_payment !== null && debt.min_payment !== undefined
+        ? String(debt.min_payment)
+        : ""
+    );
+    setDueDate(debt.due_date || "");
+    setApr(
+      debt.apr !== null && debt.apr !== undefined ? String(debt.apr) : ""
+    );
+    setCreditLimit(
+      debt.credit_limit !== null && debt.credit_limit !== undefined
+        ? String(debt.credit_limit)
+        : ""
+    );
+    setNote(debt.note || "");
+    setIsMonthly(Boolean(debt.is_monthly));
+    setDueDay(
+      debt.due_day !== null && debt.due_day !== undefined
+        ? String(debt.due_day)
+        : ""
+    );
+    setMonthlyMinPayment(
+      debt.monthly_min_payment !== null && debt.monthly_min_payment !== undefined
+        ? String(debt.monthly_min_payment)
+        : ""
+    );
+    setMessage("Editing debt account.");
+  }
 
   async function refreshDebts(currentUserId: string) {
     const { data, error } = await supabase
@@ -121,7 +260,7 @@ export default function DebtPage() {
       }
 
       if (!user) {
-        window.location.href = "/signup";
+        window.location.href = "/signup?mode=login";
         return;
       }
 
@@ -142,7 +281,7 @@ export default function DebtPage() {
     };
   }, [supabase]);
 
-  async function handleAddDebt() {
+  async function handleSaveDebt() {
     setMessage("");
 
     if (!userId) {
@@ -158,7 +297,7 @@ export default function DebtPage() {
 
     setSaving(true);
 
-    const { error } = await supabase.from("debts").insert({
+    const payload = {
       user_id: userId,
       name: name.trim(),
       kind,
@@ -173,27 +312,35 @@ export default function DebtPage() {
       monthly_min_payment: monthlyMinPayment
         ? Number(monthlyMinPayment)
         : null,
-    });
+    };
 
-    if (error) {
-      setMessage(error.message);
-      setSaving(false);
-      return;
+    if (editingId) {
+      const { error } = await supabase
+        .from("debts")
+        .update(payload)
+        .eq("id", editingId)
+        .eq("user_id", userId);
+
+      if (error) {
+        setMessage(error.message);
+        setSaving(false);
+        return;
+      }
+
+      setMessage("Debt account updated.");
+    } else {
+      const { error } = await supabase.from("debts").insert(payload);
+
+      if (error) {
+        setMessage(error.message);
+        setSaving(false);
+        return;
+      }
+
+      setMessage("Debt account added.");
     }
 
-    setName("");
-    setKind("credit");
-    setBalance("");
-    setMinPayment("");
-    setDueDate("");
-    setApr("");
-    setCreditLimit("");
-    setNote("");
-    setIsMonthly(true);
-    setDueDay("");
-    setMonthlyMinPayment("");
-    setMessage("Debt account added.");
-
+    resetForm();
     await refreshDebts(userId);
     setSaving(false);
   }
@@ -217,7 +364,12 @@ export default function DebtPage() {
       return;
     }
 
+    if (editingId === id) {
+      resetForm();
+    }
+
     setDebts((prev) => prev.filter((debt) => debt.id !== id));
+    setMessage("Debt account deleted.");
   }
 
   async function handleExtractDebt() {
@@ -240,8 +392,9 @@ export default function DebtPage() {
       }
       if (parsed.dueDate) setDueDate(parsed.dueDate);
       if (parsed.apr != null) setApr(String(parsed.apr));
-      if (parsed.creditLimit != null)
+      if (parsed.creditLimit != null) {
         setCreditLimit(String(parsed.creditLimit));
+      }
     } catch (err: any) {
       setOcrError(err?.message || "Failed to extract debt screenshot.");
     } finally {
@@ -262,19 +415,42 @@ export default function DebtPage() {
     );
   }, [debts]);
 
-  return (
+  const debtChartValues = useMemo(() => {
+    return debts
+      .map((debt) => ({
+        label: debt.name,
+        value: Number(debt.balance || 0),
+      }))
+      .filter((item) => item.value > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [debts]);
+
+  const palette = [
+    "#06b6d4",
+    "#3b82f6",
+    "#8b5cf6",
+    "#f59e0b",
+    "#ef4444",
+    "#22c55e",
+    "#e11d48",
+    "#71717a",
+  ];
+    return (
     <main className="min-h-screen bg-zinc-50 text-zinc-900">
-      <div className="mx-auto max-w-5xl px-6 py-10">
+      <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-3xl font-black tracking-tight">
               Credit & Loans
             </h1>
             <p className="mt-2 text-zinc-600">
-              Add debt accounts manually or use screenshots to fill the details.
+              Add, edit, or import debt accounts. Monthly recurring cards will
+              carry into future months in Calendar.
             </p>
             {debugUser ? (
-              <p className="mt-2 text-xs text-zinc-400">Logged in as: {debugUser}</p>
+              <p className="mt-2 text-xs text-zinc-400">
+                Logged in as: {debugUser}
+              </p>
             ) : null}
           </div>
 
@@ -292,6 +468,13 @@ export default function DebtPage() {
             >
               Forecast
             </a>
+
+            <a
+              href="/calendar"
+              className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
+            >
+              Calendar
+            </a>
           </div>
         </div>
 
@@ -301,7 +484,7 @@ export default function DebtPage() {
           </div>
         ) : null}
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
+        <div className="mt-8 grid gap-4 lg:grid-cols-3">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="text-sm text-zinc-500">Total debt balance</div>
             <div className="mt-2 text-3xl font-black">
@@ -315,11 +498,51 @@ export default function DebtPage() {
               ${totals.minimums.toFixed(2)}
             </div>
           </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <div className="text-sm text-zinc-500">Debt breakdown</div>
+
+            <div className="mt-4 flex justify-center">
+              <DonutChart values={debtChartValues} centerLabel="total debt" />
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {debtChartValues.slice(0, 5).map((item, i) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="inline-block h-3 w-3 rounded-full"
+                      style={{ backgroundColor: palette[i % palette.length] }}
+                    />
+                    <span className="text-zinc-600">{item.label}</span>
+                  </div>
+                  <span className="font-semibold">${item.value.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-2">
           <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold">Add debt account</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold">
+                {editingId ? "Edit debt account" : "Add debt account"}
+              </h2>
+
+              {editingId ? (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-zinc-100"
+                >
+                  Cancel Edit
+                </button>
+              ) : null}
+            </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <input
@@ -416,11 +639,17 @@ export default function DebtPage() {
               />
 
               <button
-                onClick={handleAddDebt}
+                onClick={handleSaveDebt}
                 disabled={saving || !userId}
                 className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white hover:bg-black disabled:opacity-60 md:col-span-2"
               >
-                {saving ? "Saving..." : "Add Credit / Loan"}
+                {saving
+                  ? editingId
+                    ? "Updating..."
+                    : "Saving..."
+                  : editingId
+                  ? "Update Credit / Loan"
+                  : "Add Credit / Loan"}
               </button>
             </div>
           </div>
@@ -510,12 +739,21 @@ export default function DebtPage() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleDeleteDebt(debt.id)}
-                      className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => loadDebtIntoForm(debt)}
+                        className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteDebt(debt.id)}
+                        className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 );
               })
