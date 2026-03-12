@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
   description: "Stop financial chaos. See exactly what to pay first.",
   metadataBase: new URL("https://www.askben.buzz"),
+
   openGraph: {
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
@@ -21,14 +22,14 @@ export const metadata: Metadata = {
       },
     ],
   },
+
   twitter: {
     card: "summary_large_image",
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
     images: ["https://www.askben.buzz/askben-social.jpg"],
   },
-};
-function NavLink({
+};function NavLink({
   href,
   children,
 }: {
