@@ -2,7 +2,6 @@ import "./globals.css";
 import type { Metadata } from "next";
 import LogoutButton from "@/components/LogoutButton";
 import BenPersona from "@/components/BenPersona";
-import Image from "next/image";
 
 export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
@@ -32,7 +31,17 @@ function NavLink({
   return (
     <a
       href={href}
-      className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+      style={{
+        padding: "8px 14px",
+        borderRadius: 999,
+        textDecoration: "none",
+        fontWeight: 600,
+        color: "#1c1917",
+        fontSize: 14,
+        border: "1px solid #e7e5e4",
+        background: "#fff",
+        whiteSpace: "nowrap",
+      }}
     >
       {children}
     </a>
@@ -46,29 +55,86 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-zinc-50 text-zinc-900">
-
-        {/* HEADER */}
-        <header className="border-b border-black/10 bg-white">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
-
-            <div className="flex items-center gap-3">
-              <div className="relative h-12 w-12 overflow-hidden rounded-xl">
-                <Image
-                  src="/ben-head.png"
+      <body
+        style={{
+          margin: 0,
+          fontFamily:
+            "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
+          background: "#f5f5f4",
+          color: "#18181b",
+        }}
+      >
+        <header
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 100,
+            background: "#ffffff",
+            borderBottom: "1px solid #e7e5e4",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 1100,
+              margin: "0 auto",
+              padding: "14px 20px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 16,
+              flexWrap: "wrap",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+              }}
+            >
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  background: "#0f172a",
+                  flexShrink: 0,
+                }}
+              >
+                <img
+                  src="/ben.png"
                   alt="AskBen"
-                  fill
-                  className="object-cover"
-                  priority
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
+                  }}
                 />
               </div>
 
-              <div className="text-2xl font-black">
+              <div
+                style={{
+                  fontWeight: 900,
+                  fontSize: 24,
+                  color: "#111827",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 AskBen
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                flexWrap: "wrap",
+                justifyContent: "flex-end",
+              }}
+            >
               <NavLink href="/">Home</NavLink>
               <NavLink href="/dashboard">Dashboard</NavLink>
               <NavLink href="/chat">Ask Ben</NavLink>
@@ -76,31 +142,44 @@ export default function RootLayout({
               <NavLink href="/signup">Signup / Login</NavLink>
               <LogoutButton />
             </div>
-
           </div>
+
+          <BenPersona />
         </header>
 
-        {/* BEN PERSONALITY BAR */}
-        <div className="mx-auto max-w-7xl px-4 py-4">
-          <BenPersona />
-        </div>
+        <main>{children}</main>
 
-        {/* PAGE CONTENT */}
-        {children}
-
-        {/* FLOATING CHAT BUTTON */}
         <a
           href="/chat"
-          className="fixed bottom-6 right-6 z-50 rounded-full bg-zinc-900 px-6 py-3 font-bold text-white shadow-lg"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            background: "#111827",
+            color: "#fff",
+            padding: "14px 18px",
+            borderRadius: 999,
+            fontWeight: 700,
+            textDecoration: "none",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
+            zIndex: 9999,
+            fontSize: 15,
+          }}
         >
           Ask Ben 💰
         </a>
 
-        {/* FOOTER */}
-        <footer className="mt-16 text-center text-sm text-zinc-500 pb-8">
+        <footer
+          style={{
+            marginTop: 60,
+            padding: "20px",
+            textAlign: "center",
+            fontSize: 12,
+            color: "#71717a",
+          }}
+        >
           © 2026 Spatialytics — Built with ❤️ in Minnesota
         </footer>
-
       </body>
     </html>
   );
