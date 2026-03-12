@@ -9,23 +9,23 @@ export const metadata: Metadata = {
   openGraph: {
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
-    url: "https://www.askben.buzz",
+    url: "https://www.askben.buzz/",
     siteName: "AskBen",
+    type: "website",
     images: [
       {
-        url: "https://www.askben.buzz/ben.png",
+        url: "https://www.askben.buzz/askben-social.jpg",
         width: 1200,
-        height: 1200,
-        alt: "AskBen AI financial assistant",
+        height: 630,
+        alt: "AskBen financial triage app",
       },
     ],
-    type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
-    images: ["https://www.askben.buzz/ben.png"],
+    images: ["https://www.askben.buzz/askben-social.jpg"],
   },
 };
 function NavLink({
