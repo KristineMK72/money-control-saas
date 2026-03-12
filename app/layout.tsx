@@ -6,28 +6,17 @@ export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
   description: "Stop financial chaos. See exactly what to pay first.",
   metadataBase: new URL("https://www.askben.buzz"),
-
   openGraph: {
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
     url: "https://www.askben.buzz/",
     siteName: "AskBen",
     type: "website",
-    images: [
-      {
-        url: "https://www.askben.buzz/askben-social.jpg",
-        width: 1200,
-        height: 630,
-        alt: "AskBen financial triage app",
-      },
-    ],
   },
-
   twitter: {
     card: "summary_large_image",
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
-    images: ["https://www.askben.buzz/askben-social.jpg"],
   },
 };function NavLink({
   href,
