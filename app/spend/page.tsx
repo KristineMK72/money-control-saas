@@ -1,5 +1,3 @@
-Where in my code does the code construct a chart? "use client";
-
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
