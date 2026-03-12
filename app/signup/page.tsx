@@ -1,28 +1,32 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 type Mode = "signup" | "login";
 
 export default function SignupPage() {
-  const supabase = createSupabaseBrowserClient();
-
   const [mode, setMode] = useState<Mode>("signup");
   const [plan, setPlan] = useState<string>("free");
 
+  const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
     const incomingPlan = params.get("plan");
     if (incomingPlan === "monthly" || incomingPlan === "yearly") {
       setPlan(incomingPlan);
+    }
+
+    const incomingMode = params.get("mode");
+    if (incomingMode === "login" || incomingMode === "signup") {
+      setMode(incomingMode);
     }
   }, []);
 
@@ -32,26 +36,14 @@ export default function SignupPage() {
     return "Free";
   }, [plan]);
 
-  async function signInWithGoogle() {
-    setMessage("");
-    setGoogleLoading(true);
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: "https://www.askben.buzz/dashboard",
-      },
-    });
-
-    if (error) {
-      setMessage(error.message);
-      setGoogleLoading(false);
-    }
-  }
-
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setMessage("");
+
+    if (!displayName.trim()) {
+      setMessage("Please enter your name.");
+      return;
+    }
 
     if (!email.trim()) {
       setMessage("Please enter your email.");
@@ -70,7 +62,7 @@ export default function SignupPage() {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -82,12 +74,28 @@ export default function SignupPage() {
 
     if (error) {
       setMessage(error.message);
-    } else {
-      setMessage(
-        "Account created. Check your email for confirmation, then log in."
-      );
+      setLoading(false);
+      return;
     }
 
+    const newUserId = data.user?.id;
+
+    if (newUserId) {
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        user_id: newUserId,
+        display_name: displayName.trim(),
+      });
+
+      if (profileError) {
+        setMessage(`Account created, but profile name failed to save: ${profileError.message}`);
+        setLoading(false);
+        return;
+      }
+    }
+
+    setMessage("Account created. Check your email for confirmation, then log in.");
+    setMode("login");
+    setConfirmPassword("");
     setLoading(false);
   }
 
@@ -109,12 +117,11 @@ export default function SignupPage() {
 
     if (error) {
       setMessage(error.message);
-    } else {
-      setMessage("Logged in! Opening dashboard...");
-      window.location.href = "/dashboard";
+      setLoading(false);
+      return;
     }
 
-    setLoading(false);
+    window.location.href = "/dashboard";
   }
 
   return (
@@ -133,7 +140,7 @@ export default function SignupPage() {
             <p className="mt-4 max-w-xl text-white/70">
               {mode === "signup"
                 ? "Start with a clean financial plan and build calm around what to pay first."
-                : "Log in to continue with your bills, forecast, and crisis planning."}
+                : "Log in to continue with your bills, forecast, payments, and crisis planning."}
             </p>
 
             <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
@@ -146,7 +153,7 @@ export default function SignupPage() {
               </div>
             </div>
 
-            <div className="mt-8 flex gap-3">
+            <div className="mt-8 flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={() => {
@@ -186,27 +193,24 @@ export default function SignupPage() {
 
             <p className="mt-3 text-sm text-zinc-500">
               {mode === "signup"
-                ? "Use Google for the fastest setup, or create an account with email."
-                : "Continue with Google or enter your email and password."}
+                ? "Use your name, email, and create a password to get started."
+                : "Enter your email and password to continue."}
             </p>
-
-            <div className="mt-6 space-y-4">
-              <button
-                type="button"
-                onClick={signInWithGoogle}
-                disabled={googleLoading}
-                className="w-full rounded-xl border border-zinc-300 bg-white p-3 font-semibold text-zinc-900 hover:bg-zinc-100 disabled:opacity-60"
-              >
-                {googleLoading ? "Opening Google..." : "Continue with Google"}
-              </button>
-
-              <div className="text-center text-sm text-zinc-400">or</div>
-            </div>
 
             <form
               onSubmit={mode === "signup" ? handleSignup : handleLogin}
               className="mt-6 space-y-4"
             >
+              {mode === "signup" ? (
+                <input
+                  type="text"
+                  placeholder="Your name"
+                  className="w-full rounded-xl border border-zinc-200 p-3 outline-none focus:border-zinc-400"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                />
+              ) : null}
+
               <input
                 type="email"
                 placeholder="Email"
