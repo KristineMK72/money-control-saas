@@ -32,17 +32,7 @@ function NavLink({
   return (
     <a
       href={href}
-      style={{
-        padding: "8px 14px",
-        borderRadius: 999,
-        textDecoration: "none",
-        fontWeight: 600,
-        color: "#1c1917",
-        fontSize: 14,
-        border: "1px solid #e7e5e4",
-        background: "#fff",
-        whiteSpace: "nowrap",
-      }}
+      className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
     >
       {children}
     </a>
@@ -56,135 +46,61 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body
-        style={{
-          margin: 0,
-          fontFamily:
-            "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
-          background: "#f5f5f4",
-          color: "#18181b",
-        }}
-      >
+      <body className="bg-zinc-50 text-zinc-900">
+
         {/* HEADER */}
-        <div
-          style={{
-            position: "sticky",
-            top: 0,
-            background: "#ffffff",
-            borderBottom: "1px solid #e7e5e4",
-            padding: "14px 20px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 16,
-            zIndex: 100,
-          }}
-        >
-          {/* LOGO + BEN HEAD */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                position: "relative",
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                overflow: "hidden",
-                background: "#111827",
-              }}
-            >
-              <Image
-                src="/ben-head.png"
-                alt="AskBen"
-                fill
-                style={{ objectFit: "cover" }}
-                priority
-              />
+        <header className="border-b border-black/10 bg-white">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
+
+            <div className="flex items-center gap-3">
+              <div className="relative h-12 w-12 overflow-hidden rounded-xl">
+                <Image
+                  src="/ben-head.png"
+                  alt="AskBen"
+                  fill
+                  className="object-cover"
+                  priority
+                />
+              </div>
+
+              <div className="text-2xl font-black">
+                AskBen
+              </div>
             </div>
 
-            <div
-              style={{
-                fontWeight: 800,
-                fontSize: 18,
-                color: "#1c1917",
-                whiteSpace: "nowrap",
-              }}
-            >
-              AskBen
+            <div className="flex flex-wrap items-center gap-2">
+              <NavLink href="/">Home</NavLink>
+              <NavLink href="/dashboard">Dashboard</NavLink>
+              <NavLink href="/chat">Ask Ben</NavLink>
+              <NavLink href="/forecast">Forecast</NavLink>
+              <NavLink href="/signup">Signup / Login</NavLink>
+              <LogoutButton />
             </div>
-          </div>
 
-          {/* NAV */}
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              flexWrap: "wrap",
-              justifyContent: "flex-end",
-            }}
-          >
-            <NavLink href="/">Home</NavLink>
-            <NavLink href="/dashboard">Dashboard</NavLink>
-            <NavLink href="/chat">Ask Ben</NavLink>
-            <NavLink href="/forecast">Forecast</NavLink>
-            <NavLink href="/signup">Signup / Login</NavLink>
-            <LogoutButton />
           </div>
-        </div>
+        </header>
 
-        {/* BEN COMMENT BAR */}
-        <div
-          style={{
-            maxWidth: 1100,
-            margin: "20px auto 0 auto",
-            padding: "0 20px",
-          }}
-        >
+        {/* BEN PERSONALITY BAR */}
+        <div className="mx-auto max-w-7xl px-4 py-4">
           <BenPersona />
         </div>
 
         {/* PAGE CONTENT */}
-        <main>{children}</main>
+        {children}
 
-        {/* FLOATING BUTTON */}
+        {/* FLOATING CHAT BUTTON */}
         <a
           href="/chat"
-          style={{
-            position: "fixed",
-            bottom: 24,
-            right: 24,
-            background: "#111827",
-            color: "#fff",
-            padding: "14px 18px",
-            borderRadius: 999,
-            fontWeight: 700,
-            textDecoration: "none",
-            boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
-            zIndex: 9999,
-            fontSize: 15,
-          }}
+          className="fixed bottom-6 right-6 z-50 rounded-full bg-zinc-900 px-6 py-3 font-bold text-white shadow-lg"
         >
           Ask Ben 💰
         </a>
 
         {/* FOOTER */}
-        <footer
-          style={{
-            marginTop: 60,
-            padding: "20px",
-            textAlign: "center",
-            fontSize: 12,
-            color: "#71717a",
-          }}
-        >
-          © 2026 Spatialytics — Powered with ❤️ in Minnesota
+        <footer className="mt-16 text-center text-sm text-zinc-500 pb-8">
+          © 2026 Spatialytics — Built with ❤️ in Minnesota
         </footer>
+
       </body>
     </html>
   );
