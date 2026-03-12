@@ -368,7 +368,7 @@ export default function DashboardPage() {
                 See what matters most right now and what deserves attention first.
               </p>
             </div>
-
+         
             <div className="flex flex-wrap gap-3">
               <a
                 href="/bills"
@@ -387,6 +387,12 @@ export default function DashboardPage() {
                 className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
               >
                 Spending
+              </a>
+              <a
+                href="/calendar"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+               >
+                Calendar
               </a>
               <a
                 href="/payments"
