@@ -1,58 +1,71 @@
 "use client";
 
-
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { todayISO } from "@/lib/money/utils";
-import type { SpendCategory } from "@/lib/money/types";
-import {
-  guessCategoryFromMerchant,
-  ocrImageFile,
-  parseTransactionsScreenshot,
-  type ParsedTxn,
-} from "@/lib/money/receiptOcr";
+import { ocrImageFile, parseDebtScreenshot } from "@/lib/money/receiptOcr";
 
-type SpendRow = {
+type DebtRow = {
   id: string;
   user_id: string;
-  date_iso: string;
-  merchant: string | null;
-  amount: number;
-  category: SpendCategory;
+  name: string;
+  kind: "credit" | "loan";
+  balance: number;
+  min_payment: number | null;
+  due_date: string | null;
+  apr: number | null;
+  credit_limit: number | null;
   note: string | null;
+  is_monthly: boolean | null;
+  due_day: number | null;
+  monthly_min_payment: number | null;
   created_at: string;
 };
 
-const categories: SpendCategory[] = [
-  "groceries",
-  "gas",
-  "eating_out",
-  "kids",
-  "business",
-  "self_care",
-  "subscriptions",
-  "misc",
-];
+function getNextDueDateFromDay(dueDay?: number | null) {
+  if (!dueDay || dueDay < 1 || dueDay > 31) return null;
 
-const CATEGORY_LABEL: Record<SpendCategory, string> = {
-  groceries: "Groceries",
-  gas: "Gas",
-  eating_out: "Eating Out",
-  kids: "Kids",
-  business: "Business",
-  self_care: "Self Care",
-  subscriptions: "Subscriptions",
-  misc: "Misc",
-};
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  const lastDayThisMonth = new Date(year, month + 1, 0).getDate();
+  const safeDayThisMonth = Math.min(dueDay, lastDayThisMonth);
+  const thisMonthDue = new Date(year, month, safeDayThisMonth, 12, 0, 0, 0);
+
+  if (
+    thisMonthDue >=
+    new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+  ) {
+    return thisMonthDue.toISOString().slice(0, 10);
+  }
+
+  const nextMonthYear = month === 11 ? year + 1 : year;
+  const nextMonth = month === 11 ? 0 : month + 1;
+  const lastDayNextMonth = new Date(nextMonthYear, nextMonth + 1, 0).getDate();
+  const safeDayNextMonth = Math.min(dueDay, lastDayNextMonth);
+  const nextMonthDue = new Date(
+    nextMonthYear,
+    nextMonth,
+    safeDayNextMonth,
+    12,
+    0,
+    0,
+    0
+  );
+
+  return nextMonthDue.toISOString().slice(0, 10);
+}
 
 function DonutChart({
   values,
   size = 180,
   stroke = 22,
+  centerLabel = "total debt",
 }: {
   values: { label: string; value: number }[];
   size?: number;
   stroke?: number;
+  centerLabel?: string;
 }) {
   const total = values.reduce((sum, v) => sum + v.value, 0);
   const radius = (size - stroke) / 2;
@@ -78,7 +91,7 @@ function DonutChart({
         cy={size / 2}
         r={radius}
         fill="none"
-        stroke="rgba(0,0,0,0.08)"
+        stroke="#e5e7eb"
         strokeWidth={stroke}
       />
 
@@ -98,10 +111,10 @@ function DonutChart({
             fill="none"
             stroke={palette[i % palette.length]}
             strokeWidth={stroke}
+            strokeLinecap="butt"
             strokeDasharray={`${dash} ${gap}`}
             strokeDashoffset={offset}
             transform={`rotate(-90 ${size / 2} ${size / 2})`}
-            strokeLinecap="butt"
           />
         );
       })}
@@ -109,106 +122,166 @@ function DonutChart({
       <text
         x="50%"
         y="48%"
-        dominantBaseline="middle"
         textAnchor="middle"
-        fontSize="16"
-        fill="currentColor"
-        style={{ fontWeight: 800 }}
+        className="fill-zinc-950"
+        style={{ fontSize: 20, fontWeight: 800 }}
       >
-        ${total.toFixed(2)}
+        ${total.toFixed(0)}
       </text>
+
       <text
         x="50%"
         y="60%"
-        dominantBaseline="middle"
         textAnchor="middle"
-        fontSize="11"
-        fill="rgba(0,0,0,0.55)"
+        className="fill-zinc-500"
+        style={{ fontSize: 12, fontWeight: 600 }}
       >
-        total spend
+        {centerLabel}
       </text>
     </svg>
   );
 }
 
-export default function SpendPage() {
+export default function DebtPage() {
   const supabase = createSupabaseBrowserClient();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [debugUser, setDebugUser] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
 
-  const [entries, setEntries] = useState<SpendRow[]>([]);
+  const [debts, setDebts] = useState<DebtRow[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [dateISO, setDateISO] = useState(todayISO());
-  const [merchant, setMerchant] = useState("");
-  const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState<SpendCategory>("misc");
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState<"credit" | "loan">("credit");
+  const [balance, setBalance] = useState("");
+  const [minPayment, setMinPayment] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [apr, setApr] = useState("");
+  const [creditLimit, setCreditLimit] = useState("");
   const [note, setNote] = useState("");
+
+  const [isMonthly, setIsMonthly] = useState(true);
+  const [dueDay, setDueDay] = useState("");
+  const [monthlyMinPayment, setMonthlyMinPayment] = useState("");
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrText, setOcrText] = useState("");
-  const [foundTxns, setFoundTxns] = useState<ParsedTxn[]>([]);
-  const [selectedTxns, setSelectedTxns] = useState<Record<number, boolean>>({});
   const [ocrError, setOcrError] = useState("");
 
+  function resetForm() {
+    setEditingId(null);
+    setName("");
+    setKind("credit");
+    setBalance("");
+    setMinPayment("");
+    setDueDate("");
+    setApr("");
+    setCreditLimit("");
+    setNote("");
+    setIsMonthly(true);
+    setDueDay("");
+    setMonthlyMinPayment("");
+    setImageFile(null);
+    setOcrText("");
+    setOcrError("");
+  }
+
+  function loadDebtIntoForm(debt: DebtRow) {
+    setEditingId(debt.id);
+    setName(debt.name || "");
+    setKind(debt.kind || "credit");
+    setBalance(String(debt.balance ?? ""));
+    setMinPayment(
+      debt.min_payment !== null && debt.min_payment !== undefined
+        ? String(debt.min_payment)
+        : ""
+    );
+    setDueDate(debt.due_date || "");
+    setApr(
+      debt.apr !== null && debt.apr !== undefined ? String(debt.apr) : ""
+    );
+    setCreditLimit(
+      debt.credit_limit !== null && debt.credit_limit !== undefined
+        ? String(debt.credit_limit)
+        : ""
+    );
+    setNote(debt.note || "");
+    setIsMonthly(Boolean(debt.is_monthly));
+    setDueDay(
+      debt.due_day !== null && debt.due_day !== undefined
+        ? String(debt.due_day)
+        : ""
+    );
+    setMonthlyMinPayment(
+      debt.monthly_min_payment !== null && debt.monthly_min_payment !== undefined
+        ? String(debt.monthly_min_payment)
+        : ""
+    );
+    setMessage("Editing debt account.");
+  }
+
+  async function refreshDebts(currentUserId: string) {
+    const { data, error } = await supabase
+      .from("debts")
+      .select("*")
+      .eq("user_id", currentUserId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setDebts((data || []) as DebtRow[]);
+  }
+
   useEffect(() => {
+    let mounted = true;
+
     async function init() {
       setLoading(true);
       setMessage("");
 
       const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
 
-      if (sessionError) {
-        setMessage(sessionError.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!session?.user) {
-        setMessage("Please log in first.");
-        setLoading(false);
-        return;
-      }
-
-      setUserId(session.user.id);
-
-      const { data, error } = await supabase
-        .from("spend_entries")
-        .select("*")
-        .order("date_iso", { ascending: false });
+      if (!mounted) return;
 
       if (error) {
         setMessage(error.message);
-      } else {
-        setEntries((data || []) as SpendRow[]);
+        setLoading(false);
+        return;
       }
 
-      setLoading(false);
+      if (!user) {
+        window.location.href = "/signup?mode=login";
+        return;
+      }
+
+      setDebugUser(`${user.email || "unknown"} · ${user.id}`);
+      setUserId(user.id);
+
+      await refreshDebts(user.id);
+
+      if (mounted) {
+        setLoading(false);
+      }
     }
 
     init();
-  }, []);
 
-  async function refreshSpend() {
-    const { data, error } = await supabase
-      .from("spend_entries")
-      .select("*")
-      .order("date_iso", { ascending: false });
+    return () => {
+      mounted = false;
+    };
+  }, [supabase]);
 
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setEntries((data || []) as SpendRow[]);
-  }
-
-  async function handleAddSpend() {
+  async function handleSaveDebt() {
     setMessage("");
 
     if (!userId) {
@@ -216,211 +289,169 @@ export default function SpendPage() {
       return;
     }
 
-    const amt = Number(amount);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      setMessage("Please enter a valid amount.");
+    const bal = Number(balance);
+    if (!name.trim() || !Number.isFinite(bal) || bal < 0) {
+      setMessage("Please enter an account name and valid balance.");
       return;
     }
 
     setSaving(true);
 
-    const { error } = await supabase.from("spend_entries").insert({
+    const payload = {
       user_id: userId,
-      date_iso: dateISO,
-      merchant: merchant.trim() || null,
-      amount: amt,
-      category,
+      name: name.trim(),
+      kind,
+      balance: bal,
+      min_payment: minPayment ? Number(minPayment) : null,
+      due_date: dueDate || null,
+      apr: apr ? Number(apr) : null,
+      credit_limit: creditLimit ? Number(creditLimit) : null,
       note: note.trim() || null,
-    });
+      is_monthly: isMonthly,
+      due_day: dueDay ? Number(dueDay) : null,
+      monthly_min_payment: monthlyMinPayment
+        ? Number(monthlyMinPayment)
+        : null,
+    };
 
-    if (error) {
-      setMessage(error.message);
-      setSaving(false);
-      return;
+    if (editingId) {
+      const { error } = await supabase
+        .from("debts")
+        .update(payload)
+        .eq("id", editingId)
+        .eq("user_id", userId);
+
+      if (error) {
+        setMessage(error.message);
+        setSaving(false);
+        return;
+      }
+
+      setMessage("Debt account updated.");
+    } else {
+      const { error } = await supabase.from("debts").insert(payload);
+
+      if (error) {
+        setMessage(error.message);
+        setSaving(false);
+        return;
+      }
+
+      setMessage("Debt account added.");
     }
 
-    setDateISO(todayISO());
-    setMerchant("");
-    setAmount("");
-    setCategory("misc");
-    setNote("");
-    setMessage("Spending added.");
-
-    await refreshSpend();
+    resetForm();
+    await refreshDebts(userId);
     setSaving(false);
   }
 
-  async function handleDeleteSpend(id: string) {
+  async function handleDeleteDebt(id: string) {
     setMessage("");
 
-    const { error } = await supabase.from("spend_entries").delete().eq("id", id);
+    if (!userId) {
+      setMessage("You need to be logged in.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("debts")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
 
     if (error) {
       setMessage(error.message);
       return;
     }
 
-    setEntries((prev) => prev.filter((entry) => entry.id !== id));
+    if (editingId === id) {
+      resetForm();
+    }
+
+    setDebts((prev) => prev.filter((debt) => debt.id !== id));
+    setMessage("Debt account deleted.");
   }
 
-  async function handleExtractScreenshot() {
+  async function handleExtractDebt() {
     if (!imageFile) return;
 
     setOcrBusy(true);
     setOcrError("");
-    setFoundTxns([]);
-    setSelectedTxns({});
 
     try {
       const { text } = await ocrImageFile(imageFile);
       setOcrText(text);
 
-      const parsed = parseTransactionsScreenshot(text);
-      setFoundTxns(parsed);
+      const parsed = parseDebtScreenshot(text);
 
-      const nextSelected: Record<number, boolean> = {};
-      parsed.forEach((txn, idx) => {
-        nextSelected[idx] = txn.direction === "debit";
-      });
-      setSelectedTxns(nextSelected);
+      if (parsed.name) setName(parsed.name);
+      if (parsed.balance != null) setBalance(String(parsed.balance));
+      if (parsed.minPayment != null) {
+        setMinPayment(String(parsed.minPayment));
+        setMonthlyMinPayment(String(parsed.minPayment));
+      }
+      if (parsed.dueDate) setDueDate(parsed.dueDate);
+      if (parsed.apr != null) setApr(String(parsed.apr));
+      if (parsed.creditLimit != null) {
+        setCreditLimit(String(parsed.creditLimit));
+      }
     } catch (err: any) {
-      setOcrError(err?.message || "Failed to extract screenshot.");
+      setOcrError(err?.message || "Failed to extract debt screenshot.");
     } finally {
       setOcrBusy(false);
     }
   }
 
-  function toggleTxn(idx: number) {
-    setSelectedTxns((prev) => ({ ...prev, [idx]: !prev[idx] }));
-  }
+  const totals = useMemo(() => {
+    return debts.reduce(
+      (acc, debt) => {
+        acc.balance += Number(debt.balance || 0);
+        acc.minimums += Number(
+          debt.monthly_min_payment || debt.min_payment || 0
+        );
+        return acc;
+      },
+      { balance: 0, minimums: 0 }
+    );
+  }, [debts]);
 
-  async function importSelectedTxns() {
-    if (!userId) {
-      setMessage("You need to be logged in.");
-      return;
-    }
-
-    setSaving(true);
-    setMessage("");
-
-    try {
-      const spendInserts: Array<{
-        user_id: string;
-        date_iso: string;
-        merchant: string;
-        amount: number;
-        category: SpendCategory;
-        note: string;
-      }> = [];
-
-      const paymentInserts: Array<{
-        user_id: string;
-        date_iso: string;
-        merchant: string;
-        amount: number;
-        note: string;
-      }> = [];
-
-      foundTxns.forEach((txn, idx) => {
-        if (!selectedTxns[idx]) return;
-
-        if (txn.direction === "debit") {
-          spendInserts.push({
-            user_id: userId,
-            date_iso: todayISO(),
-            merchant: txn.merchant,
-            amount: txn.amount,
-            category: guessCategoryFromMerchant(txn.merchant),
-            note: txn.pending
-              ? "Imported from screenshot · pending"
-              : "Imported from screenshot",
-          });
-        } else {
-          paymentInserts.push({
-            user_id: userId,
-            date_iso: todayISO(),
-            merchant: txn.merchant,
-            amount: txn.amount,
-            note: "Imported payment/credit from screenshot",
-          });
-        }
-      });
-
-      if (spendInserts.length > 0) {
-        const { error } = await supabase.from("spend_entries").insert(spendInserts);
-        if (error) throw new Error(error.message);
-      }
-
-      if (paymentInserts.length > 0) {
-        const { error } = await supabase.from("payments").insert(paymentInserts);
-        if (error) throw new Error(error.message);
-      }
-
-      setFoundTxns([]);
-      setSelectedTxns({});
-      setImageFile(null);
-      setOcrText("");
-      setMessage("Imported selected screenshot items.");
-
-      await refreshSpend();
-    } catch (err: any) {
-      setMessage(err?.message || "Failed to import screenshot items.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const totalSpend = useMemo(() => {
-    return entries.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
-  }, [entries]);
-
-  const categoryTotals = useMemo(() => {
-    const totals: Record<SpendCategory, number> = {
-      groceries: 0,
-      gas: 0,
-      eating_out: 0,
-      kids: 0,
-      business: 0,
-      self_care: 0,
-      subscriptions: 0,
-      misc: 0,
-    };
-
-    entries.forEach((entry) => {
-      totals[entry.category] += Number(entry.amount || 0);
-    });
-
-    return totals;
-  }, [entries]);
-
-  const donutData = useMemo(() => {
-    return Object.entries(categoryTotals)
-      .map(([key, value]) => ({
-        label: CATEGORY_LABEL[key as SpendCategory],
-        value,
+  const debtChartValues = useMemo(() => {
+    return debts
+      .map((debt) => ({
+        label: debt.name,
+        value: Number(debt.balance || 0),
       }))
-      .filter((item) => item.value > 0);
-  }, [categoryTotals]);
-
-  const sortedCategoryRows = useMemo(() => {
-    return (Object.entries(categoryTotals) as [SpendCategory, number][])
-      .map(([key, value]) => ({
-        key,
-        label: CATEGORY_LABEL[key],
-        value,
-      }))
+      .filter((item) => item.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [categoryTotals]);
+  }, [debts]);
 
-  return (
+  const palette = [
+    "#06b6d4",
+    "#3b82f6",
+    "#8b5cf6",
+    "#f59e0b",
+    "#ef4444",
+    "#22c55e",
+    "#e11d48",
+    "#71717a",
+  ];
+    return (
     <main className="min-h-screen bg-zinc-50 text-zinc-900">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-3xl font-black tracking-tight">Spending</h1>
+            <h1 className="text-3xl font-black tracking-tight">
+              Credit & Loans
+            </h1>
             <p className="mt-2 text-zinc-600">
-              Add spending manually or import it from screenshots.
+              Add, edit, or import debt accounts. Monthly recurring cards will
+              carry into future months in Calendar.
             </p>
+            {debugUser ? (
+              <p className="mt-2 text-xs text-zinc-400">
+                Logged in as: {debugUser}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -437,6 +468,13 @@ export default function SpendPage() {
             >
               Forecast
             </a>
+
+            <a
+              href="/calendar"
+              className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
+            >
+              Calendar
+            </a>
           </div>
         </div>
 
@@ -446,97 +484,172 @@ export default function SpendPage() {
           </div>
         ) : null}
 
-        {!userId && !loading ? (
-          <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <div className="font-semibold">You are not logged in.</div>
-            <p className="mt-2 text-sm text-zinc-600">
-              Go to signup/login first, then come back here.
-            </p>
-            <div className="mt-4">
-              <a
-                href="/signup"
-                className="inline-flex rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
-              >
-                Go to Signup / Login
-              </a>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <div className="mt-8 grid gap-4 lg:grid-cols-3">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Total spending</div>
+            <div className="text-sm text-zinc-500">Total debt balance</div>
             <div className="mt-2 text-3xl font-black">
-              ${totalSpend.toFixed(2)}
+              ${totals.balance.toFixed(2)}
             </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Entries</div>
-            <div className="mt-2 text-3xl font-black">{entries.length}</div>
+            <div className="text-sm text-zinc-500">Monthly minimums</div>
+            <div className="mt-2 text-3xl font-black">
+              ${totals.minimums.toFixed(2)}
+            </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Top category</div>
-            <div className="mt-2 text-3xl font-black">
-              {sortedCategoryRows.find((row) => row.value > 0)?.label || "—"}
+            <div className="text-sm text-zinc-500">Debt breakdown</div>
+
+            <div className="mt-4 flex justify-center">
+              <DonutChart values={debtChartValues} centerLabel="total debt" />
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {debtChartValues.slice(0, 5).map((item, i) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="inline-block h-3 w-3 rounded-full"
+                      style={{ backgroundColor: palette[i % palette.length] }}
+                    />
+                    <span className="text-zinc-600">{item.label}</span>
+                  </div>
+                  <span className="font-semibold">${item.value.toFixed(2)}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-2">
           <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold">Add spending manually</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold">
+                {editingId ? "Edit debt account" : "Add debt account"}
+              </h2>
 
-            <div className="mt-4 grid gap-3">
-              <input
-                type="date"
-                value={dateISO}
-                onChange={(e) => setDateISO(e.target.value)}
-                className="rounded-xl border border-zinc-200 px-4 py-3"
-              />
+              {editingId ? (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-zinc-100"
+                >
+                  Cancel Edit
+                </button>
+              ) : null}
+            </div>
 
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
               <input
-                placeholder="Merchant (McDonald's, Target, Speedway)"
-                value={merchant}
-                onChange={(e) => setMerchant(e.target.value)}
-                className="rounded-xl border border-zinc-200 px-4 py-3"
-              />
-
-              <input
-                placeholder="Amount"
-                type="number"
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                placeholder="Name (Credit One, Car Loan, Chase)"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="rounded-xl border border-zinc-200 px-4 py-3"
               />
 
               <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as SpendCategory)}
+                value={kind}
+                onChange={(e) => setKind(e.target.value as "credit" | "loan")}
                 className="rounded-xl border border-zinc-200 px-4 py-3"
               >
-                {categories.map((item) => (
-                  <option key={item} value={item}>
-                    {item.replaceAll("_", " ")}
-                  </option>
-                ))}
+                <option value="credit">Credit Card</option>
+                <option value="loan">Loan</option>
               </select>
+
+              <input
+                placeholder="Balance"
+                type="number"
+                inputMode="decimal"
+                value={balance}
+                onChange={(e) => setBalance(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <input
+                placeholder="Minimum payment (current)"
+                type="number"
+                inputMode="decimal"
+                value={minPayment}
+                onChange={(e) => setMinPayment(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <label className="flex items-center gap-3 rounded-xl border border-zinc-200 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={isMonthly}
+                  onChange={(e) => setIsMonthly(e.target.checked)}
+                />
+                <span className="text-sm font-medium">Monthly recurring</span>
+              </label>
+
+              <input
+                placeholder="Due day (1-31)"
+                type="number"
+                inputMode="numeric"
+                value={dueDay}
+                onChange={(e) => setDueDay(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <input
+                placeholder="Monthly minimum payment"
+                type="number"
+                inputMode="decimal"
+                value={monthlyMinPayment}
+                onChange={(e) => setMonthlyMinPayment(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <input
+                placeholder="APR"
+                type="number"
+                inputMode="decimal"
+                value={apr}
+                onChange={(e) => setApr(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3"
+              />
+
+              <input
+                placeholder="Credit limit (optional)"
+                type="number"
+                inputMode="decimal"
+                value={creditLimit}
+                onChange={(e) => setCreditLimit(e.target.value)}
+                className="rounded-xl border border-zinc-200 px-4 py-3 md:col-span-2"
+              />
 
               <input
                 placeholder="Note (optional)"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                className="rounded-xl border border-zinc-200 px-4 py-3"
+                className="rounded-xl border border-zinc-200 px-4 py-3 md:col-span-2"
               />
 
               <button
-                onClick={handleAddSpend}
+                onClick={handleSaveDebt}
                 disabled={saving || !userId}
-                className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white hover:bg-black disabled:opacity-60"
+                className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white hover:bg-black disabled:opacity-60 md:col-span-2"
               >
-                {saving ? "Saving..." : "Add Spending"}
+                {saving
+                  ? editingId
+                    ? "Updating..."
+                    : "Saving..."
+                  : editingId
+                  ? "Update Credit / Loan"
+                  : "Add Credit / Loan"}
               </button>
             </div>
           </div>
@@ -553,11 +666,11 @@ export default function SpendPage() {
               />
 
               <button
-                onClick={handleExtractScreenshot}
+                onClick={handleExtractDebt}
                 disabled={!imageFile || ocrBusy}
                 className="rounded-xl border border-zinc-200 bg-white px-4 py-3 font-semibold hover:bg-zinc-100 disabled:opacity-50"
               >
-                {ocrBusy ? "Extracting..." : "Extract from screenshot"}
+                {ocrBusy ? "Extracting..." : "Extract debt details"}
               </button>
 
               {ocrError ? (
@@ -566,126 +679,85 @@ export default function SpendPage() {
                 </div>
               ) : null}
 
-              {foundTxns.length > 0 ? (
-                <div className="rounded-2xl bg-zinc-50 p-4">
-                  <div className="mb-3 font-semibold">
-                    Found {foundTxns.length} transactions
-                  </div>
-
-                  <div className="grid gap-3">
-                    {foundTxns.map((txn, idx) => (
-                      <label
-                        key={idx}
-                        className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-white p-3"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!selectedTxns[idx]}
-                          onChange={() => toggleTxn(idx)}
-                          className="mt-1"
-                        />
-
-                        <div className="flex-1">
-                          <div className="font-semibold">{txn.merchant}</div>
-                          <div className="text-sm text-zinc-500">
-                            {txn.direction === "credit" ? "Payment/Credit" : "Spend"} · $
-                            {txn.amount.toFixed(2)}
-                            {txn.pending ? " · Pending" : ""}
-                            {txn.dateText ? ` · ${txn.dateText}` : ""}
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-
-                  <button
-                    onClick={importSelectedTxns}
-                    disabled={saving}
-                    className="mt-4 rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white hover:bg-black disabled:opacity-60"
-                  >
-                    {saving ? "Importing..." : "Import Selected"}
-                  </button>
-                </div>
-              ) : null}
+              <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-600">
+                Use screenshots of card or loan screens that show balance,
+                payment due, due date, APR, or credit limit.
+              </div>
 
               {ocrText ? (
                 <details className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600">
                   <summary className="cursor-pointer font-semibold">
                     View extracted text
                   </summary>
-                  <pre className="mt-3 whitespace-pre-wrap text-xs">{ocrText}</pre>
+                  <pre className="mt-3 whitespace-pre-wrap text-xs">
+                    {ocrText}
+                  </pre>
                 </details>
               ) : null}
             </div>
           </div>
         </div>
 
-        <div className="mt-8 grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold">Spending entries</h2>
+        <div className="mt-8 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-bold">Debt accounts</h2>
 
-            <div className="mt-4 grid gap-3">
-              {loading ? (
-                <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                  Loading spending...
-                </div>
-              ) : entries.length === 0 ? (
-                <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                  No spending logged yet.
-                </div>
-              ) : (
-                entries.map((entry) => (
+          <div className="mt-4 grid gap-3">
+            {loading ? (
+              <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                Loading debts...
+              </div>
+            ) : debts.length === 0 ? (
+              <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                No debt accounts added yet.
+              </div>
+            ) : (
+              debts.map((debt) => {
+                const nextDue =
+                  debt.due_date || getNextDueDateFromDay(debt.due_day);
+
+                return (
                   <div
-                    key={entry.id}
+                    key={debt.id}
                     className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
                   >
                     <div>
-                      <div className="font-semibold">
-                        {entry.merchant || "Unnamed purchase"}
-                      </div>
+                      <div className="font-semibold">{debt.name}</div>
                       <div className="text-sm text-zinc-500">
-                        {entry.date_iso} · {CATEGORY_LABEL[entry.category]}
-                        {entry.note ? ` · ${entry.note}` : ""}
+                        {debt.kind} · Balance $
+                        {Number(debt.balance).toFixed(2)}
+                        {debt.monthly_min_payment != null
+                          ? ` · Monthly Min $${Number(
+                              debt.monthly_min_payment
+                            ).toFixed(2)}`
+                          : debt.min_payment != null
+                          ? ` · Min $${Number(debt.min_payment).toFixed(2)}`
+                          : ""}
+                        {nextDue ? ` · Next Due ${nextDue}` : ""}
+                        {debt.apr != null
+                          ? ` · APR ${Number(debt.apr).toFixed(2)}%`
+                          : ""}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="font-semibold">
-                        ${Number(entry.amount).toFixed(2)}
-                      </div>
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleDeleteSpend(entry.id)}
+                        onClick={() => loadDebtIntoForm(debt)}
+                        className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteDebt(debt.id)}
                         className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
                       >
                         Delete
                       </button>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold">Where your money is going</h2>
-
-            <div className="mt-6 flex flex-col items-center gap-6">
-              <DonutChart values={donutData} />
-
-              <div className="w-full grid gap-2">
-                {sortedCategoryRows.map((row) => (
-                  <div
-                    key={row.key}
-                    className="flex items-center justify-between rounded-xl bg-zinc-50 px-4 py-3"
-                  >
-                    <div className="text-sm font-medium">{row.label}</div>
-                    <div className="text-sm font-semibold">
-                      ${row.value.toFixed(2)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+                );
+              })
+            )}
           </div>
         </div>
       </div>
