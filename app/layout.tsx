@@ -124,6 +124,17 @@ export default function RootLayout({
         >
           Ask Ben 💰
         </a>
+        <footer
+    style={{
+      marginTop: 60,
+      padding: "20px",
+      textAlign: "center",
+      fontSize: 12,
+      color: "#71717a",
+    }}
+    >
+    © 2026 Spatialytics — Built with ❤️ in Minnesota
+   </footer>
       </body>
     </html>
   );
