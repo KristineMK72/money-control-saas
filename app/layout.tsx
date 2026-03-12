@@ -1,6 +1,8 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import LogoutButton from "@/components/LogoutButton";
+import BenPersona from "@/components/BenPersona";
+import Image from "next/image";
 
 export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
@@ -18,7 +20,9 @@ export const metadata: Metadata = {
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
   },
-};function NavLink({
+};
+
+function NavLink({
   href,
   children,
 }: {
@@ -58,8 +62,10 @@ export default function RootLayout({
           fontFamily:
             "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
           background: "#f5f5f4",
+          color: "#18181b",
         }}
       >
+        {/* HEADER */}
         <div
           style={{
             position: "sticky",
@@ -74,17 +80,46 @@ export default function RootLayout({
             zIndex: 100,
           }}
         >
+          {/* LOGO + BEN HEAD */}
           <div
             style={{
-              fontWeight: 800,
-              fontSize: 16,
-              color: "#1c1917",
-              whiteSpace: "nowrap",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
             }}
           >
-            AskBen
+            <div
+              style={{
+                position: "relative",
+                width: 48,
+                height: 48,
+                borderRadius: 12,
+                overflow: "hidden",
+                background: "#111827",
+              }}
+            >
+              <Image
+                src="/ben-head.png"
+                alt="AskBen"
+                fill
+                style={{ objectFit: "cover" }}
+                priority
+              />
+            </div>
+
+            <div
+              style={{
+                fontWeight: 800,
+                fontSize: 18,
+                color: "#1c1917",
+                whiteSpace: "nowrap",
+              }}
+            >
+              AskBen
+            </div>
           </div>
 
+          {/* NAV */}
           <div
             style={{
               display: "flex",
@@ -103,8 +138,21 @@ export default function RootLayout({
           </div>
         </div>
 
-        {children}
+        {/* BEN COMMENT BAR */}
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "20px auto 0 auto",
+            padding: "0 20px",
+          }}
+        >
+          <BenPersona />
+        </div>
 
+        {/* PAGE CONTENT */}
+        <main>{children}</main>
+
+        {/* FLOATING BUTTON */}
         <a
           href="/chat"
           style={{
@@ -124,17 +172,19 @@ export default function RootLayout({
         >
           Ask Ben 💰
         </a>
+
+        {/* FOOTER */}
         <footer
-    style={{
-      marginTop: 60,
-      padding: "20px",
-      textAlign: "center",
-      fontSize: 12,
-      color: "#71717a",
-    }}
-    >
-    © 2026 Spatialytics — Built with ❤️ in Minnesota
-   </footer>
+          style={{
+            marginTop: 60,
+            padding: "20px",
+            textAlign: "center",
+            fontSize: 12,
+            color: "#71717a",
+          }}
+        >
+          © 2026 Spatialytics — Powered with ❤️ in Minnesota
+        </footer>
       </body>
     </html>
   );
