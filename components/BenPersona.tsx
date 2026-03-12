@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useMemo } from "react";
 import { usePathname } from "next/navigation";
 
@@ -92,10 +91,7 @@ function getQuote(pathname: string) {
     "Ben says: Financial peace is built one awkward click at a time.",
   ];
 
-  const seed = pathname
-    .split("")
-    .reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-
+  const seed = pathname.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
   return options[seed % options.length];
 }
 
@@ -104,25 +100,67 @@ export default function BenPersona() {
   const quote = useMemo(() => getQuote(pathname), [pathname]);
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-emerald-400/20 bg-gradient-to-r from-[#08141c] via-[#071018] to-[#0b2017] p-4 md:p-5">
-      <div className="flex items-center gap-4">
-        <div className="shrink-0">
-          <div className="relative h-20 w-20 overflow-hidden rounded-2xl border border-white/10 bg-black/20 md:h-24 md:w-24">
-            <Image
-              src="/ben-head.png"
-              alt="AskBen mascot"
-              fill
-              className="object-cover"
-              priority
-            />
-          </div>
+    <div
+      style={{
+        background: "linear-gradient(90deg, #08141c 0%, #071018 45%, #0b2017 100%)",
+        borderTop: "1px solid rgba(16,185,129,0.18)",
+        borderBottom: "1px solid rgba(16,185,129,0.18)",
+        padding: "16px 20px",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 1100,
+          margin: "0 auto",
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+        }}
+      >
+        <div
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: 18,
+            overflow: "hidden",
+            background: "#08111a",
+            border: "1px solid rgba(255,255,255,0.08)",
+            flexShrink: 0,
+          }}
+        >
+          <img
+            src="/ben.png"
+            alt="AskBen mascot"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
         </div>
 
-        <div className="min-w-0">
-          <div className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-300/85">
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: "0.22em",
+              textTransform: "uppercase",
+              color: "rgba(110,231,183,0.9)",
+            }}
+          >
             AskBen
           </div>
-          <div className="mt-1 text-sm leading-6 text-white md:text-base">
+
+          <div
+            style={{
+              marginTop: 6,
+              color: "#ffffff",
+              fontSize: 16,
+              lineHeight: 1.6,
+            }}
+          >
             {quote}
           </div>
         </div>
