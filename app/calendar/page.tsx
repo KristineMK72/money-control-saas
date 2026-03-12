@@ -1,12 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type BillRow = {
   id: string;
+  user_id: string;
   name: string;
-  category: "housing" | "utilities" | "transportation" | "debt" | "food" | "other" | null;
+  category:
+    | "housing"
+    | "utilities"
+    | "transportation"
+    | "debt"
+    | "food"
+    | "other"
+    | null;
   target: number;
   due_date: string | null;
   is_monthly: boolean | null;
@@ -16,6 +24,7 @@ type BillRow = {
 
 type DebtRow = {
   id: string;
+  user_id: string;
   name: string;
   kind: "credit" | "loan";
   balance: number;
@@ -80,10 +89,12 @@ function categoryTone(category?: string | null) {
 }
 
 export default function CalendarPage() {
+  const supabase = createSupabaseBrowserClient();
   const now = new Date();
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [debugUser, setDebugUser] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
 
   const [bills, setBills] = useState<BillRow[]>([]);
@@ -93,30 +104,47 @@ export default function CalendarPage() {
   const [viewMonth, setViewMonth] = useState(now.getMonth());
 
   useEffect(() => {
+    let mounted = true;
+
     async function loadCalendarData() {
       setLoading(true);
       setMessage("");
 
-      const { data, error } = await supabase.auth.getSession();
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+
+      if (!mounted) return;
+
       if (error) {
         setMessage(error.message);
         setLoading(false);
         return;
       }
 
-      const session = data.session;
-      if (!session?.user) {
-        setMessage("Please log in to view your calendar.");
-        setLoading(false);
+      if (!user) {
+        window.location.href = "/signup?mode=login";
         return;
       }
 
-      setUserId(session.user.id);
+      setDebugUser(`${user.email || "unknown"} · ${user.id}`);
+      setUserId(user.id);
 
       const [billsRes, debtsRes] = await Promise.all([
-        supabase.from("bills").select("*").order("created_at", { ascending: false }),
-        supabase.from("debts").select("*").order("created_at", { ascending: false }),
+        supabase
+          .from("bills")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("debts")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
       ]);
+
+      if (!mounted) return;
 
       if (billsRes.error) {
         setMessage(billsRes.error.message);
@@ -134,7 +162,11 @@ export default function CalendarPage() {
     }
 
     loadCalendarData();
-  }, []);
+
+    return () => {
+      mounted = false;
+    };
+  }, [supabase]);
 
   const calendarItems = useMemo(() => {
     const items: CalendarItem[] = [];
@@ -294,6 +326,12 @@ export default function CalendarPage() {
               <p className="mt-3 max-w-2xl text-lg text-zinc-300">
                 See bills and debt due dates in one monthly calendar view.
               </p>
+
+              {debugUser ? (
+                <p className="mt-2 text-xs text-zinc-400">
+                  Logged in as: {debugUser}
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -327,23 +365,6 @@ export default function CalendarPage() {
           {message ? (
             <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
               {message}
-            </div>
-          ) : null}
-
-          {!userId && !loading ? (
-            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
-              <div className="font-semibold text-white">You are not logged in.</div>
-              <p className="mt-2 text-sm text-zinc-300">
-                Go to signup/login first, then come back here.
-              </p>
-              <div className="mt-4">
-                <a
-                  href="/signup?mode=login"
-                  className="inline-flex rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-black hover:bg-emerald-300"
-                >
-                  Go to Login
-                </a>
-              </div>
             </div>
           ) : null}
 
