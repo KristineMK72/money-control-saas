@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Mode = "signup" | "login";
 
 export default function SignupPage() {
+  const supabase = createSupabaseBrowserClient();
+
   const [mode, setMode] = useState<Mode>("signup");
   const [plan, setPlan] = useState<string>("free");
 
@@ -62,11 +64,12 @@ export default function SignupPage() {
 
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
+          display_name: displayName.trim(),
           selected_plan: plan,
         },
       },
@@ -78,23 +81,9 @@ export default function SignupPage() {
       return;
     }
 
-    const newUserId = data.user?.id;
-
-    if (newUserId) {
-      const { error: profileError } = await supabase.from("profiles").upsert({
-        user_id: newUserId,
-        display_name: displayName.trim(),
-      });
-
-      if (profileError) {
-        setMessage(`Account created, but profile name failed to save: ${profileError.message}`);
-        setLoading(false);
-        return;
-      }
-    }
-
     setMessage("Account created. Check your email for confirmation, then log in.");
     setMode("login");
+    setPassword("");
     setConfirmPassword("");
     setLoading(false);
   }
