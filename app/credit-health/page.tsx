@@ -47,7 +47,11 @@ function cardUtil(balance: number, limit: number | null) {
   return (Number(balance || 0) / Number(limit)) * 100;
 }
 
-function paymentNeededForTarget(balance: number, limit: number | null, targetPct: number) {
+function paymentNeededForTarget(
+  balance: number,
+  limit: number | null,
+  targetPct: number
+) {
   if (!limit || limit <= 0) return 0;
   const targetBalance = limit * (targetPct / 100);
   return Math.max(0, balance - targetBalance);
@@ -66,7 +70,7 @@ function StatCard({
     <div className="rounded-3xl border border-white/10 bg-white p-5 text-zinc-950 shadow-sm">
       <div className="text-sm text-zinc-500">{label}</div>
       <div className="mt-2 text-3xl font-black">{value}</div>
-            {subtext ? <div className="mt-2 text-sm text-zinc-500">{subtext}</div> : null}
+      {subtext ? <div className="mt-2 text-sm text-zinc-500">{subtext}</div> : null}
     </div>
   );
 }
@@ -153,7 +157,10 @@ export default function CreditHealthPage() {
 
   const totals = useMemo(() => {
     const totalDebt = debts.reduce((sum, d) => sum + Number(d.balance || 0), 0);
-    const totalCreditDebt = creditCards.reduce((sum, d) => sum + Number(d.balance || 0), 0);
+    const totalCreditDebt = creditCards.reduce(
+      (sum, d) => sum + Number(d.balance || 0),
+      0
+    );
     const totalCreditLimit = creditCards.reduce(
       (sum, d) => sum + Number(d.credit_limit || 0),
       0
@@ -270,8 +277,7 @@ export default function CreditHealthPage() {
       ),
     };
   }, [totals]);
-
-  if (loading) {
+    if (loading) {
     return (
       <main className="min-h-screen bg-black px-6 py-10 text-white">
         Loading credit health...
@@ -377,10 +383,7 @@ export default function CreditHealthPage() {
                     </div>
                   ) : (
                     riskyCards.map((card) => (
-                      <div
-                        key={card.id}
-                        className="rounded-2xl bg-zinc-50 p-4"
-                      >
+                      <div key={card.id} className="rounded-2xl bg-zinc-50 p-4">
                         <div className="flex items-start justify-between gap-4">
                           <div>
                             <div className="font-semibold">{card.name}</div>
@@ -584,6 +587,56 @@ export default function CreditHealthPage() {
                     : totals.utilization >= 30
                     ? "You are in a watch zone. Keep minimums current and work toward getting under 30%."
                     : "Your utilization is in a healthier zone. Stay on time and avoid unnecessary new balances."}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+                <h2 className="text-xl font-black">Credit Repair Tools</h2>
+                <p className="mt-2 text-sm text-zinc-500">
+                  Guided support for fixing errors, protecting payment history, and improving utilization.
+                </p>
+
+                <div className="mt-4 grid gap-3">
+                  <div className="rounded-2xl bg-zinc-50 p-4">
+                    <div className="font-semibold">Dispute incorrect information</div>
+                    <div className="mt-1 text-sm text-zinc-600">
+                      Track issues like wrong balances, duplicate accounts, or accounts that do not belong to you.
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-zinc-50 p-4">
+                    <div className="font-semibold">Goodwill / hardship letters</div>
+                    <div className="mt-1 text-sm text-zinc-600">
+                      Generate letters for late-payment forgiveness, hardship requests, and payment arrangement support.
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-zinc-50 p-4">
+                    <div className="font-semibold">Late payment protection</div>
+                    <div className="mt-1 text-sm text-zinc-600">
+                      Use your calendar, forecast, and minimums to catch score-damaging late-payment risk before it happens.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    className="rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
+                  >
+                    Start dispute tool
+                  </button>
+
+                  <button
+                    type="button"
+                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                  >
+                    Generate goodwill letter
+                  </button>
+                </div>
+
+                <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">
+                  Ben says: Credit repair is not magic. It’s catching errors, protecting payment history, and lowering utilization on purpose.
                 </div>
               </div>
             </div>
