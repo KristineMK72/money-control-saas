@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import LogoutButton from "@/components/LogoutButton";
 import BenPersona from "@/components/BenPersona";
+import UserGreeting from "@/components/UserGreeting";
 
 export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
@@ -123,9 +124,9 @@ export default function RootLayout({
                 }}
               >
                 AskBen
-              </div>
+             </div>
+             <UserGreeting />
             </div>
-
             <div
               style={{
                 display: "flex",
