@@ -1,13 +1,20 @@
 "use client";
 
-
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type BillRow = {
   id: string;
+  user_id: string;
   name: string;
-  category: "housing" | "utilities" | "transportation" | "debt" | "food" | "other" | null;
+  category:
+    | "housing"
+    | "utilities"
+    | "transportation"
+    | "debt"
+    | "food"
+    | "other"
+    | null;
   target: number;
   due_date: string | null;
   focus: boolean | null;
@@ -23,6 +30,7 @@ type PaymentRow = { id: string; amount: number; date_iso?: string };
 
 type DebtRow = {
   id: string;
+  user_id: string;
   balance: number;
   min_payment: number | null;
   monthly_min_payment: number | null;
@@ -30,6 +38,8 @@ type DebtRow = {
   due_day: number | null;
   is_monthly: boolean | null;
   name: string;
+  kind: "credit" | "loan";
+  credit_limit: number | null;
 };
 
 type SideHustleRow = {
@@ -66,6 +76,10 @@ function endOfWindow(daysFromNow: number) {
   return d;
 }
 
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function parseDateSafe(dateISO?: string | null) {
   if (!dateISO) return null;
   const d = new Date(`${dateISO}T12:00:00`);
@@ -90,14 +104,22 @@ function getNextDueDateFromDay(dueDay?: number | null) {
   const nextMonth = month === 11 ? 0 : month + 1;
   const lastDayNextMonth = new Date(nextMonthYear, nextMonth + 1, 0).getDate();
   const safeDayNextMonth = Math.min(dueDay, lastDayNextMonth);
-  const nextMonthDue = new Date(nextMonthYear, nextMonth, safeDayNextMonth, 12, 0, 0, 0);
+  const nextMonthDue = new Date(
+    nextMonthYear,
+    nextMonth,
+    safeDayNextMonth,
+    12,
+    0,
+    0,
+    0
+  );
 
   return nextMonthDue.toISOString().slice(0, 10);
 }
 
 function effectiveBillDueDate(bill: BillRow) {
-  if (bill.due_date) return bill.due_date;
   if (bill.is_monthly && bill.due_day) return getNextDueDateFromDay(bill.due_day);
+  if (bill.due_date) return bill.due_date;
   return null;
 }
 
@@ -106,8 +128,8 @@ function effectiveBillAmount(bill: BillRow) {
 }
 
 function effectiveDebtDueDate(debt: DebtRow) {
-  if (debt.due_date) return debt.due_date;
   if (debt.is_monthly && debt.due_day) return getNextDueDateFromDay(debt.due_day);
+  if (debt.due_date) return debt.due_date;
   return null;
 }
 
@@ -144,7 +166,7 @@ function scoreItem(item: Omit<PriorityItem, "score">) {
 }
 
 function formatUSD(n: number) {
-  return `$${n.toFixed(2)}`;
+  return `$${Number(n || 0).toFixed(2)}`;
 }
 
 function formatDueLabel(dateISO?: string | null) {
@@ -193,9 +215,11 @@ function ProgressBar({ current, goal }: { current: number; goal: number }) {
 
 export default function DashboardPage() {
   const supabase = createSupabaseBrowserClient();
+
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
+  const [name, setName] = useState("");
 
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
@@ -205,27 +229,35 @@ export default function DashboardPage() {
   const [sideHustles, setSideHustles] = useState<SideHustleRow[]>([]);
 
   useEffect(() => {
+    let mounted = true;
+
     async function loadDashboard() {
       setLoading(true);
       setMessage("");
 
-      const { data, error } = await supabase.auth.getSession();
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+
+      if (!mounted) return;
+
       if (error) {
         setMessage(error.message);
         setLoading(false);
         return;
       }
 
-      const session = data.session;
-      if (!session?.user) {
+      if (!user) {
         setMessage("Please log in to view your dashboard.");
         setLoading(false);
         return;
       }
 
-      setUserId(session.user.id);
+      setUserId(user.id);
 
       const [
+        profileRes,
         billsRes,
         incomeRes,
         spendRes,
@@ -233,28 +265,70 @@ export default function DashboardPage() {
         debtsRes,
         hustlesRes,
       ] = await Promise.all([
-        supabase.from("bills").select("*").order("created_at", { ascending: false }),
-        supabase.from("income_entries").select("id, amount, date_iso"),
-        supabase.from("spend_entries").select("id, amount, date_iso"),
-        supabase.from("payments").select("id, amount, date_iso"),
-        supabase.from("debts").select("*").order("created_at", { ascending: false }),
-        supabase.from("side_hustles").select("*").order("created_at", { ascending: false }),
+        supabase
+          .from("profiles")
+          .select("display_name")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+        supabase
+          .from("bills")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("income_entries")
+          .select("id, amount, date_iso")
+          .eq("user_id", user.id),
+        supabase
+          .from("spend_entries")
+          .select("id, amount, date_iso")
+          .eq("user_id", user.id),
+        supabase
+          .from("payments")
+          .select("id, amount, date_iso")
+          .eq("user_id", user.id),
+        supabase
+          .from("debts")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("side_hustles")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
       ]);
 
+      if (!mounted) return;
+
+      if (profileRes.data?.display_name) setName(profileRes.data.display_name);
       if (billsRes.error) setMessage(billsRes.error.message);
       else setBills((billsRes.data || []) as BillRow[]);
 
-      if (!incomeRes.error) setIncomeEntries((incomeRes.data || []) as IncomeRow[]);
-      if (!spendRes.error) setSpendEntries((spendRes.data || []) as SpendRow[]);
-      if (!paymentsRes.error) setPaymentEntries((paymentsRes.data || []) as PaymentRow[]);
-      if (!debtsRes.error) setDebts((debtsRes.data || []) as DebtRow[]);
-      if (!hustlesRes.error) setSideHustles((hustlesRes.data || []) as SideHustleRow[]);
+      if (incomeRes.error) setMessage((prev) => prev || incomeRes.error!.message);
+      else setIncomeEntries((incomeRes.data || []) as IncomeRow[]);
+
+      if (spendRes.error) setMessage((prev) => prev || spendRes.error!.message);
+      else setSpendEntries((spendRes.data || []) as SpendRow[]);
+
+      if (paymentsRes.error) setMessage((prev) => prev || paymentsRes.error!.message);
+      else setPaymentEntries((paymentsRes.data || []) as PaymentRow[]);
+
+      if (debtsRes.error) setMessage((prev) => prev || debtsRes.error!.message);
+      else setDebts((debtsRes.data || []) as DebtRow[]);
+
+      if (hustlesRes.error) setMessage((prev) => prev || hustlesRes.error!.message);
+      else setSideHustles((hustlesRes.data || []) as SideHustleRow[]);
 
       setLoading(false);
     }
 
     loadDashboard();
-  }, []);
+
+    return () => {
+      mounted = false;
+    };
+  }, [supabase]);
 
   const incomeTotal = useMemo(
     () => incomeEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
@@ -275,6 +349,8 @@ export default function DashboardPage() {
     () => debts.reduce((sum, row) => sum + Number(row.balance || 0), 0),
     [debts]
   );
+
+  const remaining = incomeTotal - spendingTotal - paymentsTotal;
 
   const priorities = useMemo(() => {
     const billItems = bills.map((bill) => {
@@ -307,8 +383,6 @@ export default function DashboardPage() {
       .sort((a, b) => b.score - a.score)
       .slice(0, 3);
   }, [bills, debts]);
-
-  const remaining = incomeTotal - spendingTotal - paymentsTotal;
 
   const weekEnd = endOfWindow(6);
 
@@ -352,78 +426,161 @@ export default function DashboardPage() {
 
   const remainingGap = Math.max(0, gapThisWeek - plannedIncome);
 
+  const dueSoon = useMemo(() => {
+    const end = endOfWindow(7);
+    const rows: { name: string; amount: number; due: string; type: "bill" | "debt" }[] = [];
+
+    for (const bill of bills) {
+      const due = effectiveBillDueDate(bill);
+      const dueDate = parseDateSafe(due);
+      if (!due || !dueDate) continue;
+      if (dueDate >= startOfToday() && dueDate <= end) {
+        rows.push({
+          name: bill.name,
+          amount: effectiveBillAmount(bill),
+          due,
+          type: "bill",
+        });
+      }
+    }
+
+    for (const debt of debts) {
+      const due = effectiveDebtDueDate(debt);
+      const dueDate = parseDateSafe(due);
+      if (!due || !dueDate) continue;
+      if (dueDate >= startOfToday() && dueDate <= end) {
+        rows.push({
+          name: debt.name,
+          amount: effectiveDebtAmount(debt),
+          due,
+          type: "debt",
+        });
+      }
+    }
+
+    return rows.sort((a, b) => a.due.localeCompare(b.due));
+  }, [bills, debts]);
+
+  const dueSoonTotal = useMemo(
+    () => dueSoon.reduce((sum, item) => sum + item.amount, 0),
+    [dueSoon]
+  );
+
+  const debtSnapshot = useMemo(() => {
+    let balance = 0;
+    let mins = 0;
+    let creditBalance = 0;
+    let creditLimit = 0;
+
+    for (const debt of debts) {
+      balance += Number(debt.balance || 0);
+      mins += Number(debt.monthly_min_payment || debt.min_payment || 0);
+
+      if (debt.kind === "credit") {
+        creditBalance += Number(debt.balance || 0);
+        creditLimit += Number(debt.credit_limit || 0);
+      }
+    }
+
+    const utilization = creditLimit > 0 ? (creditBalance / creditLimit) * 100 : 0;
+
+    return { balance, mins, utilization };
+  }, [debts]);
+
+  const stress = useMemo(() => {
+    if (remaining < 0 || remainingGap > 300 || debtSnapshot.utilization > 75) {
+      return {
+        label: "Critical",
+        tone: "#ef4444",
+        message: "Ben says: We need a plan now, not later.",
+      };
+    }
+    if (remainingGap > 0 || dueSoonTotal > 400 || debtSnapshot.utilization > 50) {
+      return {
+        label: "Stressed",
+        tone: "#f97316",
+        message: "Ben says: The next week looks financially spicy.",
+      };
+    }
+    if (dueSoonTotal > 150 || debtSnapshot.utilization > 30) {
+      return {
+        label: "Tight",
+        tone: "#eab308",
+        message: "Ben says: Covered, but not roomy.",
+      };
+    }
+    return {
+      label: "Calm",
+      tone: "#22c55e",
+      message: "Ben says: Looking steadier here.",
+    };
+  }, [remaining, remainingGap, dueSoonTotal, debtSnapshot.utilization]);
+
+  const insights = useMemo(() => {
+    const items: string[] = [];
+
+    if (debtSnapshot.utilization > 50) {
+      items.push(`Credit utilization is ${debtSnapshot.utilization.toFixed(0)}%.`);
+    } else if (debtSnapshot.utilization > 30) {
+      items.push(`Credit utilization is ${debtSnapshot.utilization.toFixed(0)}%. Still worth watching.`);
+    }
+
+    if (dueSoon.length > 0) {
+      items.push(`${dueSoon.length} item${dueSoon.length === 1 ? "" : "s"} due in the next 7 days.`);
+    }
+
+    if (remainingGap > 0) {
+      items.push(`You still need ${formatUSD(remainingGap)} to fully cover this week.`);
+    } else if (gapThisWeek > 0 && remainingGap === 0) {
+      items.push("Your current side hustle plan covers this week's gap.");
+    }
+
+    if (debtSnapshot.mins > 0) {
+      items.push(`Monthly debt minimums are ${formatUSD(debtSnapshot.mins)}.`);
+    }
+
+    if (items.length === 0) {
+      items.push("No immediate financial fires detected.");
+    }
+
+    return items.slice(0, 4);
+  }, [debtSnapshot, dueSoon, gapThisWeek, remainingGap]);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black px-6 py-10 text-white">
+        Loading dashboard...
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 md:p-8 shadow-2xl">
+        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 shadow-2xl md:p-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
-                Financial overview
+                Money Command Center
               </div>
               <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
-                Dashboard
+                {name ? `Welcome back, ${name}` : "Dashboard"}
               </h1>
               <p className="mt-3 max-w-2xl text-lg text-zinc-300">
-                See what matters most right now and what deserves attention first.
+                One place to see risk, due dates, priorities, and momentum.
               </p>
             </div>
-         
+
             <div className="flex flex-wrap gap-3">
-              <a
-                href="/bills"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Bills
-              </a>
-              <a
-                href="/income"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Income
-              </a>
-              <a
-                href="/spend"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Spending
-              </a>
-              <a
-                href="/calendar"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-               >
-                Calendar
-              </a>
-              <a
-                href="/payments"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Payments
-              </a>
-              <a
-                href="/debt"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Credit & Loans
-              </a>
-              <a
-                href="/forecast"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Forecast
-              </a>
-              <a
-                href="/crisis"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Crisis Mode
-              </a>
-              <a
-                href="/income-plan"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Close the Gap
-              </a>
+              <a href="/bills" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Bills</a>
+              <a href="/income" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Income</a>
+              <a href="/spend" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Spending</a>
+              <a href="/calendar" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Calendar</a>
+              <a href="/payments" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Payments</a>
+              <a href="/debt" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit & Loans</a>
+              <a href="/forecast" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Forecast</a>
+              <a href="/crisis" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Crisis Mode</a>
+              <a href="/income-plan" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Close the Gap</a>
             </div>
           </div>
 
@@ -433,7 +590,7 @@ export default function DashboardPage() {
             </div>
           ) : null}
 
-          {!userId && !loading ? (
+          {!userId ? (
             <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
               <div className="font-semibold text-white">You are not logged in.</div>
               <p className="mt-2 text-sm text-zinc-300">
@@ -441,7 +598,7 @@ export default function DashboardPage() {
               </p>
               <div className="mt-4">
                 <a
-                  href="/signup"
+                  href="/signup?mode=login"
                   className="inline-flex rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-black hover:bg-emerald-300"
                 >
                   Go to Signup / Login
@@ -457,65 +614,114 @@ export default function DashboardPage() {
             <StatCard label="Remaining" value={formatUSD(remaining)} />
           </div>
 
-          <div className="mt-8 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-              <h2 className="text-2xl font-black">Today’s Priorities</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                The most important bills and minimums to pay first.
-              </p>
+          <div className="mt-8 grid gap-4 xl:grid-cols-4">
+            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
+              <div className="text-sm text-zinc-500">Financial Stress</div>
+              <div
+                className="mt-2 text-3xl font-black"
+                style={{ color: stress.tone }}
+              >
+                {stress.label}
+              </div>
+              <div className="mt-3 text-sm text-zinc-600">{stress.message}</div>
+            </div>
 
-              <div className="mt-5 grid gap-3">
-                {loading ? (
-                  <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                    Loading priorities...
-                  </div>
-                ) : priorities.length === 0 ? (
-                  <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                    No urgent priorities yet.
-                  </div>
-                ) : (
-                  priorities.map((item, idx) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
-                    >
-                      <div>
-                        <div className="font-semibold">
-                          {idx + 1}. {item.name}
-                        </div>
-                        <div className="text-sm text-zinc-500">
-                          {formatDueLabel(item.dueDate)} · {item.category || item.source}
-                        </div>
-                      </div>
-                      <div className="font-bold">{formatUSD(item.amount)}</div>
+            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
+              <div className="text-sm text-zinc-500">Due next 7 days</div>
+              <div className="mt-2 text-3xl font-black text-zinc-950">
+                {formatUSD(dueSoonTotal)}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
+              <div className="text-sm text-zinc-500">Total debt</div>
+              <div className="mt-2 text-3xl font-black text-zinc-950">
+                {formatUSD(debtSnapshot.balance)}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
+              <div className="text-sm text-zinc-500">Utilization</div>
+              <div className="mt-2 text-3xl font-black text-zinc-950">
+                {debtSnapshot.utilization.toFixed(0)}%
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="grid gap-6">
+              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+                <h2 className="text-2xl font-black">Today’s Priorities</h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  The most important bills and minimums to pay first.
+                </p>
+
+                <div className="mt-5 grid gap-3">
+                  {priorities.length === 0 ? (
+                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                      No urgent priorities yet.
                     </div>
-                  ))
-                )}
+                  ) : (
+                    priorities.map((item, idx) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
+                      >
+                        <div>
+                          <div className="font-semibold">
+                            {idx + 1}. {item.name}
+                          </div>
+                          <div className="text-sm text-zinc-500">
+                            {formatDueLabel(item.dueDate)} ·{" "}
+                            {item.category || item.source}
+                          </div>
+                        </div>
+                        <div className="font-bold">{formatUSD(item.amount)}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+                <h2 className="text-2xl font-black">Upcoming due dates</h2>
+                <div className="mt-4 grid gap-3">
+                  {dueSoon.length === 0 ? (
+                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                      Nothing due in the next 7 days.
+                    </div>
+                  ) : (
+                    dueSoon.map((item, idx) => (
+                      <div
+                        key={`${item.name}-${item.due}-${idx}`}
+                        className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
+                      >
+                        <div>
+                          <div className="font-semibold">{item.name}</div>
+                          <div className="text-sm text-zinc-500">
+                            {item.type} · due {item.due}
+                          </div>
+                        </div>
+                        <div className="font-bold">{formatUSD(item.amount)}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
 
             <div className="grid gap-6">
               <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-xl font-black">Snapshot</h2>
+                <h2 className="text-xl font-black">Ben Insights</h2>
                 <div className="mt-4 grid gap-3">
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
-                    <span className="text-zinc-500">Income</span>
-                    <span className="font-bold">{formatUSD(incomeTotal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
-                    <span className="text-zinc-500">Spending</span>
-                    <span className="font-bold">{formatUSD(spendingTotal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
-                    <span className="text-zinc-500">Debt balance</span>
-                    <span className="font-bold">{formatUSD(debtBalanceTotal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-emerald-50 p-4">
-                    <span className="text-emerald-700">Remaining</span>
-                    <span className="font-bold text-emerald-700">
-                      {formatUSD(remaining)}
-                    </span>
-                  </div>
+                  {insights.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-700"
+                    >
+                      {item}
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -550,7 +756,9 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center justify-between rounded-2xl bg-emerald-50 p-4">
                     <span className="text-emerald-700">Remaining gap</span>
-                    <span className="font-bold text-emerald-700">{formatUSD(remainingGap)}</span>
+                    <span className="font-bold text-emerald-700">
+                      {formatUSD(remainingGap)}
+                    </span>
                   </div>
                 </div>
 
@@ -559,7 +767,45 @@ export default function DashboardPage() {
                     ? "You currently have no weekly gap based on your entries."
                     : remainingGap === 0
                     ? "Your current income plan covers the full gap."
-                    : `You still need ${formatUSD(remainingGap)} to fully cover this week.`}
+                    : `You still need ${formatUSD(
+                        remainingGap
+                      )} to fully cover this week.`}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+                <h2 className="text-xl font-black">Quick actions</h2>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <a
+                    href="/spend"
+                    className="rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
+                  >
+                    Add Spend
+                  </a>
+                  <a
+                    href="/payments"
+                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                  >
+                    Add Payment
+                  </a>
+                  <a
+                    href="/bills"
+                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                  >
+                    Bills
+                  </a>
+                  <a
+                    href="/debt"
+                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                  >
+                    Debt
+                  </a>
+                  <a
+                    href="/calendar"
+                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                  >
+                    Calendar
+                  </a>
                 </div>
               </div>
 
@@ -582,3 +828,4 @@ export default function DashboardPage() {
     </main>
   );
 }
+              
