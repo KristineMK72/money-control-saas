@@ -76,10 +76,6 @@ function endOfWindow(daysFromNow: number) {
   return d;
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function parseDateSafe(dateISO?: string | null) {
   if (!dateISO) return null;
   const d = new Date(`${dateISO}T12:00:00`);
@@ -345,11 +341,6 @@ export default function DashboardPage() {
     [paymentEntries]
   );
 
-  const debtBalanceTotal = useMemo(
-    () => debts.reduce((sum, row) => sum + Number(row.balance || 0), 0),
-    [debts]
-  );
-
   const remaining = incomeTotal - spendingTotal - paymentsTotal;
 
   const priorities = useMemo(() => {
@@ -427,7 +418,7 @@ export default function DashboardPage() {
   const remainingGap = Math.max(0, gapThisWeek - plannedIncome);
 
   const dueSoon = useMemo(() => {
-    const end = endOfWindow(7);
+    const end = endOfWindow(6);
     const rows: { name: string; amount: number; due: string; type: "bill" | "debt" }[] = [];
 
     for (const bill of bills) {
@@ -522,11 +513,17 @@ export default function DashboardPage() {
     if (debtSnapshot.utilization > 50) {
       items.push(`Credit utilization is ${debtSnapshot.utilization.toFixed(0)}%.`);
     } else if (debtSnapshot.utilization > 30) {
-      items.push(`Credit utilization is ${debtSnapshot.utilization.toFixed(0)}%. Still worth watching.`);
+      items.push(
+        `Credit utilization is ${debtSnapshot.utilization.toFixed(
+          0
+        )}%. Still worth watching.`
+      );
     }
 
     if (dueSoon.length > 0) {
-      items.push(`${dueSoon.length} item${dueSoon.length === 1 ? "" : "s"} due in the next 7 days.`);
+      items.push(
+        `${dueSoon.length} item${dueSoon.length === 1 ? "" : "s"} due in the next 7 days.`
+      );
     }
 
     if (remainingGap > 0) {
@@ -545,8 +542,7 @@ export default function DashboardPage() {
 
     return items.slice(0, 4);
   }, [debtSnapshot, dueSoon, gapThisWeek, remainingGap]);
-
-  if (loading) {
+    if (loading) {
     return (
       <main className="min-h-screen bg-black px-6 py-10 text-white">
         Loading dashboard...
@@ -571,18 +567,20 @@ export default function DashboardPage() {
               </p>
             </div>
 
-           <div className="flex flex-wrap gap-3">
-  <a href="/bills" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Bills</a>
-  <a href="/income" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Income</a>
-  <a href="/spend" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Spending</a>
-  <a href="/calendar" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Calendar</a>
-  <a href="/payments" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Payments</a>
-  <a href="/debt" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit & Loans</a>
-  <a href="/credit-health" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit Health</a>
-  <a href="/forecast" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Forecast</a>
-  <a href="/crisis" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Crisis Mode</a>
-  <a href="/income-plan" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Close the Gap</a>
+            <div className="flex flex-wrap gap-3">
+              <a href="/bills" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Bills</a>
+              <a href="/income" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Income</a>
+              <a href="/spend" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Spending</a>
+              <a href="/calendar" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Calendar</a>
+              <a href="/payments" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Payments</a>
+              <a href="/debt" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit & Loans</a>
+              <a href="/credit-health" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit Health</a>
+              <a href="/forecast" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Forecast</a>
+              <a href="/crisis" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Crisis Mode</a>
+              <a href="/income-plan" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Close the Gap</a>
+            </div>
           </div>
+
           {message ? (
             <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
               {message}
@@ -616,10 +614,7 @@ export default function DashboardPage() {
           <div className="mt-8 grid gap-4 xl:grid-cols-4">
             <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
               <div className="text-sm text-zinc-500">Financial Stress</div>
-              <div
-                className="mt-2 text-3xl font-black"
-                style={{ color: stress.tone }}
-              >
+              <div className="mt-2 text-3xl font-black" style={{ color: stress.tone }}>
                 {stress.label}
               </div>
               <div className="mt-3 text-sm text-zinc-600">{stress.message}</div>
@@ -671,8 +666,7 @@ export default function DashboardPage() {
                             {idx + 1}. {item.name}
                           </div>
                           <div className="text-sm text-zinc-500">
-                            {formatDueLabel(item.dueDate)} ·{" "}
-                            {item.category || item.source}
+                            {formatDueLabel(item.dueDate)} · {item.category || item.source}
                           </div>
                         </div>
                         <div className="font-bold">{formatUSD(item.amount)}</div>
@@ -714,10 +708,7 @@ export default function DashboardPage() {
                 <h2 className="text-xl font-black">Ben Insights</h2>
                 <div className="mt-4 grid gap-3">
                   {insights.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-700"
-                    >
+                    <div key={idx} className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-700">
                       {item}
                     </div>
                   ))}
@@ -766,50 +757,27 @@ export default function DashboardPage() {
                     ? "You currently have no weekly gap based on your entries."
                     : remainingGap === 0
                     ? "Your current income plan covers the full gap."
-                    : `You still need ${formatUSD(
-                        remainingGap
-                      )} to fully cover this week.`}
+                    : `You still need ${formatUSD(remainingGap)} to fully cover this week.`}
                 </div>
               </div>
 
               <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
                 <h2 className="text-xl font-black">Quick actions</h2>
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <a
-                    href="/spend"
-                    className="rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
-                  >
+                  <a href="/spend" className="rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black">
                     Add Spend
                   </a>
-                  <a
-                    href="/payments"
-                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
-                  >
+                  <a href="/payments" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100">
                     Add Payment
                   </a>
-                  <a
-                    href="/bills"
-                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
-                  >
+                  <a href="/bills" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100">
                     Bills
                   </a>
-                  <a
-                    href="/debt"
-                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
-                  >
+                  <a href="/debt" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100">
                     Debt
                   </a>
-                  <a
-                    href="/calendar"
-                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
-                  >
+                  <a href="/calendar" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100">
                     Calendar
-                  </a>
-                  <a
-                  href="/credit-health"
-                  className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-                  >
-                  Credit Health
                   </a>
                 </div>
               </div>
@@ -824,13 +792,8 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-
-          {loading ? (
-            <div className="mt-6 text-sm text-zinc-400">Loading dashboard...</div>
-          ) : null}
         </div>
       </div>
     </main>
   );
 }
-              
