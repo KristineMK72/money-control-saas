@@ -578,6 +578,8 @@ export default function DashboardPage() {
               <a href="/forecast" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Forecast</a>
               <a href="/crisis" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Crisis Mode</a>
               <a href="/income-plan" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Close the Gap</a>
+              <a href="/credit-health" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit Health</a>
+              <a href="/dispute-letter" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Dispute Letter</a> 
             </div>
           </div>
 
