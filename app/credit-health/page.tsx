@@ -303,25 +303,31 @@ export default function CreditHealthPage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <a
-                href="/dashboard"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Dashboard
-              </a>
-              <a
-                href="/debt"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Credit & Loans
-              </a>
-              <a
-                href="/calendar"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Calendar
-              </a>
-            </div>
+  <a
+    href="/dashboard"
+    className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+  >
+    Dashboard
+  </a>
+  <a
+    href="/debt"
+    className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+  >
+    Credit & Loans
+  </a>
+  <a
+    href="/goodwill-letter"
+    className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+  >
+    Goodwill Letter
+  </a>
+  <a
+    href="/dispute-letter"
+    className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+  >
+    Dispute Letter
+  </a>
+</div>
           </div>
 
           {message ? (
