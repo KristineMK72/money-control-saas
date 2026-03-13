@@ -806,6 +806,12 @@ export default function DashboardPage() {
                   >
                     Calendar
                   </a>
+                  <a
+                  href="/credit-health"
+                  className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+                  >
+                  Credit Health
+                  </a>
                 </div>
               </div>
 
