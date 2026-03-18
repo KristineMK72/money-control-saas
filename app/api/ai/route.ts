@@ -54,6 +54,29 @@ type BenAction =
       };
       requiresConfirmation?: boolean;
     }
+  | {
+      type: "add_debt";
+      payload: {
+        name: string;
+        balance: number;
+        kind?: string;
+        min_payment?: number;
+        monthly_min_payment?: number;
+        due_date?: string;
+        due_day?: number;
+        is_monthly?: boolean;
+        note?: string;
+      };
+      requiresConfirmation?: boolean;
+    }
+  | {
+      type: "delete_debt";
+      payload: {
+        debt_id?: string;
+        name?: string;
+      };
+      requiresConfirmation?: boolean;
+    }
   | null;
 
 function stripCodeFences(text: string) {
@@ -136,6 +159,8 @@ Instructions:
 - If the user says add a bill, you may return add_bill.
 - If the user says delete/remove a payment, you may return delete_payment.
 - If the user says delete/remove a bill, you may return delete_bill.
+- If the user says add a debt, credit card, loan, or account, you may return add_debt.
+- If the user says delete/remove a debt, credit card, loan, or account, you may return delete_debt.
 - Prefer requiresConfirmation = true for destructive actions or if there is any ambiguity.
 - Never invent IDs.
 - If you do not know an id, return the best identifying fields you do know.
@@ -145,7 +170,7 @@ Return valid JSON only with this exact shape:
 {
   "reply": "string",
   "action": null | {
-    "type": "add_payment" | "add_bill" | "delete_payment" | "delete_bill",
+    "type": "add_payment" | "add_bill" | "delete_payment" | "delete_bill" | "add_debt" | "delete_debt",
     "payload": { ... },
     "requiresConfirmation": true
   }
