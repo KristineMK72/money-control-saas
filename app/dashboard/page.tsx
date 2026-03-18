@@ -15,31 +15,49 @@ type BillRow = {
     | "food"
     | "other"
     | null;
-  target: number;
+  target: number | null;
   due_date: string | null;
   focus: boolean | null;
   kind: "bill" | "credit" | "loan";
   is_monthly: boolean | null;
   monthly_target: number | null;
   due_day: number | null;
+  balance?: number | null;
+  min_payment?: number | null;
 };
 
-type IncomeRow = { id: string; amount: number; date_iso?: string };
-type SpendRow = { id: string; amount: number; date_iso?: string };
-type PaymentRow = { id: string; amount: number; date_iso?: string };
+type IncomeRow = {
+  id: string;
+  amount: number;
+  date_iso?: string | null;
+};
+
+type SpendRow = {
+  id: string;
+  amount: number;
+  date_iso?: string | null;
+};
+
+type PaymentRow = {
+  id: string;
+  amount: number;
+  date_iso?: string | null;
+};
 
 type DebtRow = {
   id: string;
   user_id: string;
+  name: string;
+  kind: "credit" | "loan";
   balance: number;
+  balance_baseline?: number | null;
+  remaining_balance?: number | null;
+  paid_total?: number | null;
   min_payment: number | null;
   monthly_min_payment: number | null;
   due_date: string | null;
   due_day: number | null;
   is_monthly: boolean | null;
-  name: string;
-  kind: "credit" | "loan";
-  credit_limit: number | null;
 };
 
 type SideHustleRow = {
@@ -120,7 +138,13 @@ function effectiveBillDueDate(bill: BillRow) {
 }
 
 function effectiveBillAmount(bill: BillRow) {
-  return Number(bill.monthly_target || bill.target || 0);
+  return Number(
+    bill.min_payment ??
+      bill.monthly_target ??
+      bill.balance ??
+      bill.target ??
+      0
+  );
 }
 
 function effectiveDebtDueDate(debt: DebtRow) {
@@ -131,6 +155,10 @@ function effectiveDebtDueDate(debt: DebtRow) {
 
 function effectiveDebtAmount(debt: DebtRow) {
   return Number(debt.monthly_min_payment || debt.min_payment || 0);
+}
+
+function effectiveDebtBalance(debt: DebtRow) {
+  return Number(debt.remaining_balance ?? debt.balance ?? 0);
 }
 
 function daysUntil(dateISO?: string | null) {
@@ -175,13 +203,7 @@ function formatDueLabel(dateISO?: string | null) {
   return `Due ${dateISO}`;
 }
 
-function StatCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
       <div className="text-sm text-zinc-500">{label}</div>
@@ -266,28 +288,34 @@ export default function DashboardPage() {
           .select("display_name")
           .eq("user_id", user.id)
           .maybeSingle(),
+
         supabase
           .from("bills")
           .select("*")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false }),
+
         supabase
           .from("income_entries")
           .select("id, amount, date_iso")
           .eq("user_id", user.id),
+
         supabase
           .from("spend_entries")
           .select("id, amount, date_iso")
           .eq("user_id", user.id),
+
         supabase
           .from("payments")
           .select("id, amount, date_iso")
           .eq("user_id", user.id),
+
         supabase
-          .from("debts")
+          .from("debt_status")
           .select("*")
           .eq("user_id", user.id)
-          .order("created_at", { ascending: false }),
+          .order("name", { ascending: true }),
+
         supabase
           .from("side_hustles")
           .select("*")
@@ -298,6 +326,7 @@ export default function DashboardPage() {
       if (!mounted) return;
 
       if (profileRes.data?.display_name) setName(profileRes.data.display_name);
+
       if (billsRes.error) setMessage(billsRes.error.message);
       else setBills((billsRes.data || []) as BillRow[]);
 
@@ -460,22 +489,13 @@ export default function DashboardPage() {
   const debtSnapshot = useMemo(() => {
     let balance = 0;
     let mins = 0;
-    let creditBalance = 0;
-    let creditLimit = 0;
 
     for (const debt of debts) {
-      balance += Number(debt.balance || 0);
+      balance += effectiveDebtBalance(debt);
       mins += Number(debt.monthly_min_payment || debt.min_payment || 0);
-
-      if (debt.kind === "credit") {
-        creditBalance += Number(debt.balance || 0);
-        creditLimit += Number(debt.credit_limit || 0);
-      }
     }
 
-    const utilization = creditLimit > 0 ? (creditBalance / creditLimit) * 100 : 0;
-
-    return { balance, mins, utilization };
+    return { balance, mins, utilization: 0 };
   }, [debts]);
 
   const stress = useMemo(() => {
@@ -510,16 +530,6 @@ export default function DashboardPage() {
   const insights = useMemo(() => {
     const items: string[] = [];
 
-    if (debtSnapshot.utilization > 50) {
-      items.push(`Credit utilization is ${debtSnapshot.utilization.toFixed(0)}%.`);
-    } else if (debtSnapshot.utilization > 30) {
-      items.push(
-        `Credit utilization is ${debtSnapshot.utilization.toFixed(
-          0
-        )}%. Still worth watching.`
-      );
-    }
-
     if (dueSoon.length > 0) {
       items.push(
         `${dueSoon.length} item${dueSoon.length === 1 ? "" : "s"} due in the next 7 days.`
@@ -536,13 +546,18 @@ export default function DashboardPage() {
       items.push(`Monthly debt minimums are ${formatUSD(debtSnapshot.mins)}.`);
     }
 
+    if (debtSnapshot.balance > 0) {
+      items.push(`Remaining debt tracked on dashboard is ${formatUSD(debtSnapshot.balance)}.`);
+    }
+
     if (items.length === 0) {
       items.push("No immediate financial fires detected.");
     }
 
     return items.slice(0, 4);
   }, [debtSnapshot, dueSoon, gapThisWeek, remainingGap]);
-    if (loading) {
+
+  if (loading) {
     return (
       <main className="min-h-screen bg-black px-6 py-10 text-white">
         Loading dashboard...
@@ -578,8 +593,7 @@ export default function DashboardPage() {
               <a href="/forecast" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Forecast</a>
               <a href="/crisis" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Crisis Mode</a>
               <a href="/income-plan" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Close the Gap</a>
-              <a href="/credit-health" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit Health</a>
-              <a href="/dispute-letter" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Dispute Letter</a> 
+              <a href="/dispute-letter" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Dispute Letter</a>
               <a href="/credit-recovery" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit Recovery</a>
             </div>
           </div>
