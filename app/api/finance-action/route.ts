@@ -47,6 +47,29 @@ type FinanceActionRequest =
         bill_id?: string;
         name?: string;
       };
+    }
+  | {
+      action: "add_debt";
+      accessToken: string;
+      payload: {
+        name: string;
+        balance: number;
+        kind?: string;
+        min_payment?: number;
+        monthly_min_payment?: number;
+        due_date?: string;
+        due_day?: number;
+        is_monthly?: boolean;
+        note?: string;
+      };
+    }
+  | {
+      action: "delete_debt";
+      accessToken: string;
+      payload: {
+        debt_id?: string;
+        name?: string;
+      };
     };
 
 function getEnv(name: string) {
@@ -212,7 +235,9 @@ async function handleAddBill(
     saved: 0,
     due_date: payload.due_date?.trim() || null,
     due_day:
-      typeof payload.due_day === "number" && payload.due_day >= 1 && payload.due_day <= 31
+      typeof payload.due_day === "number" &&
+      payload.due_day >= 1 &&
+      payload.due_day <= 31
         ? payload.due_day
         : null,
     is_monthly: !!payload.is_monthly,
@@ -351,6 +376,119 @@ async function handleDeleteBill(
   };
 }
 
+async function handleAddDebt(
+  admin: ReturnType<typeof getAdminClient>,
+  userId: string,
+  payload: {
+    name: string;
+    balance: number;
+    kind?: string;
+    min_payment?: number;
+    monthly_min_payment?: number;
+    due_date?: string;
+    due_day?: number;
+    is_monthly?: boolean;
+    note?: string;
+  }
+) {
+  if (!payload.name?.trim()) {
+    throw new Error("name is required");
+  }
+
+  const balance = asNumber(payload.balance);
+  if (balance <= 0) {
+    throw new Error("balance must be greater than 0");
+  }
+
+  const minPayment = asNumber(
+    payload.monthly_min_payment ?? payload.min_payment ?? 0
+  );
+
+  const insertPayload = {
+    user_id: userId,
+    name: payload.name.trim(),
+    kind: payload.kind?.trim() || "credit",
+    balance,
+    min_payment: minPayment || null,
+    due_date: payload.due_date?.trim() || null,
+    is_monthly: !!payload.is_monthly,
+    due_day:
+      typeof payload.due_day === "number" &&
+      payload.due_day >= 1 &&
+      payload.due_day <= 31
+        ? payload.due_day
+        : null,
+    monthly_min_payment: minPayment || null,
+    note: payload.note?.trim() || null,
+  };
+
+  const { data, error } = await admin
+    .from("debts")
+    .insert(insertPayload)
+    .select(
+      "id, name, kind, balance, min_payment, due_date, is_monthly, due_day, monthly_min_payment, note"
+    )
+    .single();
+
+  if (error) throw error;
+
+  return {
+    ok: true,
+    action: "add_debt",
+    record: data,
+  };
+}
+
+async function handleDeleteDebt(
+  admin: ReturnType<typeof getAdminClient>,
+  userId: string,
+  payload: {
+    debt_id?: string;
+    name?: string;
+  }
+) {
+  if (payload.debt_id) {
+    const { data, error } = await admin
+      .from("debts")
+      .delete()
+      .eq("id", payload.debt_id)
+      .eq("user_id", userId)
+      .select("id, name")
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) throw new Error("Debt not found or already deleted.");
+
+    return {
+      ok: true,
+      action: "delete_debt",
+      record: data,
+    };
+  }
+
+  if (!payload.name?.trim()) {
+    throw new Error("delete_debt requires debt_id or name.");
+  }
+
+  const { data, error } = await admin
+    .from("debts")
+    .delete()
+    .eq("user_id", userId)
+    .ilike("name", payload.name.trim())
+    .select("id, name")
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("Debt not found or already deleted.");
+
+  return {
+    ok: true,
+    action: "delete_debt",
+    record: data,
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as FinanceActionRequest;
@@ -386,6 +524,16 @@ export async function POST(req: Request) {
         return NextResponse.json(result);
       }
 
+      case "add_debt": {
+        const result = await handleAddDebt(admin, user.id, body.payload);
+        return NextResponse.json(result);
+      }
+
+      case "delete_debt": {
+        const result = await handleDeleteDebt(admin, user.id, body.payload);
+        return NextResponse.json(result);
+      }
+
       default:
         return NextResponse.json(
           { error: "Unsupported action." },
@@ -397,7 +545,9 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Failed to run finance action.",
+          error instanceof Error
+            ? error.message
+            : "Failed to run finance action.",
       },
       { status: 500 }
     );
