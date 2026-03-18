@@ -68,6 +68,19 @@ type SpendRow = {
   date_iso?: string | null;
 };
 
+type PendingAction =
+  | {
+      type: "add_payment" | "add_bill" | "delete_payment" | "delete_bill";
+      payload: Record<string, unknown>;
+      requiresConfirmation?: boolean;
+    }
+  | null;
+
+type AIResponse = {
+  reply: string;
+  action?: PendingAction;
+};
+
 type NormalizedBill = {
   name: string;
   amount: number;
@@ -156,6 +169,42 @@ function isWithinDays(dateStr?: string, days = 14) {
   return diffDays >= 0 && diffDays <= days;
 }
 
+function formatPendingAction(action: PendingAction) {
+  if (!action) return "";
+  const payload = action.payload ?? {};
+
+  switch (action.type) {
+    case "add_payment":
+      return `Add payment: ${String(payload.merchant ?? "Unknown")} — $${asNumber(
+        payload.amount
+      ).toFixed(2)}${payload.date_iso ? ` on ${String(payload.date_iso)}` : ""}${
+        payload.debt_name ? ` to ${String(payload.debt_name)}` : ""
+      }`;
+
+    case "add_bill":
+      return `Add bill: ${String(payload.name ?? "Unknown")} — $${asNumber(
+        payload.amount
+      ).toFixed(2)}${
+        payload.due_date ? ` due ${String(payload.due_date)}` : ""
+      }${payload.due_day ? ` due day ${String(payload.due_day)}` : ""}`;
+
+    case "delete_payment":
+      return `Delete payment${
+        payload.payment_id ? ` ${String(payload.payment_id)}` : ""
+      }${
+        payload.merchant ? ` (${String(payload.merchant)})` : ""
+      }${payload.amount ? ` for $${asNumber(payload.amount).toFixed(2)}` : ""}`;
+
+    case "delete_bill":
+      return `Delete bill${
+        payload.bill_id ? ` ${String(payload.bill_id)}` : ""
+      }${payload.name ? ` (${String(payload.name)})` : ""}`;
+
+    default:
+      return JSON.stringify(action, null, 2);
+  }
+}
+
 export default function ChatPage() {
   const supabase = createSupabaseBrowserClient();
 
@@ -169,10 +218,12 @@ export default function ChatPage() {
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [stressScore, setStressScore] = useState<number | null>(null);
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [financialSummary, setFinancialSummary] = useState<string>("");
   const [dataReady, setDataReady] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
 
   function stressLabel(score: number | null) {
     if (score === null) return "Loading";
@@ -508,13 +559,79 @@ ${
       }),
     });
 
+    const data = (await res.json()) as AIResponse | { error?: string };
+
+    if (!res.ok) {
+      throw new Error((data as { error?: string }).error || "Request failed");
+    }
+
+    return data as AIResponse;
+  }
+
+  async function runFinanceAction(action: NonNullable<PendingAction>) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error("No session found.");
+    }
+
+    const res = await fetch("/api/finance-action", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: action.type,
+        payload: action.payload,
+        accessToken: session.access_token,
+      }),
+    });
+
     const data = await res.json();
 
     if (!res.ok) {
-      throw new Error(data.error || "Request failed");
+      throw new Error(data.error || "Finance action failed.");
     }
 
+    await loadFinancialContext();
     return data;
+  }
+
+  async function confirmPendingAction() {
+    if (!pendingAction) return;
+
+    try {
+      setActionLoading(true);
+
+      await runFinanceAction(pendingAction);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Done — I updated your finances successfully.",
+        },
+      ]);
+
+      setPendingAction(null);
+    } catch (error: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            error?.message || "Sorry, I couldn't apply that finance update.",
+        },
+      ]);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  function cancelPendingAction() {
+    setPendingAction(null);
   }
 
   async function sendMessage(customText?: string) {
@@ -542,6 +659,7 @@ ${
         },
       ]);
 
+      setPendingAction(data.action ?? null);
       await loadFinancialContext();
     } catch {
       setMessages([
@@ -584,6 +702,8 @@ ${
             content: data.reply || "I couldn’t load your 7-day outlook yet.",
           },
         ]);
+
+        setPendingAction(data.action ?? null);
       } catch {
         if (cancelled) return;
 
@@ -673,7 +793,7 @@ ${
           <button
             type="button"
             style={styles.quickBtn}
-            onClick={() => sendMessage("What should I pay first?")}
+            onClick={() => void sendMessage("What should I pay first?")}
             disabled={loading || !dataReady}
           >
             What should I pay first?
@@ -682,7 +802,7 @@ ${
           <button
             type="button"
             style={styles.quickBtn}
-            onClick={() => sendMessage("Give me a 7-day survival plan.")}
+            onClick={() => void sendMessage("Give me a 7-day survival plan.")}
             disabled={loading || !dataReady}
           >
             7-day survival plan
@@ -692,7 +812,7 @@ ${
             type="button"
             style={styles.quickBtn}
             onClick={() =>
-              sendMessage("How much do I need to earn per day this week?")
+              void sendMessage("How much do I need to earn per day this week?")
             }
             disabled={loading || !dataReady}
           >
@@ -724,6 +844,94 @@ ${
           )}
         </div>
 
+        {pendingAction && (
+          <div
+            style={{
+              border: "1px solid #d6d3d1",
+              borderRadius: 16,
+              padding: 14,
+              background: "#fff7ed",
+              marginBottom: 14,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                textTransform: "uppercase",
+                letterSpacing: 0.8,
+                color: "#9a3412",
+                marginBottom: 8,
+              }}
+            >
+              Pending finance action
+            </div>
+
+            <div
+              style={{
+                fontSize: 14,
+                color: "#431407",
+                marginBottom: 8,
+                whiteSpace: "pre-wrap",
+                fontWeight: 600,
+              }}
+            >
+              {formatPendingAction(pendingAction)}
+            </div>
+
+            <pre
+              style={{
+                fontSize: 12,
+                color: "#7c2d12",
+                marginBottom: 12,
+                whiteSpace: "pre-wrap",
+                background: "rgba(255,255,255,0.65)",
+                borderRadius: 10,
+                padding: 10,
+                overflowX: "auto",
+              }}
+            >
+              {JSON.stringify(pendingAction, null, 2)}
+            </pre>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => void confirmPendingAction()}
+                disabled={actionLoading}
+                style={{
+                  border: "none",
+                  borderRadius: 12,
+                  padding: "10px 14px",
+                  background: "#111827",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                {actionLoading ? "Applying..." : "Confirm and apply"}
+              </button>
+
+              <button
+                type="button"
+                onClick={cancelPendingAction}
+                disabled={actionLoading}
+                style={{
+                  border: "1px solid #d6d3d1",
+                  borderRadius: 12,
+                  padding: "10px 14px",
+                  background: "#fff",
+                  color: "#1c1917",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         <div style={styles.inputRow}>
           <input
             value={input}
@@ -733,14 +941,14 @@ ${
                 void sendMessage();
               }
             }}
-            placeholder="Ask what to pay first, your 7-day risk, or your daily target..."
+            placeholder="Ask what to pay first, your 7-day risk, or tell Ben what you paid..."
             style={styles.input}
-            disabled={loading || !dataReady}
+            disabled={loading || !dataReady || actionLoading}
           />
           <button
             type="button"
             onClick={() => void sendMessage()}
-            disabled={loading || !dataReady}
+            disabled={loading || !dataReady || actionLoading}
             style={styles.button}
           >
             Send
