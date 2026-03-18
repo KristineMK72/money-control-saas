@@ -14,6 +14,7 @@ type SummaryData = {
 };
 
 type BillRow = {
+  id?: string;
   name: string;
   kind?: string | null;
   category?: string | null;
@@ -31,6 +32,7 @@ type BillRow = {
 };
 
 type DebtStatusRow = {
+  id?: string;
   name: string;
   kind?: string | null;
   balance?: number | string | null;
@@ -51,9 +53,12 @@ type IncomeRow = {
 };
 
 type PaymentRow = {
+  id?: string;
   merchant?: string | null;
   amount?: number | string | null;
   date_iso?: string | null;
+  debt_id?: string | null;
+  note?: string | null;
 };
 
 type SpendRow = {
@@ -61,6 +66,29 @@ type SpendRow = {
   amount?: number | string | null;
   category?: string | null;
   date_iso?: string | null;
+};
+
+type NormalizedBill = {
+  name: string;
+  amount: number;
+  dueDate?: string;
+  kind?: string;
+  essential: boolean;
+  effectiveDueDate?: string;
+  focus: boolean;
+  saved: number;
+};
+
+type NormalizedDebt = {
+  name: string;
+  kind: string;
+  remainingBalance: number;
+  baselineBalance: number;
+  minimumPayment: number;
+  paidTotal: number;
+  effectiveDueDate?: string;
+  isMonthly: boolean;
+  dueDay: number | null;
 };
 
 function asNumber(value: unknown): number {
@@ -76,7 +104,11 @@ function toIsoDate(date: Date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
-function resolveDueDate(dueDate?: string | null, dueDay?: number | null, isMonthly?: boolean | null) {
+function resolveDueDate(
+  dueDate?: string | null,
+  dueDay?: number | null,
+  isMonthly?: boolean | null
+) {
   if (dueDate) return dueDate;
   if (!isMonthly || !dueDay || dueDay < 1 || dueDay > 31) return undefined;
 
@@ -101,6 +133,27 @@ function resolveDueDate(dueDate?: string | null, dueDay?: number | null, isMonth
   const nextMonthDay = Math.min(dueDay, daysInNextMonth);
 
   return toIsoDate(new Date(nextYear, nextMonth, nextMonthDay));
+}
+
+function sortByDateAsc<T extends { effectiveDueDate?: string }>(rows: T[]) {
+  return [...rows].sort((a, b) => {
+    const aTime = a.effectiveDueDate
+      ? new Date(a.effectiveDueDate + "T12:00:00").getTime()
+      : Number.POSITIVE_INFINITY;
+    const bTime = b.effectiveDueDate
+      ? new Date(b.effectiveDueDate + "T12:00:00").getTime()
+      : Number.POSITIVE_INFINITY;
+    return aTime - bTime;
+  });
+}
+
+function isWithinDays(dateStr?: string, days = 14) {
+  if (!dateStr) return false;
+  const today = new Date();
+  const target = new Date(dateStr + "T12:00:00");
+  const diffMs = target.getTime() - today.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  return diffDays >= 0 && diffDays <= days;
 }
 
 export default function ChatPage() {
@@ -130,43 +183,34 @@ export default function ChatPage() {
     return "Critical";
   }
 
-  useEffect(() => {
-    let mounted = true;
+  async function loadFinancialContext() {
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    async function loadFinancialContext() {
-      try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
+      if (userError || !user) {
+        setFinancialSummary("No signed-in user found.");
+        setDataReady(true);
+        return;
+      }
 
-        if (userError || !user) {
-          if (!mounted) return;
-          setFinancialSummary("No signed-in user found.");
-          setDataReady(true);
-          return;
-        }
+      const userId = user.id;
 
-        const userId = user.id;
-
-        const [
-          billsRes,
-          debtsRes,
-          incomeRes,
-          paymentsRes,
-          spendRes,
-        ] = await Promise.all([
+      const [billsRes, debtsRes, incomeRes, paymentsRes, spendRes] =
+        await Promise.all([
           supabase
             .from("bills")
             .select(
-              "name, kind, category, target, saved, due_date, due, priority, focus, balance, min_payment, is_monthly, monthly_target, due_day"
+              "id, name, kind, category, target, saved, due_date, due, priority, focus, balance, min_payment, is_monthly, monthly_target, due_day"
             )
             .eq("user_id", userId),
 
           supabase
             .from("debt_status")
             .select(
-              "name, kind, balance, balance_baseline, remaining_balance, min_payment, due_date, monthly_min_payment, is_monthly, due_day, paid_total"
+              "id, name, kind, balance, balance_baseline, remaining_balance, min_payment, due_date, monthly_min_payment, is_monthly, due_day, paid_total"
             )
             .eq("user_id", userId),
 
@@ -178,10 +222,10 @@ export default function ChatPage() {
 
           supabase
             .from("payments")
-            .select("merchant, amount, date_iso")
+            .select("id, merchant, amount, date_iso, debt_id, note")
             .eq("user_id", userId)
             .order("date_iso", { ascending: false })
-            .limit(10),
+            .limit(20),
 
           supabase
             .from("spend_entries")
@@ -191,134 +235,219 @@ export default function ChatPage() {
             .limit(10),
         ]);
 
-        const bills = (billsRes.data ?? []) as BillRow[];
-        const debts = (debtsRes.data ?? []) as DebtStatusRow[];
-        const incomeEntries = (incomeRes.data ?? []) as IncomeRow[];
-        const payments = (paymentsRes.data ?? []) as PaymentRow[];
-        const spendEntries = (spendRes.data ?? []) as SpendRow[];
+      const bills = (billsRes.data ?? []) as BillRow[];
+      const debts = (debtsRes.data ?? []) as DebtStatusRow[];
+      const incomeEntries = (incomeRes.data ?? []) as IncomeRow[];
+      const payments = (paymentsRes.data ?? []) as PaymentRow[];
+      const spendEntries = (spendRes.data ?? []) as SpendRow[];
 
-        const availableCash = bills.reduce((sum, b) => sum + asNumber(b.saved), 0);
+      const availableCash = bills.reduce(
+        (sum, b) => sum + asNumber(b.saved),
+        0
+      );
 
-        const mappedBills = [
-          ...bills.map((b) => ({
-            name: b.name,
-            amount:
-              asNumber(
-                b.min_payment ??
-                  b.monthly_target ??
-                  b.balance ??
-                  b.target ??
-                  0
-              ) || 0,
-            dueDate: resolveDueDate(b.due_date, b.due_day, b.is_monthly),
-            kind: b.kind ?? b.category ?? undefined,
-            essential: [
-              "power",
-              "utility",
-              "insurance",
-              "rent",
-              "housing",
-              "phone",
-              "internet",
-              "electric",
-              "gas",
-              "water",
-            ].some((word) =>
-              `${b.name || ""} ${b.category || ""}`.toLowerCase().includes(word)
-            ),
-          })),
+      const normalizedBills: NormalizedBill[] = bills.map((b) => {
+        const effectiveDueDate = resolveDueDate(
+          b.due_date,
+          b.due_day,
+          b.is_monthly
+        );
 
-          ...debts.map((d) => ({
-            name: d.name,
-            amount:
-              asNumber(
-                d.monthly_min_payment ??
-                  d.min_payment ??
-                  d.remaining_balance ??
-                  d.balance ??
-                  0
-              ) || 0,
-            dueDate: resolveDueDate(d.due_date, d.due_day, d.is_monthly),
-            kind: d.kind ?? "debt",
-            essential: d.kind === "loan",
-          })),
-        ];
+        const amount = asNumber(
+          b.min_payment ?? b.monthly_target ?? b.balance ?? b.target ?? 0
+        );
 
-        const mappedIncome = incomeEntries.map((i) => ({
-          name: i.source_name || "Income",
-          amount: asNumber(i.amount),
-          expectedDate: i.date_iso ?? undefined,
+        const essential = [
+          "power",
+          "utility",
+          "insurance",
+          "rent",
+          "housing",
+          "phone",
+          "internet",
+          "electric",
+          "gas",
+          "water",
+        ].some((word) =>
+          `${b.name || ""} ${b.category || ""}`.toLowerCase().includes(word)
+        );
+
+        return {
+          name: b.name,
+          amount,
+          dueDate: effectiveDueDate,
+          kind: (b.kind ?? b.category ?? undefined) || undefined,
+          essential,
+          effectiveDueDate,
+          focus: !!b.focus,
+          saved: asNumber(b.saved),
+        };
+      });
+
+      const normalizedDebts: NormalizedDebt[] = debts.map((d) => {
+        const effectiveDueDate = resolveDueDate(
+          d.due_date,
+          d.due_day,
+          d.is_monthly
+        );
+
+        return {
+          name: d.name,
+          kind: d.kind ?? "debt",
+          remainingBalance: asNumber(d.remaining_balance ?? d.balance),
+          baselineBalance: asNumber(d.balance_baseline),
+          minimumPayment: asNumber(d.monthly_min_payment ?? d.min_payment),
+          paidTotal: asNumber(d.paid_total),
+          effectiveDueDate,
+          isMonthly: !!d.is_monthly,
+          dueDay: d.due_day ?? null,
+        };
+      });
+
+      const mappedBills = [
+        ...normalizedBills.map((b) => ({
+          name: b.name,
+          amount: b.amount,
+          dueDate: b.effectiveDueDate,
+          kind: b.kind,
+          essential: b.essential,
+        })),
+
+        ...normalizedDebts.map((d) => ({
+          name: d.name,
+          amount: d.minimumPayment || d.remainingBalance,
+          dueDate: d.effectiveDueDate,
+          kind: d.kind,
+          essential: d.kind === "loan",
+        })),
+      ];
+
+      const mappedIncome = incomeEntries.map((i) => ({
+        name: i.source_name || "Income",
+        amount: asNumber(i.amount),
+        expectedDate: i.date_iso ?? undefined,
+      }));
+
+      const mappedBuckets = normalizedBills
+        .filter((b) => b.focus || b.saved > 0)
+        .map((b) => ({
+          name: b.name,
+          saved: b.saved,
+          focus: b.focus,
         }));
 
-        const mappedBuckets = bills
-          .filter((b) => !!b.focus || asNumber(b.saved) > 0)
-          .map((b) => ({
-            name: b.name,
-            saved: asNumber(b.saved),
-            focus: !!b.focus,
-          }));
+      const snapshot = buildFinancialSnapshot({
+        availableCash,
+        bills: mappedBills,
+        expectedIncome: mappedIncome,
+        buckets: mappedBuckets,
+      });
 
-        const snapshot = buildFinancialSnapshot({
-          availableCash,
-          bills: mappedBills,
-          expectedIncome: mappedIncome,
-          buckets: mappedBuckets,
-        });
+      const upcomingBills = sortByDateAsc(
+        normalizedBills.filter((b) => isWithinDays(b.effectiveDueDate, 14))
+      );
 
-        const debtStatusLines = debts.map((d) => {
-          const remaining = asNumber(d.remaining_balance ?? d.balance);
-          const baseline = asNumber(d.balance_baseline);
-          const minimum = asNumber(d.monthly_min_payment ?? d.min_payment);
-          const paid = asNumber(d.paid_total);
-          const effectiveDueDate = resolveDueDate(d.due_date, d.due_day, d.is_monthly);
+      const upcomingDebts = sortByDateAsc(
+        normalizedDebts.filter((d) => isWithinDays(d.effectiveDueDate, 14))
+      );
 
-          return `- ${d.name}: remaining balance $${remaining.toFixed(2)}${
-            baseline ? `, baseline $${baseline.toFixed(2)}` : ""
-          }${minimum ? `, minimum $${minimum.toFixed(2)}` : ""}${
-            paid ? `, paid so far $${paid.toFixed(2)}` : ""
-          }${
-            effectiveDueDate
-              ? `, due ${effectiveDueDate}`
-              : d.due_day
-              ? `, due day ${d.due_day}`
-              : ""
-          }${d.kind ? `, kind ${d.kind}` : ""}`;
-        });
+      const recentlyPaidDebts = normalizedDebts.filter((d) => d.paidTotal > 0);
 
-        const billLines = bills.map((b) => {
-          const amount = asNumber(
-            b.min_payment ?? b.monthly_target ?? b.balance ?? b.target ?? 0
-          );
-          const effectiveDueDate = resolveDueDate(b.due_date, b.due_day, b.is_monthly);
+      const billLines = normalizedBills.map((b) => {
+        return `- ${b.name}: $${b.amount.toFixed(2)}${
+          b.effectiveDueDate ? `, due ${b.effectiveDueDate}` : ""
+        }${b.kind ? `, kind ${b.kind}` : ""}${b.focus ? ", focus bucket" : ""}${
+          b.essential ? ", essential" : ""
+        }`;
+      });
 
-          return `- ${b.name}: $${amount.toFixed(2)}${
-            effectiveDueDate ? `, due ${effectiveDueDate}` : ""
-          }${b.kind ? `, kind ${b.kind}` : b.category ? `, category ${b.category}` : ""}${
-            b.focus ? ", focus bucket" : ""
-          }`;
-        });
+      const debtStatusLines = normalizedDebts.map((d) => {
+        return `- ${d.name}: remaining balance $${d.remainingBalance.toFixed(
+          2
+        )}, minimum $${d.minimumPayment.toFixed(2)}${
+          d.paidTotal > 0 ? `, paid so far $${d.paidTotal.toFixed(2)}` : ""
+        }${
+          d.effectiveDueDate
+            ? `, due ${d.effectiveDueDate}`
+            : d.dueDay
+            ? `, due day ${d.dueDay}`
+            : ""
+        }, kind ${d.kind}`;
+      });
 
-        const recentPaymentsSummary = payments.map(
-          (p) =>
-            `- ${p.merchant || "Payment"}: $${asNumber(p.amount).toFixed(2)} on ${p.date_iso || "unknown date"}`
-        );
+      const upcomingBillLines = upcomingBills.map((b) => {
+        return `- ${b.name}: $${b.amount.toFixed(2)}${
+          b.effectiveDueDate ? `, due ${b.effectiveDueDate}` : ""
+        }${b.essential ? ", essential" : ""}`;
+      });
 
-        const recentSpendingSummary = spendEntries.map(
-          (s) =>
-            `- ${s.merchant || "Spend"}: $${asNumber(s.amount).toFixed(2)}${
-              s.category ? ` (${s.category})` : ""
-            } on ${s.date_iso || "unknown date"}`
-        );
+      const upcomingDebtLines = upcomingDebts.map((d) => {
+        return `- ${d.name}: minimum $${d.minimumPayment.toFixed(
+          2
+        )}, remaining balance $${d.remainingBalance.toFixed(2)}, due ${
+          d.effectiveDueDate
+        }`;
+      });
 
-        const incomeLines = mappedIncome.map(
-          (i) =>
-            `- ${i.name}: $${asNumber(i.amount).toFixed(2)}${
-              i.expectedDate ? ` expected ${i.expectedDate}` : ""
-            }`
-        );
+      const recentlyPaidDebtLines = recentlyPaidDebts.map((d) => {
+        return `- ${d.name}: paid $${d.paidTotal.toFixed(
+          2
+        )}, remaining balance $${d.remainingBalance.toFixed(2)}${
+          d.effectiveDueDate ? `, due ${d.effectiveDueDate}` : ""
+        }`;
+      });
 
-        const fullSummary = `
+      const incomeLines = mappedIncome.map(
+        (i) =>
+          `- ${i.name}: $${asNumber(i.amount).toFixed(2)}${
+            i.expectedDate ? ` expected ${i.expectedDate}` : ""
+          }`
+      );
+
+      const recentPaymentsSummary = payments.map(
+        (p) =>
+          `- ${p.merchant || "Payment"}: $${asNumber(p.amount).toFixed(2)} on ${
+            p.date_iso || "unknown date"
+          }${p.note ? ` (${p.note})` : ""}`
+      );
+
+      const recentSpendingSummary = spendEntries.map(
+        (s) =>
+          `- ${s.merchant || "Spend"}: $${asNumber(s.amount).toFixed(2)}${
+            s.category ? ` (${s.category})` : ""
+          } on ${s.date_iso || "unknown date"}`
+      );
+
+      const fullSummary = `
 ${snapshot.summaryText}
+
+Important Instructions For Ben:
+- Use Debt Status as the truth for debt and credit balances.
+- If a debt shows "paid so far", mention that payment has already been applied.
+- Distinguish between remaining balance and minimum payment due.
+- Call out upcoming items due within 14 days first.
+- Include credit cards and loans together unless the user asks to separate them.
+
+Upcoming Bills In Next 14 Days:
+${
+  upcomingBillLines.length
+    ? upcomingBillLines.join("\n")
+    : "- No upcoming bill records found."
+}
+
+Upcoming Debt And Credit Payments In Next 14 Days:
+${
+  upcomingDebtLines.length
+    ? upcomingDebtLines.join("\n")
+    : "- No upcoming debt or credit payments found."
+}
+
+Recently Applied Debt Payments:
+${
+  recentlyPaidDebtLines.length
+    ? recentlyPaidDebtLines.join("\n")
+    : "- No recently applied debt payments found."
+}
 
 Bill Records:
 ${billLines.length ? billLines.join("\n") : "- No bill records found."}
@@ -330,38 +459,40 @@ Expected Income:
 ${incomeLines.length ? incomeLines.join("\n") : "- No expected income found."}
 
 Recent Payments:
-${recentPaymentsSummary.length ? recentPaymentsSummary.join("\n") : "- No recent payments found."}
+${
+  recentPaymentsSummary.length
+    ? recentPaymentsSummary.join("\n")
+    : "- No recent payments found."
+}
 
 Recent Spending:
-${recentSpendingSummary.length ? recentSpendingSummary.join("\n") : "- No recent spending found."}
+${
+  recentSpendingSummary.length
+    ? recentSpendingSummary.join("\n")
+    : "- No recent spending found."
+}
 `.trim();
 
-        if (!mounted) return;
-
-        setStressScore(snapshot.stressScore);
-        setSummary({
-          next7BillsTotal: snapshot.next7BillsTotal,
-          next14BillsTotal: snapshot.next14BillsTotal,
-          next7IncomeTotal: snapshot.next7IncomeTotal,
-          shortfall7: snapshot.shortfall7,
-          availableCash,
-        });
-        setFinancialSummary(fullSummary);
-        setDataReady(true);
-      } catch (error) {
-        console.error("Failed to load financial context:", error);
-        if (!mounted) return;
-        setFinancialSummary("Failed to load financial context.");
-        setDataReady(true);
-      }
+      setStressScore(snapshot.stressScore);
+      setSummary({
+        next7BillsTotal: snapshot.next7BillsTotal,
+        next14BillsTotal: snapshot.next14BillsTotal,
+        next7IncomeTotal: snapshot.next7IncomeTotal,
+        shortfall7: snapshot.shortfall7,
+        availableCash,
+      });
+      setFinancialSummary(fullSummary);
+      setDataReady(true);
+    } catch (error) {
+      console.error("Failed to load financial context:", error);
+      setFinancialSummary("Failed to load financial context.");
+      setDataReady(true);
     }
+  }
 
-    loadFinancialContext();
-
-    return () => {
-      mounted = false;
-    };
-  }, [supabase]);
+  useEffect(() => {
+    void loadFinancialContext();
+  }, []);
 
   async function sendToAI(nextMessages: ChatMessage[]) {
     const res = await fetch("/api/ai", {
@@ -410,6 +541,8 @@ ${recentSpendingSummary.length ? recentSpendingSummary.join("\n") : "- No recent
           content: data.reply || "Sorry, I couldn’t generate a response.",
         },
       ]);
+
+      await loadFinancialContext();
     } catch {
       setMessages([
         ...nextMessages,
@@ -437,7 +570,7 @@ ${recentSpendingSummary.length ? recentSpendingSummary.join("\n") : "- No recent
           {
             role: "user",
             content:
-              "Give me my 7-day outlook, stress level, what I should focus on first, and call out any important debt or credit payments coming up.",
+              "Give me my 7-day outlook, stress level, what I should focus on first, explicitly mention any debt payments already applied, and list upcoming debt or credit payments due soon by date.",
           },
         ];
 
@@ -466,7 +599,7 @@ ${recentSpendingSummary.length ? recentSpendingSummary.join("\n") : "- No recent
       }
     }
 
-    loadInitialOutlook();
+    void loadInitialOutlook();
 
     return () => {
       cancelled = true;
@@ -481,7 +614,8 @@ ${recentSpendingSummary.length ? recentSpendingSummary.join("\n") : "- No recent
             <div style={styles.eyebrow}>Ask Ben</div>
             <h1 style={styles.title}>Money AI Assistant</h1>
             <p style={styles.subtitle}>
-              Ask Ben about bills, weekly funding, daily targets, or what to prioritize.
+              Ask Ben about bills, weekly funding, daily targets, or what to
+              prioritize.
             </p>
           </div>
         </div>
@@ -596,7 +730,7 @@ ${recentSpendingSummary.length ? recentSpendingSummary.join("\n") : "- No recent
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                sendMessage();
+                void sendMessage();
               }
             }}
             placeholder="Ask what to pay first, your 7-day risk, or your daily target..."
@@ -605,7 +739,7 @@ ${recentSpendingSummary.length ? recentSpendingSummary.join("\n") : "- No recent
           />
           <button
             type="button"
-            onClick={() => sendMessage()}
+            onClick={() => void sendMessage()}
             disabled={loading || !dataReady}
             style={styles.button}
           >
