@@ -21,6 +21,10 @@ type DebtRow = {
   created_at: string;
 };
 
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function getNextDueDateFromDay(dueDay?: number | null) {
   if (!dueDay || dueDay < 1 || dueDay > 31) return null;
 
@@ -172,6 +176,12 @@ export default function DebtPage() {
   const [ocrText, setOcrText] = useState("");
   const [ocrError, setOcrError] = useState("");
 
+  const [payingDebtId, setPayingDebtId] = useState<string | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [payDate, setPayDate] = useState(todayISO());
+  const [payNote, setPayNote] = useState("");
+  const [paySaving, setPaySaving] = useState(false);
+
   function resetForm() {
     setEditingId(null);
     setName("");
@@ -188,6 +198,13 @@ export default function DebtPage() {
     setImageFile(null);
     setOcrText("");
     setOcrError("");
+  }
+
+  function resetPayForm() {
+    setPayingDebtId(null);
+    setPayAmount("");
+    setPayDate(todayISO());
+    setPayNote("");
   }
 
   function loadDebtIntoForm(debt: DebtRow) {
@@ -222,6 +239,20 @@ export default function DebtPage() {
         : ""
     );
     setMessage("Editing debt account.");
+  }
+
+  function startPayDebt(debt: DebtRow) {
+    setPayingDebtId(debt.id);
+    setPayAmount(
+      debt.monthly_min_payment != null
+        ? String(debt.monthly_min_payment)
+        : debt.min_payment != null
+        ? String(debt.min_payment)
+        : ""
+    );
+    setPayDate(todayISO());
+    setPayNote("");
+    setMessage(`Recording payment for ${debt.name}.`);
   }
 
   async function refreshDebts(currentUserId: string) {
@@ -368,8 +399,48 @@ export default function DebtPage() {
       resetForm();
     }
 
+    if (payingDebtId === id) {
+      resetPayForm();
+    }
+
     setDebts((prev) => prev.filter((debt) => debt.id !== id));
     setMessage("Debt account deleted.");
+  }
+
+  async function handlePayDebt(debt: DebtRow) {
+    setMessage("");
+
+    if (!userId) {
+      setMessage("You need to be logged in.");
+      return;
+    }
+
+    const amt = Number(payAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setMessage("Enter a valid payment amount.");
+      return;
+    }
+
+    setPaySaving(true);
+
+    const { error } = await supabase.from("payments").insert({
+      user_id: userId,
+      merchant: debt.name,
+      amount: amt,
+      date_iso: payDate || todayISO(),
+      debt_id: debt.id,
+      note: payNote.trim() || null,
+    });
+
+    if (error) {
+      setMessage(error.message);
+      setPaySaving(false);
+      return;
+    }
+
+    resetPayForm();
+    setMessage(`Payment recorded for ${debt.name}.`);
+    setPaySaving(false);
   }
 
   async function handleExtractDebt() {
@@ -435,7 +506,8 @@ export default function DebtPage() {
     "#e11d48",
     "#71717a",
   ];
-    return (
+
+  return (
     <main className="min-h-screen bg-zinc-50 text-zinc-900">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -714,46 +786,97 @@ export default function DebtPage() {
               debts.map((debt) => {
                 const nextDue =
                   debt.due_date || getNextDueDateFromDay(debt.due_day);
+                const isPaying = payingDebtId === debt.id;
 
                 return (
-                  <div
-                    key={debt.id}
-                    className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
-                  >
-                    <div>
-                      <div className="font-semibold">{debt.name}</div>
-                      <div className="text-sm text-zinc-500">
-                        {debt.kind} · Balance $
-                        {Number(debt.balance).toFixed(2)}
-                        {debt.monthly_min_payment != null
-                          ? ` · Monthly Min $${Number(
-                              debt.monthly_min_payment
-                            ).toFixed(2)}`
-                          : debt.min_payment != null
-                          ? ` · Min $${Number(debt.min_payment).toFixed(2)}`
-                          : ""}
-                        {nextDue ? ` · Next Due ${nextDue}` : ""}
-                        {debt.apr != null
-                          ? ` · APR ${Number(debt.apr).toFixed(2)}%`
-                          : ""}
+                  <div key={debt.id} className="rounded-2xl bg-zinc-50 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <div className="font-semibold">{debt.name}</div>
+                        <div className="text-sm text-zinc-500">
+                          {debt.kind} · Balance ${Number(debt.balance).toFixed(2)}
+                          {debt.monthly_min_payment != null
+                            ? ` · Monthly Min $${Number(
+                                debt.monthly_min_payment
+                              ).toFixed(2)}`
+                            : debt.min_payment != null
+                            ? ` · Min $${Number(debt.min_payment).toFixed(2)}`
+                            : ""}
+                          {nextDue ? ` · Next Due ${nextDue}` : ""}
+                          {debt.apr != null
+                            ? ` · APR ${Number(debt.apr).toFixed(2)}%`
+                            : ""}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => startPayDebt(debt)}
+                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                        >
+                          Pay
+                        </button>
+
+                        <button
+                          onClick={() => loadDebtIntoForm(debt)}
+                          className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteDebt(debt.id)}
+                          className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => loadDebtIntoForm(debt)}
-                        className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
-                      >
-                        Edit
-                      </button>
+                    {isPaying ? (
+                      <div className="mt-4 grid gap-3 rounded-2xl border border-emerald-200 bg-white p-4 md:grid-cols-4">
+                        <input
+                          placeholder="Payment amount"
+                          type="number"
+                          inputMode="decimal"
+                          value={payAmount}
+                          onChange={(e) => setPayAmount(e.target.value)}
+                          className="rounded-xl border border-zinc-200 px-4 py-3"
+                        />
 
-                      <button
-                        onClick={() => handleDeleteDebt(debt.id)}
-                        className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                        <input
+                          type="date"
+                          value={payDate}
+                          onChange={(e) => setPayDate(e.target.value)}
+                          className="rounded-xl border border-zinc-200 px-4 py-3"
+                        />
+
+                        <input
+                          placeholder="Note (optional)"
+                          value={payNote}
+                          onChange={(e) => setPayNote(e.target.value)}
+                          className="rounded-xl border border-zinc-200 px-4 py-3 md:col-span-2"
+                        />
+
+                        <div className="md:col-span-4 flex flex-wrap gap-2">
+                          <button
+                            onClick={() => handlePayDebt(debt)}
+                            disabled={paySaving}
+                            className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                          >
+                            {paySaving ? "Recording..." : "Record Payment"}
+                          </button>
+
+                          <button
+                            onClick={resetPayForm}
+                            disabled={paySaving}
+                            className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })
