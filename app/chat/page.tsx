@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { ChatMessage } from "@/lib/ai/types";
 import { buildFinancialSnapshot } from "@/lib/ai/finance";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -35,15 +35,14 @@ type DebtStatusRow = {
   id?: string;
   name: string;
   kind?: string | null;
-  balance?: number | string | null;
-  balance_baseline?: number | string | null;
+  original_balance?: number | string | null;
   remaining_balance?: number | string | null;
   min_payment?: number | string | null;
   due_date?: string | null;
   monthly_min_payment?: number | string | null;
   is_monthly?: boolean | null;
   due_day?: number | null;
-  paid_total?: number | string | null;
+  total_paid?: number | string | null;
 };
 
 type IncomeRow = {
@@ -70,7 +69,13 @@ type SpendRow = {
 
 type PendingAction =
   | {
-      type: "add_payment" | "add_bill" | "delete_payment" | "delete_bill";
+      type:
+        | "add_payment"
+        | "add_bill"
+        | "delete_payment"
+        | "delete_bill"
+        | "add_debt"
+        | "delete_debt";
       payload: Record<string, unknown>;
       requiresConfirmation?: boolean;
     }
@@ -114,7 +119,9 @@ function pad2(n: number) {
 }
 
 function toIsoDate(date: Date) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+    date.getDate()
+  )}`;
 }
 
 function resolveDueDate(
@@ -200,6 +207,22 @@ function formatPendingAction(action: PendingAction) {
         payload.bill_id ? ` ${String(payload.bill_id)}` : ""
       }${payload.name ? ` (${String(payload.name)})` : ""}`;
 
+    case "add_debt":
+      return `Add debt: ${String(payload.name ?? "Unknown")} — $${asNumber(
+        payload.balance
+      ).toFixed(2)}${
+        payload.monthly_min_payment
+          ? `, monthly minimum $${asNumber(payload.monthly_min_payment).toFixed(2)}`
+          : payload.min_payment
+          ? `, minimum $${asNumber(payload.min_payment).toFixed(2)}`
+          : ""
+      }`;
+
+    case "delete_debt":
+      return `Delete debt${
+        payload.debt_id ? ` ${String(payload.debt_id)}` : ""
+      }${payload.name ? ` (${String(payload.name)})` : ""}`;
+
     default:
       return JSON.stringify(action, null, 2);
   }
@@ -224,6 +247,7 @@ export default function ChatPage() {
   const [financialSummary, setFinancialSummary] = useState<string>("");
   const [dataReady, setDataReady] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [hasLoadedInitialOutlook, setHasLoadedInitialOutlook] = useState(false);
 
   function stressLabel(score: number | null) {
     if (score === null) return "Loading";
@@ -261,7 +285,7 @@ export default function ChatPage() {
           supabase
             .from("debt_status")
             .select(
-              "id, name, kind, balance, balance_baseline, remaining_balance, min_payment, due_date, monthly_min_payment, is_monthly, due_day, paid_total"
+              "id, name, kind, original_balance, remaining_balance, min_payment, due_date, monthly_min_payment, is_monthly, due_day, total_paid"
             )
             .eq("user_id", userId),
 
@@ -292,10 +316,7 @@ export default function ChatPage() {
       const payments = (paymentsRes.data ?? []) as PaymentRow[];
       const spendEntries = (spendRes.data ?? []) as SpendRow[];
 
-      const availableCash = bills.reduce(
-        (sum, b) => sum + asNumber(b.saved),
-        0
-      );
+      const availableCash = bills.reduce((sum, b) => sum + asNumber(b.saved), 0);
 
       const normalizedBills: NormalizedBill[] = bills.map((b) => {
         const effectiveDueDate = resolveDueDate(
@@ -345,10 +366,10 @@ export default function ChatPage() {
         return {
           name: d.name,
           kind: d.kind ?? "debt",
-          remainingBalance: asNumber(d.remaining_balance ?? d.balance),
-          baselineBalance: asNumber(d.balance_baseline),
+          remainingBalance: asNumber(d.remaining_balance),
+          baselineBalance: asNumber(d.original_balance),
           minimumPayment: asNumber(d.monthly_min_payment ?? d.min_payment),
-          paidTotal: asNumber(d.paid_total),
+          paidTotal: asNumber(d.total_paid),
           effectiveDueDate,
           isMonthly: !!d.is_monthly,
           dueDay: d.due_day ?? null,
@@ -478,6 +499,7 @@ Important Instructions For Ben:
 - Distinguish between remaining balance and minimum payment due.
 - Call out upcoming items due within 14 days first.
 - Include credit cards and loans together unless the user asks to separate them.
+- For follow-up questions, do not repeat the full financial summary unless the user explicitly asks for a recap.
 
 Upcoming Bills In Next 14 Days:
 ${
@@ -545,7 +567,22 @@ ${
     void loadFinancialContext();
   }, []);
 
-  async function sendToAI(nextMessages: ChatMessage[]) {
+  async function sendToAI(
+    nextMessages: ChatMessage[],
+    options?: { initial?: boolean }
+  ) {
+    const initial = !!options?.initial;
+
+    const trimmedMessages = initial ? nextMessages : nextMessages.slice(-8);
+
+    const contextualSummary = initial
+      ? financialSummary
+      : [
+          "Use the financial snapshot as background context, but do not repeat the full summary unless the user explicitly asks for a full recap.",
+          "For follow-up questions, answer directly and briefly.",
+          financialSummary,
+        ].join("\n\n");
+
     const res = await fetch("/api/ai", {
       method: "POST",
       headers: {
@@ -553,9 +590,9 @@ ${
       },
       body: JSON.stringify({
         mode: "money",
-        messages: nextMessages,
+        messages: trimmedMessages,
         stressScore,
-        financialSummary,
+        financialSummary: contextualSummary,
       }),
     });
 
@@ -649,7 +686,7 @@ ${
     setLoading(true);
 
     try {
-      const data = await sendToAI(nextMessages);
+      const data = await sendToAI(nextMessages, { initial: false });
 
       setMessages([
         ...nextMessages,
@@ -676,7 +713,7 @@ ${
   }
 
   useEffect(() => {
-    if (!dataReady || !financialSummary) return;
+    if (!dataReady || !financialSummary || hasLoadedInitialOutlook) return;
 
     let cancelled = false;
 
@@ -692,7 +729,7 @@ ${
           },
         ];
 
-        const data = await sendToAI(starterMessages);
+        const data = await sendToAI(starterMessages, { initial: true });
 
         if (cancelled) return;
 
@@ -704,6 +741,7 @@ ${
         ]);
 
         setPendingAction(data.action ?? null);
+        setHasLoadedInitialOutlook(true);
       } catch {
         if (cancelled) return;
 
@@ -724,7 +762,7 @@ ${
     return () => {
       cancelled = true;
     };
-  }, [dataReady, financialSummary]);
+  }, [dataReady, financialSummary, hasLoadedInitialOutlook]);
 
   return (
     <main style={styles.page}>
@@ -959,7 +997,7 @@ ${
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: "100vh",
     background: "linear-gradient(180deg, #f8f5ef 0%, #f4efe7 100%)",
