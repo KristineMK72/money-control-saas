@@ -1,6 +1,5 @@
 "use client";
 
-
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -12,7 +11,15 @@ type PaymentRow = {
   amount: number;
   merchant: string | null;
   note: string | null;
+  debt_id?: string | null;
   created_at: string;
+};
+
+type DebtRow = {
+  id: string;
+  name: string;
+  kind: string | null;
+  remaining_balance?: number | null;
 };
 
 function todayISO() {
@@ -29,11 +36,13 @@ export default function PaymentsPage() {
   const [userId, setUserId] = useState<string | null>(null);
 
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [debts, setDebts] = useState<DebtRow[]>([]);
 
   const [dateISO, setDateISO] = useState(todayISO());
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [debtId, setDebtId] = useState("");
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -41,57 +50,68 @@ export default function PaymentsPage() {
     router.refresh();
   }
 
+  async function loadPayments(currentUserId: string) {
+    const { data, error } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("user_id", currentUserId)
+      .order("date_iso", { ascending: false })
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    setPayments((data || []) as PaymentRow[]);
+  }
+
+  async function loadDebts(currentUserId: string) {
+    const { data, error } = await supabase
+      .from("debt_status")
+      .select("id, name, kind, remaining_balance")
+      .eq("user_id", currentUserId)
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+    setDebts((data || []) as DebtRow[]);
+  }
+
   useEffect(() => {
     async function init() {
-      setLoading(true);
-      setMessage("");
+      try {
+        setLoading(true);
+        setMessage("");
 
-      const { data, error } = await supabase.auth.getSession();
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
 
-      if (error) {
-        setMessage(error.message);
+        const session = data.session;
+        if (!session?.user) {
+          setMessage("Please log in first.");
+          return;
+        }
+
+        setUserId(session.user.id);
+
+        await Promise.all([
+          loadPayments(session.user.id),
+          loadDebts(session.user.id),
+        ]);
+      } catch (err: any) {
+        setMessage(err.message || "Failed to load payments.");
+      } finally {
         setLoading(false);
-        return;
       }
-
-      const session = data.session;
-      if (!session?.user) {
-        setMessage("Please log in first.");
-        setLoading(false);
-        return;
-      }
-
-      setUserId(session.user.id);
-
-      const { data: rows, error: paymentsError } = await supabase
-        .from("payments")
-        .select("*")
-        .order("date_iso", { ascending: false });
-
-      if (paymentsError) {
-        setMessage(paymentsError.message);
-      } else {
-        setPayments((rows || []) as PaymentRow[]);
-      }
-
-      setLoading(false);
     }
 
     init();
   }, []);
 
   async function refreshPayments() {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("*")
-      .order("date_iso", { ascending: false });
+    if (!userId) return;
 
-    if (error) {
-      setMessage(error.message);
-      return;
+    try {
+      await loadPayments(userId);
+    } catch (err: any) {
+      setMessage(err.message || "Failed to refresh payments.");
     }
-
-    setPayments((data || []) as PaymentRow[]);
   }
 
   async function handleAddPayment() {
@@ -108,43 +128,52 @@ export default function PaymentsPage() {
       return;
     }
 
-    setSaving(true);
+    try {
+      setSaving(true);
 
-    const { error } = await supabase.from("payments").insert({
-      user_id: userId,
-      date_iso: dateISO,
-      amount: amt,
-      merchant: merchant.trim(),
-      note: note.trim() || null,
-    });
+      const payload = {
+        user_id: userId,
+        date_iso: dateISO,
+        amount: amt,
+        merchant: merchant.trim(),
+        note: note.trim() || null,
+        debt_id: debtId || null,
+      };
 
-    if (error) {
-      setMessage(error.message);
+      const { error } = await supabase.from("payments").insert(payload);
+      if (error) throw error;
+
+      setDateISO(todayISO());
+      setMerchant("");
+      setAmount("");
+      setNote("");
+      setDebtId("");
+      setMessage("Payment added.");
+
+      await refreshPayments();
+    } catch (err: any) {
+      setMessage(err.message || "Failed to add payment.");
+    } finally {
       setSaving(false);
-      return;
     }
-
-    setDateISO(todayISO());
-    setMerchant("");
-    setAmount("");
-    setNote("");
-    setMessage("Payment added.");
-
-    await refreshPayments();
-    setSaving(false);
   }
 
   async function handleDeletePayment(id: string) {
     setMessage("");
 
-    const { error } = await supabase.from("payments").delete().eq("id", id);
+    try {
+      const { error } = await supabase
+        .from("payments")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", userId);
 
-    if (error) {
-      setMessage(error.message);
-      return;
+      if (error) throw error;
+
+      setPayments((prev) => prev.filter((p) => p.id !== id));
+    } catch (err: any) {
+      setMessage(err.message || "Failed to delete payment.");
     }
-
-    setPayments((prev) => prev.filter((p) => p.id !== id));
   }
 
   const totalPayments = useMemo(() => {
@@ -176,58 +205,15 @@ export default function PaymentsPage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <a
-                href="/dashboard"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Dashboard
-              </a>
-              <a
-                href="/bills"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Bills
-              </a>
-              <a
-                href="/income"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Income
-              </a>
-              <a
-                href="/spend"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Spending
-              </a>
-              <a
-                href="/debt"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Credit & Loans
-              </a>
-              <a
-                href="/payments"
-                className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black hover:bg-zinc-100"
-              >
-                Payments
-              </a>
-              <a
-                href="/forecast"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Forecast
-              </a>
-              <a
-                href="/crisis"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Crisis Mode
-              </a>
-              <button
-                onClick={handleLogout}
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
+              <a href="/dashboard" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Dashboard</a>
+              <a href="/bills" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Bills</a>
+              <a href="/income" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Income</a>
+              <a href="/spend" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Spending</a>
+              <a href="/debt" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit & Loans</a>
+              <a href="/payments" className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black hover:bg-zinc-100">Payments</a>
+              <a href="/forecast" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Forecast</a>
+              <a href="/crisis" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Crisis Mode</a>
+              <button onClick={handleLogout} className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">
                 Logout
               </button>
             </div>
@@ -236,23 +222,6 @@ export default function PaymentsPage() {
           {message ? (
             <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
               {message}
-            </div>
-          ) : null}
-
-          {!userId && !loading ? (
-            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
-              <div className="font-semibold text-white">You are not logged in.</div>
-              <p className="mt-2 text-sm text-zinc-300">
-                Go to signup/login first, then come back here.
-              </p>
-              <div className="mt-4">
-                <a
-                  href="/signup"
-                  className="inline-flex rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-black hover:bg-emerald-300"
-                >
-                  Go to Signup / Login
-                </a>
-              </div>
             </div>
           ) : null}
 
@@ -276,7 +245,7 @@ export default function PaymentsPage() {
             <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
               <h2 className="text-2xl font-black">Log a payment</h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Example: Rent, Capital One, Car Loan, Electric.
+                Link debt payments directly so balances update automatically.
               </p>
 
               <div className="mt-5 grid gap-3">
@@ -303,8 +272,24 @@ export default function PaymentsPage() {
                   className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
                 />
 
+                <select
+                  value={debtId}
+                  onChange={(e) => setDebtId(e.target.value)}
+                  className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
+                >
+                  <option value="">No linked debt</option>
+                  {debts.map((debt) => (
+                    <option key={debt.id} value={debt.id}>
+                      {debt.name}
+                      {typeof debt.remaining_balance === "number"
+                        ? ` — $${debt.remaining_balance.toFixed(2)} left`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+
                 <input
-                  placeholder="Note (bill payment, card payment, loan payment)"
+                  placeholder="Note"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
@@ -323,7 +308,7 @@ export default function PaymentsPage() {
             <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
               <h2 className="text-2xl font-black">Payment history</h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Logged payments reduce remaining money in your forecast.
+                Logged payments are filtered to your account only.
               </p>
 
               <div className="mt-5 grid gap-3">
