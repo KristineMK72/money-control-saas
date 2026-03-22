@@ -131,22 +131,32 @@ async function resolveDebtId(
     return data.id;
   }
 
-  if (payload.debt_name) {
+  if (payload.debt_name?.trim()) {
+    const search = payload.debt_name.trim();
+
     const { data, error } = await admin
       .from("debts")
       .select("id, name")
       .eq("user_id", userId)
-      .ilike("name", payload.debt_name)
-      .limit(1);
+      .ilike("name", `%${search}%`)
+      .limit(5);
 
     if (error) throw error;
+
     if (!data || data.length === 0) {
       throw new Error(`Could not find debt named "${payload.debt_name}".`);
     }
+
+    if (data.length > 1) {
+      throw new Error(
+        `Multiple debts matched "${payload.debt_name}". Please be more specific.`
+      );
+    }
+
     return data[0].id;
   }
 
-  throw new Error("A debt_id or debt_name is required for add_payment.");
+  return null;
 }
 
 async function handleAddPayment(
@@ -170,10 +180,14 @@ async function handleAddPayment(
     throw new Error("amount must be greater than 0");
   }
 
-  const debtId = await resolveDebtId(admin, userId, {
-    debt_id: payload.debt_id,
-    debt_name: payload.debt_name,
-  });
+  let debtId: string | null = null;
+
+  if (payload.debt_id || payload.debt_name) {
+    debtId = await resolveDebtId(admin, userId, {
+      debt_id: payload.debt_id,
+      debt_name: payload.debt_name,
+    });
+  }
 
   const insertPayload = {
     user_id: userId,
