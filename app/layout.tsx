@@ -8,6 +8,20 @@ export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
   description: "Stop financial chaos. See exactly what to pay first.",
   metadataBase: new URL("https://www.askben.buzz"),
+
+  manifest: "/manifest.json",
+
+  themeColor: "#0f172a",
+
+  icons: {
+    icon: [
+      { url: "/ben-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/ben-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/ben-192.png",
+    shortcut: "/ben-192.png",
+  },
+
   openGraph: {
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
@@ -15,6 +29,7 @@ export const metadata: Metadata = {
     siteName: "AskBen",
     type: "website",
   },
+
   twitter: {
     card: "summary_large_image",
     title: "AskBen",
@@ -124,9 +139,10 @@ export default function RootLayout({
                 }}
               >
                 AskBen
-             </div>
-             <UserGreeting />
+              </div>
+              <UserGreeting />
             </div>
+
             <div
               style={{
                 display: "flex",
