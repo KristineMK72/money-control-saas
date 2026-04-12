@@ -7,12 +7,12 @@
   "theme_color": "#0f172a",
   "icons": [
     {
-      "src": "/ben-192.png",
+      "src": "/ben-head.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/ben-512.png",
+      "src": "/ben-head.png",
       "sizes": "512x512",
       "type": "image/png"
     }
