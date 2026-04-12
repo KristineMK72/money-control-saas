@@ -8,12 +8,24 @@ export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
   description: "Stop financial chaos. See exactly what to pay first.",
   metadataBase: new URL("https://www.askben.buzz"),
+
   manifest: "/manifest.json",
+
   icons: {
-    icon: "/ben-head.png",
-    apple: "/ben-head.png",
+    icon: [
+      { url: "/ben-head.png", sizes: "192x192", type: "image/png" },
+      { url: "/ben-head.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      {
+        url: "/apple-touch-icon.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
     shortcut: "/ben-head.png",
   },
+
   openGraph: {
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
@@ -21,6 +33,7 @@ export const metadata: Metadata = {
     siteName: "AskBen",
     type: "website",
   },
+
   twitter: {
     card: "summary_large_image",
     title: "AskBen",
@@ -96,6 +109,7 @@ export default function RootLayout({
               flexWrap: "wrap",
             }}
           >
+            {/* LEFT SIDE */}
             <div
               style={{
                 display: "flex",
@@ -139,6 +153,7 @@ export default function RootLayout({
               <UserGreeting />
             </div>
 
+            {/* RIGHT NAV */}
             <div
               style={{
                 display: "flex",
@@ -162,6 +177,7 @@ export default function RootLayout({
 
         <main>{children}</main>
 
+        {/* FLOATING BUTTON */}
         <a
           href="/chat"
           style={{
