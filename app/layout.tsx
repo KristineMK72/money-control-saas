@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import LogoutButton from "@/components/LogoutButton";
 import BenPersona from "@/components/BenPersona";
 import UserGreeting from "@/components/UserGreeting";
+import InstallBanner from "@/components/InstallBanner";
 
 export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
@@ -109,7 +110,6 @@ export default function RootLayout({
               flexWrap: "wrap",
             }}
           >
-            {/* LEFT SIDE */}
             <div
               style={{
                 display: "flex",
@@ -153,7 +153,6 @@ export default function RootLayout({
               <UserGreeting />
             </div>
 
-            {/* RIGHT NAV */}
             <div
               style={{
                 display: "flex",
@@ -177,7 +176,8 @@ export default function RootLayout({
 
         <main>{children}</main>
 
-        {/* FLOATING BUTTON */}
+        <InstallBanner />
+
         <a
           href="/chat"
           style={{
