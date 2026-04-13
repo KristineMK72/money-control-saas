@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import EnableNotificationsButton from "@/components/EnableNotificationsButton";
 
 type BillRow = {
   id: string;
@@ -139,11 +140,7 @@ function effectiveBillDueDate(bill: BillRow) {
 
 function effectiveBillAmount(bill: BillRow) {
   return Number(
-    bill.min_payment ??
-      bill.monthly_target ??
-      bill.balance ??
-      bill.target ??
-      0
+    bill.min_payment ?? bill.monthly_target ?? bill.balance ?? bill.target ?? 0
   );
 }
 
@@ -330,19 +327,19 @@ export default function DashboardPage() {
       if (billsRes.error) setMessage(billsRes.error.message);
       else setBills((billsRes.data || []) as BillRow[]);
 
-      if (incomeRes.error) setMessage((prev) => prev || incomeRes.error!.message);
+      if (incomeRes.error) setMessage((prev) => prev || incomeRes.error.message);
       else setIncomeEntries((incomeRes.data || []) as IncomeRow[]);
 
-      if (spendRes.error) setMessage((prev) => prev || spendRes.error!.message);
+      if (spendRes.error) setMessage((prev) => prev || spendRes.error.message);
       else setSpendEntries((spendRes.data || []) as SpendRow[]);
 
-      if (paymentsRes.error) setMessage((prev) => prev || paymentsRes.error!.message);
+      if (paymentsRes.error) setMessage((prev) => prev || paymentsRes.error.message);
       else setPaymentEntries((paymentsRes.data || []) as PaymentRow[]);
 
-      if (debtsRes.error) setMessage((prev) => prev || debtsRes.error!.message);
+      if (debtsRes.error) setMessage((prev) => prev || debtsRes.error.message);
       else setDebts((debtsRes.data || []) as DebtRow[]);
 
-      if (hustlesRes.error) setMessage((prev) => prev || hustlesRes.error!.message);
+      if (hustlesRes.error) setMessage((prev) => prev || hustlesRes.error.message);
       else setSideHustles((hustlesRes.data || []) as SideHustleRow[]);
 
       setLoading(false);
@@ -506,6 +503,7 @@ export default function DashboardPage() {
         message: "Ben says: We need a plan now, not later.",
       };
     }
+
     if (remainingGap > 0 || dueSoonTotal > 400 || debtSnapshot.utilization > 50) {
       return {
         label: "Stressed",
@@ -513,6 +511,7 @@ export default function DashboardPage() {
         message: "Ben says: The next week looks financially spicy.",
       };
     }
+
     if (dueSoonTotal > 150 || debtSnapshot.utilization > 30) {
       return {
         label: "Tight",
@@ -520,6 +519,7 @@ export default function DashboardPage() {
         message: "Ben says: Covered, but not roomy.",
       };
     }
+
     return {
       label: "Calm",
       tone: "#22c55e",
@@ -574,27 +574,93 @@ export default function DashboardPage() {
               <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
                 Money Command Center
               </div>
+
               <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
                 {name ? `Welcome back, ${name}` : "Dashboard"}
               </h1>
+
               <p className="mt-3 max-w-2xl text-lg text-zinc-300">
                 One place to see risk, due dates, priorities, and momentum.
               </p>
+
+              <div className="mt-4">
+                <EnableNotificationsButton />
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <a href="/bills" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Bills</a>
-              <a href="/income" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Income</a>
-              <a href="/spend" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Spending</a>
-              <a href="/calendar" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Calendar</a>
-              <a href="/payments" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Payments</a>
-              <a href="/debt" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit & Loans</a>
-              <a href="/credit-health" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit Health</a>
-              <a href="/forecast" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Forecast</a>
-              <a href="/crisis" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Crisis Mode</a>
-              <a href="/income-plan" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Close the Gap</a>
-              <a href="/dispute-letter" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Dispute Letter</a>
-              <a href="/credit-recovery" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit Recovery</a>
+              <a
+                href="/bills"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Bills
+              </a>
+              <a
+                href="/income"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Income
+              </a>
+              <a
+                href="/spend"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Spending
+              </a>
+              <a
+                href="/calendar"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Calendar
+              </a>
+              <a
+                href="/payments"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Payments
+              </a>
+              <a
+                href="/debt"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Credit & Loans
+              </a>
+              <a
+                href="/credit-health"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Credit Health
+              </a>
+              <a
+                href="/forecast"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Forecast
+              </a>
+              <a
+                href="/crisis"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Crisis Mode
+              </a>
+              <a
+                href="/income-plan"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Close the Gap
+              </a>
+              <a
+                href="/dispute-letter"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Dispute Letter
+              </a>
+              <a
+                href="/credit-recovery"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Credit Recovery
+              </a>
             </div>
           </div>
 
@@ -781,19 +847,34 @@ export default function DashboardPage() {
               <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
                 <h2 className="text-xl font-black">Quick actions</h2>
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <a href="/spend" className="rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black">
+                  <a
+                    href="/spend"
+                    className="rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
+                  >
                     Add Spend
                   </a>
-                  <a href="/payments" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100">
+                  <a
+                    href="/payments"
+                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                  >
                     Add Payment
                   </a>
-                  <a href="/bills" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100">
+                  <a
+                    href="/bills"
+                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                  >
                     Bills
                   </a>
-                  <a href="/debt" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100">
+                  <a
+                    href="/debt"
+                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                  >
                     Debt
                   </a>
-                  <a href="/calendar" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100">
+                  <a
+                    href="/calendar"
+                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                  >
                     Calendar
                   </a>
                 </div>
