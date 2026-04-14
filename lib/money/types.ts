@@ -54,6 +54,15 @@ export type IncomeEntry = {
 export type SpendEntry = {
   id: ID;
   dateISO: string;
+  export type SpendCategory =
+  | "groceries"
+  | "gas"
+  | "eating_out"
+  | "kids"
+  | "business"
+  | "self_care"
+  | "subscriptions"
+  | "misc";
   amount: number;
   category: "groceries" | "gas" | "eating_out" | "kids" | "business" | "self_care" | "subscriptions" | "misc";
   merchant?: string;
