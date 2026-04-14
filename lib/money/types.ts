@@ -56,15 +56,15 @@ export type SpendEntry = {
   dateISO: string;
   amount: number;   // 🔥 REQUIRED (this is missing right now)
 
-  category:
-    | "groceries"
-    | "gas"
-    | "eating_out"
-    | "kids"
-    | "business"
-    | "self_care"
-    | "subscriptions"
-    | "misc";
+  export type SpendCategory =
+  | "groceries"
+  | "gas"
+  | "eating_out"
+  | "kids"
+  | "business"
+  | "self_care"
+  | "subscriptions"
+  | "misc";
 
   merchant?: string;
   note?: string;
