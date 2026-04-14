@@ -1,5 +1,11 @@
 import { useMoneyStore } from "./store";
-import type { Bucket, DebtEntry, IncomeEntry, SpendEntry, PaymentEntry } from "./types";
+import type {
+  Bucket,
+  DebtEntry,
+  IncomeEntry,
+  SpendEntry,
+  PaymentEntry,
+} from "./types";
 
 export function hydrateMoneyStore(data: {
   buckets?: Bucket[];
@@ -8,14 +14,10 @@ export function hydrateMoneyStore(data: {
   spend?: SpendEntry[];
   payments?: PaymentEntry[];
 }) {
-  const store = useMoneyStore.getState();
-
-  if (data.buckets) store.resetAll();
-
   useMoneyStore.setState({
     buckets: data.buckets ?? [],
     debts: data.debts ?? [],
-    entries: data.income ?? [],
+    income: data.income ?? [],     // ✅ NOT entries
     spend: data.spend ?? [],
     payments: data.payments ?? [],
   });
