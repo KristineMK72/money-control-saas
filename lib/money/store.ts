@@ -61,41 +61,26 @@ export const useMoneyStore = create<MoneyStore>()(
         debtMinimums: 0,
       },
 
-      // Computed totals (updated automatically on any change)
       addBucket: (bucket) =>
-        set((state) => ({
-          buckets: [bucket, ...state.buckets],
-        })),
+        set((state) => ({ buckets: [bucket, ...state.buckets] })),
 
       addSpend: (item) =>
-        set((state) => ({
-          spend: [item, ...state.spend],
-        })),
+        set((state) => ({ spend: [item, ...state.spend] })),
 
       removeSpend: (id) =>
-        set((state) => ({
-          spend: state.spend.filter((item) => item.id !== id),
-        })),
+        set((state) => ({ spend: state.spend.filter((item) => item.id !== id) })),
 
       addPayment: (item) =>
-        set((state) => ({
-          payments: [item, ...state.payments],
-        })),
+        set((state) => ({ payments: [item, ...state.payments] })),
 
       removePayment: (id) =>
-        set((state) => ({
-          payments: state.payments.filter((item) => item.id !== id),
-        })),
+        set((state) => ({ payments: state.payments.filter((item) => item.id !== id) })),
 
       addDebt: (item) =>
-        set((state) => ({
-          debts: [item, ...state.debts],
-        })),
+        set((state) => ({ debts: [item, ...state.debts] })),
 
       removeDebt: (id) =>
-        set((state) => ({
-          debts: state.debts.filter((item) => item.id !== id),
-        })),
+        set((state) => ({ debts: state.debts.filter((item) => item.id !== id) })),
 
       addIncomeSource: (name) => {
         const clean = name.trim();
@@ -139,7 +124,6 @@ export const useMoneyStore = create<MoneyStore>()(
           ),
         }));
 
-        // Auto-add income source if new
         const exists = get().incomeSources.some(
           (s) => s.name.toLowerCase() === cleanSource.toLowerCase()
         );
@@ -161,27 +145,47 @@ export const useMoneyStore = create<MoneyStore>()(
           payments: [],
           debts: [],
           incomeSources: [],
+          totals: { income: 0, spending: 0, payments: 0, debtBalance: 0, debtMinimums: 0 },
         }),
     }),
 
     {
-      name: STORAGE_KEY,                    // Uses your existing storage key
+      name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      // Optional: Skip persisting actions/totals if you want (but totals are derived so it's fine)
       partialize: (state) => ({
         buckets: state.buckets,
         entries: state.entries,
         spend: state.spend,
-        payments: state.payments,
-        debts: state.debts,
+        payments: state.payments,   // bills / recurring payments
+        debts: state.debts,         // debts
         incomeSources: state.incomeSources,
       }),
     }
   )
 );
 
-// Re-compute totals whenever relevant state changes
-// (Zustand will only re-render components that subscribe to `totals`)
+// Automatic totals recalculation (runs whenever relevant data changes)
+const calculateTotals = () => {
+  const { entries, spend, payments, debts } = useMoneyStore.getState();
+
+  const income = entries.reduce((sum, e) => sum + e.amount, 0);
+  const spending = spend.reduce((sum, s) => sum + s.amount, 0);
+  const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
+  const debtTotal = debts.reduce((sum, d) => sum + (d.balance || 0), 0);
+  const minDueTotal = debts.reduce((sum, d) => sum + (d.minPayment || 0), 0);
+
+  useMoneyStore.setState({
+    totals: {
+      income: clampMoney(income),
+      spending: clampMoney(spending),
+      payments: clampMoney(paymentTotal),
+      debtBalance: clampMoney(debtTotal),
+      debtMinimums: clampMoney(minDueTotal),
+    },
+  });
+};
+
+// Subscribe to changes (this is the fixed part)
 useMoneyStore.subscribe(
   (state) => ({
     entries: state.entries,
@@ -189,23 +193,8 @@ useMoneyStore.subscribe(
     payments: state.payments,
     debts: state.debts,
   }),
-  () => {
-    const { entries, spend, payments, debts } = useMoneyStore.getState();
-
-    const income = entries.reduce((sum, e) => sum + e.amount, 0);
-    const spending = spend.reduce((sum, s) => sum + s.amount, 0);
-    const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
-    const debtTotal = debts.reduce((sum, d) => sum + d.balance, 0);
-    const minDueTotal = debts.reduce((sum, d) => sum + (d.minPayment || 0), 0);
-
-    useMoneyStore.setState({
-      totals: {
-        income: clampMoney(income),
-        spending: clampMoney(spending),
-        payments: clampMoney(paymentTotal),
-        debtBalance: clampMoney(debtTotal),
-        debtMinimums: clampMoney(minDueTotal),
-      },
-    });
-  }
+  calculateTotals
 );
+
+// Initial calculation on store creation
+calculateTotals();
