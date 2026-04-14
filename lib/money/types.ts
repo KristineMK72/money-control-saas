@@ -1,7 +1,3 @@
-// ─────────────────────────────────────────────
-// Core Shared Types
-// ─────────────────────────────────────────────
-
 export type ID = string;
 
 export type PriorityLevel = 1 | 2 | 3 | 4 | 5;
@@ -14,39 +10,23 @@ export type Category =
   | "food"
   | "other";
 
-// ─────────────────────────────────────────────
-// Unified Financial Building Block (NEW)
-// ─────────────────────────────────────────────
+export type BucketKind = "bill" | "credit" | "loan";
 
-export type FinancialKind =
-  | "bill"
-  | "debt"
-  | "bucket"
-  | "goal";
-
-export type BaseFinancial = {
+// ── Bucket ───────────────────────────────
+export type Bucket = {
   id: ID;
   name: string;
+  kind: BucketKind;
   category?: Category;
-  priority?: PriorityLevel;
-
-  dueDate?: string | null;
-  dueDay?: number | null;
-  isMonthly?: boolean;
-
-  amount?: number;
-};
-
-// ─────────────────────────────────────────────
-// Bucket (Savings / Goals / Bills container)
-// ─────────────────────────────────────────────
-
-export type Bucket = BaseFinancial & {
-  kind: "bucket" | "goal" | "bill" | "credit" | "loan";
 
   target: number;
   saved: number;
 
+  dueDate?: string | null;
+  isMonthly?: boolean;
+  dueDay?: number | null;
+
+  priority?: PriorityLevel;
   focus?: boolean;
 
   balance?: number;
@@ -55,28 +35,7 @@ export type Bucket = BaseFinancial & {
   creditLimit?: number;
 };
 
-// ─────────────────────────────────────────────
-// Debt (still exists but simplified)
-// ─────────────────────────────────────────────
-
-export type DebtEntry = BaseFinancial & {
-  kind: "credit" | "loan";
-
-  balance: number;
-
-  minPayment?: number;
-  remainingBalance?: number;
-
-  apr?: number;
-  creditLimit?: number;
-
-  note?: string;
-};
-
-// ─────────────────────────────────────────────
-// Income
-// ─────────────────────────────────────────────
-
+// ── Income ───────────────────────────────
 export type IncomeSource = {
   id: ID;
   name: string;
@@ -85,69 +44,58 @@ export type IncomeSource = {
 export type IncomeEntry = {
   id: ID;
   dateISO: string;
-
-  sourceId?: ID;
   sourceName: string;
-
   amount: number;
   note?: string;
-
   allocations: Partial<Record<ID, number>>;
 };
 
-// ─────────────────────────────────────────────
-// Spending
-// ─────────────────────────────────────────────
-
-export type SpendCategory =
-  | "groceries"
-  | "gas"
-  | "eating_out"
-  | "kids"
-  | "business"
-  | "self_care"
-  | "subscriptions"
-  | "misc";
-
+// ── Spending ─────────────────────────────
 export type SpendEntry = {
   id: ID;
   dateISO: string;
-
   amount: number;
-  category: SpendCategory;
-
+  category: "groceries" | "gas" | "eating_out" | "kids" | "business" | "self_care" | "subscriptions" | "misc";
   merchant?: string;
   note?: string;
 };
 
-// ─────────────────────────────────────────────
-// Payments (unified linking layer)
-// ─────────────────────────────────────────────
-
+// ── Payments ─────────────────────────────
 export type PaymentEntry = {
   id: ID;
   dateISO: string;
   amount: number;
-
   bucketId?: ID;
   debtId?: ID;
-
   merchant?: string;
   note?: string;
 };
 
-// ─────────────────────────────────────────────
-// Storage Shape (root state)
-// ─────────────────────────────────────────────
+// ── Debt (CLEAN FINAL FORM) ──────────────
+export type DebtEntry = {
+  id: ID;
+  name: string;
+  kind: "credit" | "loan";
 
+  balance: number;
+
+  minPayment?: number;
+  dueDate?: string | null;
+
+  isMonthly?: boolean;
+  dueDay?: number | null;
+
+  apr?: number;
+  creditLimit?: number;
+};
+
+// ── STORAGE ──────────────────────────────
 export type StorageShape = {
   buckets: Bucket[];
-  debts: DebtEntry[];
-
   income: IncomeEntry[];
   spend: SpendEntry[];
   payments: PaymentEntry[];
-
+  debts: DebtEntry[];
   incomeSources: IncomeSource[];
 
   meta?: {
