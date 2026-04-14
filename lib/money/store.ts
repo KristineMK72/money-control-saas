@@ -17,17 +17,9 @@ interface MoneyStore {
   buckets: Bucket[];
   entries: Entry[];
   spend: SpendEntry[];
-  payments: PaymentEntry[];
+  payments: PaymentEntry[];   // bills / recurring payments
   debts: DebtEntry[];
   incomeSources: IncomeSource[];
-
-  totals: {
-    income: number;
-    spending: number;
-    payments: number;
-    debtBalance: number;
-    debtMinimums: number;
-  };
 
   // Actions
   addBucket: (bucket: Bucket) => void;
@@ -50,136 +42,102 @@ interface MoneyStore {
 
 export const useMoneyStore = create<MoneyStore>()(
   persist(
-    (set, get) => {
-      const calculateTotals = () => {
-        const { entries, spend, payments, debts } = get();
+    (set, get) => ({
+      // Initial state
+      buckets: [],
+      entries: [],
+      spend: [],
+      payments: [],
+      debts: [],
+      incomeSources: [],
 
-        const income = entries.reduce((sum, e) => sum + e.amount, 0);
-        const spending = spend.reduce((sum, s) => sum + s.amount, 0);
-        const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
-        const debtTotal = debts.reduce((sum, d) => sum + (d.balance || 0), 0);
-        const minDueTotal = debts.reduce((sum, d) => sum + (d.minPayment || 0), 0);
+      // Actions (same logic as your original store)
+      addBucket: (bucket) =>
+        set((state) => ({ buckets: [bucket, ...state.buckets] })),
 
-        return {
-          income: clampMoney(income),
-          spending: clampMoney(spending),
-          payments: clampMoney(paymentTotal),
-          debtBalance: clampMoney(debtTotal),
-          debtMinimums: clampMoney(minDueTotal),
+      addSpend: (item) =>
+        set((state) => ({ spend: [item, ...state.spend] })),
+
+      removeSpend: (id) =>
+        set((state) => ({ spend: state.spend.filter((item) => item.id !== id) })),
+
+      addPayment: (item) =>
+        set((state) => ({ payments: [item, ...state.payments] })),
+
+      removePayment: (id) =>
+        set((state) => ({ payments: state.payments.filter((item) => item.id !== id) })),
+
+      addDebt: (item) =>
+        set((state) => ({ debts: [item, ...state.debts] })),
+
+      removeDebt: (id) =>
+        set((state) => ({ debts: state.debts.filter((item) => item.id !== id) })),
+
+      addIncomeSource: (name) => {
+        const clean = name.trim();
+        if (!clean) return;
+
+        const exists = get().incomeSources.some(
+          (s) => s.name.toLowerCase() === clean.toLowerCase()
+        );
+        if (exists) return;
+
+        const source: IncomeSource = {
+          id: crypto.randomUUID(),
+          name: clean,
         };
-      };
 
-      return {
-        // Initial state
-        buckets: [],
-        entries: [],
-        spend: [],
-        payments: [],
-        debts: [],
-        incomeSources: [],
+        set((state) => ({
+          incomeSources: [source, ...state.incomeSources].sort((a, b) =>
+            a.name.localeCompare(b.name)
+          ),
+        }));
+      },
 
-        totals: {
-          income: 0,
-          spending: 0,
-          payments: 0,
-          debtBalance: 0,
-          debtMinimums: 0,
-        },
+      addIncomeEntry: (params) => {
+        const cleanSource = params.sourceName.trim();
+        const amt = clampMoney(params.amount);
 
-        addBucket: (bucket) =>
-          set((state) => ({ buckets: [bucket, ...state.buckets] })),
+        if (!cleanSource || !Number.isFinite(amt) || amt <= 0) return;
 
-        addSpend: (item) =>
-          set((state) => ({ spend: [item, ...state.spend] })),
+        const entry: Entry = {
+          id: crypto.randomUUID(),
+          dateISO: params.dateISO,
+          sourceName: cleanSource,
+          amount: amt,
+          note: params.note?.trim() || undefined,
+          allocations: {},
+        };
 
-        removeSpend: (id) =>
-          set((state) => ({ spend: state.spend.filter((item) => item.id !== id) })),
+        set((state) => ({
+          entries: [entry, ...state.entries].sort((a, b) =>
+            a.dateISO < b.dateISO ? 1 : -1
+          ),
+        }));
 
-        addPayment: (item) =>
-          set((state) => ({ payments: [item, ...state.payments] })),
+        const exists = get().incomeSources.some(
+          (s) => s.name.toLowerCase() === cleanSource.toLowerCase()
+        );
+        if (!exists) {
+          get().addIncomeSource(cleanSource);
+        }
+      },
 
-        removePayment: (id) =>
-          set((state) => ({ payments: state.payments.filter((item) => item.id !== id) })),
+      removeIncomeEntry: (id) =>
+        set((state) => ({
+          entries: state.entries.filter((e) => e.id !== id),
+        })),
 
-        addDebt: (item) =>
-          set((state) => ({ debts: [item, ...state.debts] })),
-
-        removeDebt: (id) =>
-          set((state) => ({ debts: state.debts.filter((item) => item.id !== id) })),
-
-        addIncomeSource: (name) => {
-          const clean = name.trim();
-          if (!clean) return;
-
-          const exists = get().incomeSources.some(
-            (s) => s.name.toLowerCase() === clean.toLowerCase()
-          );
-          if (exists) return;
-
-          const source: IncomeSource = {
-            id: crypto.randomUUID(),
-            name: clean,
-          };
-
-          set((state) => ({
-            incomeSources: [source, ...state.incomeSources].sort((a, b) =>
-              a.name.localeCompare(b.name)
-            ),
-          }));
-        },
-
-        addIncomeEntry: (params) => {
-          const cleanSource = params.sourceName.trim();
-          const amt = clampMoney(params.amount);
-
-          if (!cleanSource || !Number.isFinite(amt) || amt <= 0) return;
-
-          const entry: Entry = {
-            id: crypto.randomUUID(),
-            dateISO: params.dateISO,
-            sourceName: cleanSource,
-            amount: amt,
-            note: params.note?.trim() || undefined,
-            allocations: {},
-          };
-
-          set((state) => ({
-            entries: [entry, ...state.entries].sort((a, b) =>
-              a.dateISO < b.dateISO ? 1 : -1
-            ),
-          }));
-
-          const exists = get().incomeSources.some(
-            (s) => s.name.toLowerCase() === cleanSource.toLowerCase()
-          );
-          if (!exists) {
-            get().addIncomeSource(cleanSource);
-          }
-        },
-
-        removeIncomeEntry: (id) =>
-          set((state) => ({
-            entries: state.entries.filter((e) => e.id !== id),
-          })),
-
-        resetAll: () =>
-          set({
-            buckets: [],
-            entries: [],
-            spend: [],
-            payments: [],
-            debts: [],
-            incomeSources: [],
-            totals: {
-              income: 0,
-              spending: 0,
-              payments: 0,
-              debtBalance: 0,
-              debtMinimums: 0,
-            },
-          }),
-      };
-    },
+      resetAll: () =>
+        set({
+          buckets: [],
+          entries: [],
+          spend: [],
+          payments: [],
+          debts: [],
+          incomeSources: [],
+        }),
+    }),
 
     {
       name: STORAGE_KEY,
@@ -188,38 +146,29 @@ export const useMoneyStore = create<MoneyStore>()(
         buckets: state.buckets,
         entries: state.entries,
         spend: state.spend,
-        payments: state.payments,   // bills
-        debts: state.debts,
+        payments: state.payments,   // ← bills
+        debts: state.debts,         // ← debts
         incomeSources: state.incomeSources,
       }),
     }
   )
 );
 
-// Re-calculate totals after every state change that affects them
-useMoneyStore.subscribe((state, prevState) => {
-  if (
-    state.entries !== prevState.entries ||
-    state.spend !== prevState.spend ||
-    state.payments !== prevState.payments ||
-    state.debts !== prevState.debts
-  ) {
-    const newTotals = {
-      income: state.entries.reduce((sum, e) => sum + e.amount, 0),
-      spending: state.spend.reduce((sum, s) => sum + s.amount, 0),
-      payments: state.payments.reduce((sum, p) => sum + p.amount, 0),
-      debtBalance: state.debts.reduce((sum, d) => sum + (d.balance || 0), 0),
-      debtMinimums: state.debts.reduce((sum, d) => sum + (d.minPayment || 0), 0),
-    };
+// Fresh totals calculation (call this whenever you need totals)
+export const getTotals = () => {
+  const { entries, spend, payments, debts } = useMoneyStore.getState();
 
-    useMoneyStore.setState({
-      totals: {
-        income: clampMoney(newTotals.income),
-        spending: clampMoney(newTotals.spending),
-        payments: clampMoney(newTotals.payments),
-        debtBalance: clampMoney(newTotals.debtBalance),
-        debtMinimums: clampMoney(newTotals.debtMinimums),
-      },
-    });
-  }
-});
+  const income = entries.reduce((sum, e) => sum + e.amount, 0);
+  const spending = spend.reduce((sum, s) => sum + s.amount, 0);
+  const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
+  const debtTotal = debts.reduce((sum, d) => sum + (d.balance || 0), 0);
+  const minDueTotal = debts.reduce((sum, d) => sum + (d.minPayment || 0), 0);
+
+  return {
+    income: clampMoney(income),
+    spending: clampMoney(spending),
+    payments: clampMoney(paymentTotal),
+    debtBalance: clampMoney(debtTotal),
+    debtMinimums: clampMoney(minDueTotal),
+  };
+};
