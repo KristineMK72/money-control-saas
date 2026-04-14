@@ -52,19 +52,20 @@ export type IncomeEntry = {
 
 // ── Spending ─────────────────────────────
 export type SpendEntry = {
-  id: ID;
+  id: string;
   dateISO: string;
-  export type SpendCategory =
-  | "groceries"
-  | "gas"
-  | "eating_out"
-  | "kids"
-  | "business"
-  | "self_care"
-  | "subscriptions"
-  | "misc";
-  amount: number;
-  category: "groceries" | "gas" | "eating_out" | "kids" | "business" | "self_care" | "subscriptions" | "misc";
+  amount: number;   // 🔥 REQUIRED (this is missing right now)
+
+  category:
+    | "groceries"
+    | "gas"
+    | "eating_out"
+    | "kids"
+    | "business"
+    | "self_care"
+    | "subscriptions"
+    | "misc";
+
   merchant?: string;
   note?: string;
 };
