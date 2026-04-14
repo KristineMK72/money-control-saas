@@ -1,10 +1,10 @@
-export type BucketKey = string;
+// ── Core Types ───────────────────────────────────────
 
-export type BucketKind = "bill" | "credit" | "loan";
+export type ID = string;
 
 export type PriorityLevel = 1 | 2 | 3 | 4 | 5;
 
-export type BucketCategory =
+export type Category =
   | "housing"
   | "utilities"
   | "transportation"
@@ -12,45 +12,56 @@ export type BucketCategory =
   | "food"
   | "other";
 
+export type BucketKind = "bill" | "credit" | "loan";
+
+// ── Bucket (Bills + Savings + Debt Targets) ──────────
+
 export type Bucket = {
-  key: BucketKey;
+  id: ID;
   name: string;
   kind: BucketKind;
+  category?: Category;
 
+  // money tracking
   target: number;
   saved: number;
 
-  dueDate?: string;
-  due?: string;
-  priority?: PriorityLevel;
+  // scheduling
+  dueDate?: string | null;
+  isMonthly?: boolean;
+  dueDay?: number | null;
 
+  // priority + focus
+  priority?: PriorityLevel;
   focus?: boolean;
 
+  // debt-specific (optional)
   balance?: number;
   apr?: number;
   minPayment?: number;
   creditLimit?: number;
-
-  isMonthly?: boolean;
-  monthlyTarget?: number;
-  dueDay?: number;
-
-  category?: BucketCategory;
 };
 
+// ── Income ───────────────────────────────────────────
+
 export type IncomeSource = {
-  id: string;
+  id: ID;
   name: string;
 };
 
-export type Entry = {
-  id: string;
+export type IncomeEntry = {
+  id: ID;
   dateISO: string;
+  sourceId?: ID;
   sourceName: string;
   amount: number;
   note?: string;
-  allocations: Partial<Record<BucketKey, number>>;
+
+  // allocation across buckets
+  allocations: Partial<Record<ID, number>>;
 };
+
+// ── Spending ─────────────────────────────────────────
 
 export type SpendCategory =
   | "groceries"
@@ -63,7 +74,7 @@ export type SpendCategory =
   | "misc";
 
 export type SpendEntry = {
-  id: string;
+  id: ID;
   dateISO: string;
   amount: number;
   category: SpendCategory;
@@ -71,33 +82,52 @@ export type SpendEntry = {
   note?: string;
 };
 
+// ── Payments (Debt / Bills) ──────────────────────────
+
 export type PaymentEntry = {
-  id: string;
+  id: ID;
   dateISO: string;
   amount: number;
+
+  bucketId?: ID; // 🔥 key improvement (link to bucket)
+  debtId?: ID;   // optional direct link
+
   merchant?: string;
   note?: string;
 };
 
+// ── Debt (Standalone, but aligns with Bucket) ────────
+
 export type DebtEntry = {
-  id: string;
+  id: ID;
   name: string;
   kind: "credit" | "loan";
+
   balance: number;
+
+  // normalized fields (no more mismatch)
   minPayment?: number;
-  dueDate?: string;
+  dueDate?: string | null;
+  isMonthly?: boolean;
+  dueDay?: number | null;
+
   apr?: number;
   creditLimit?: number;
+  remainingBalance?: number;
+
   note?: string;
 };
 
+// ── Root Storage ─────────────────────────────────────
+
 export type StorageShape = {
   buckets: Bucket[];
-  entries: Entry[];
+  income: IncomeEntry[];
   spend: SpendEntry[];
   payments: PaymentEntry[];
   debts: DebtEntry[];
   incomeSources: IncomeSource[];
+
   meta?: {
     lastMonthlyApplied?: string;
   };
