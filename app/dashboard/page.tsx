@@ -3,11 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMoneyStore, getTotals } from "@/lib/money/store";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import EnableNotificationsButton from "@/components/EnableNotificationsButton";
 import type { DebtEntry } from "@/lib/money/types";
 
 // ─────────────────────────────────────────────
-// Supabase-only types (snake_case stays HERE ONLY)
+// Supabase Row Types (ONLY here, raw snake_case)
 // ─────────────────────────────────────────────
 
 type BillRow = {
@@ -15,36 +14,25 @@ type BillRow = {
   user_id: string;
   name: string;
   category: "housing" | "utilities" | "transportation" | "debt" | "food" | "other" | null;
+
   target: number | null;
   due_date: string | null;
-  focus: boolean | null;
-  kind: "bill" | "credit" | "loan";
-  is_monthly: boolean | null;
-  monthly_target: number | null;
   due_day: number | null;
+  is_monthly: boolean | null;
+
+  min_payment: number | null;
+  monthly_target: number | null;
   balance?: number | null;
-  min_payment?: number | null;
 };
 
 type SideHustleRow = {
   id: string;
   user_id: string;
   name: string;
-  income_type: "hourly" | "item" | "project" | "fixed";
+  income_type: string;
   rate: number;
   planned_quantity: number;
   note: string | null;
-  created_at: string;
-};
-
-type PriorityItem = {
-  id: string;
-  name: string;
-  amount: number;
-  dueDate: string | null;
-  category: string | null;
-  source: "bill" | "debt";
-  score: number;
 };
 
 // ─────────────────────────────────────────────
@@ -57,30 +45,23 @@ function startOfToday() {
   return d;
 }
 
-function endOfWindow(days: number) {
-  const d = startOfToday();
-  d.setDate(d.getDate() + days);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function parseDateSafe(date?: string | null) {
+function parseDate(date?: string | null) {
   if (!date) return null;
   const d = new Date(`${date}T12:00:00`);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function daysUntil(date?: string | null) {
-  const d = parseDateSafe(date);
+  const d = parseDate(date);
   if (!d) return null;
   return Math.ceil((d.getTime() - startOfToday().getTime()) / 86400000);
 }
 
 // ─────────────────────────────────────────────
-// Bill logic (STAYS snake_case because Supabase)
+// BILL LOGIC (Supabase → UI normalization)
 // ─────────────────────────────────────────────
 
-function effectiveBillDueDate(bill: BillRow) {
+function getBillDueDate(bill: BillRow) {
   if (bill.is_monthly && bill.due_day) {
     const now = new Date();
     const year = now.getFullYear();
@@ -95,7 +76,7 @@ function effectiveBillDueDate(bill: BillRow) {
   return bill.due_date;
 }
 
-function effectiveBillAmount(bill: BillRow) {
+function getBillAmount(bill: BillRow) {
   return Number(
     bill.min_payment ??
     bill.monthly_target ??
@@ -106,10 +87,10 @@ function effectiveBillAmount(bill: BillRow) {
 }
 
 // ─────────────────────────────────────────────
-// Debt logic (CLEAN camelCase ONLY)
+// DEBT LOGIC (CLEAN unified model)
 // ─────────────────────────────────────────────
 
-function effectiveDebtDueDate(debt: DebtEntry) {
+function getDebtDueDate(debt: DebtEntry) {
   if (debt.isMonthly && debt.dueDay) {
     const now = new Date();
     const year = now.getFullYear();
@@ -124,21 +105,12 @@ function effectiveDebtDueDate(debt: DebtEntry) {
   return debt.dueDate ?? null;
 }
 
-function effectiveDebtAmount(debt: DebtEntry) {
-  return Number(
-    debt.monthlyMinPayment ??
-    debt.minPayment ??
-    debt.balance ??
-    0
-  );
-}
-
-function effectiveDebtBalance(debt: DebtEntry) {
-  return Number(debt.remainingBalance ?? debt.balance ?? 0);
+function getDebtAmount(debt: DebtEntry) {
+  return Number(debt.minPayment ?? debt.balance ?? 0);
 }
 
 // ─────────────────────────────────────────────
-// UI Components (unchanged)
+// UI
 // ─────────────────────────────────────────────
 
 function StatCard({ label, value }: { label: string; value: string }) {
@@ -155,12 +127,12 @@ function formatUSD(n: number) {
 }
 
 // ─────────────────────────────────────────────
-// Page
+// PAGE
 // ─────────────────────────────────────────────
 
 export default function DashboardPage() {
   const supabase = createSupabaseBrowserClient();
-  const { debts: storeDebts } = useMoneyStore();
+  const { debts } = useMoneyStore();
   const totals = getTotals();
 
   const [loading, setLoading] = useState(true);
@@ -187,52 +159,93 @@ export default function DashboardPage() {
     }
 
     load();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [supabase]);
 
-  const priorities = useMemo(() => {
-    const billItems = bills.map((bill) => {
-      const item = {
-        id: `bill-${bill.id}`,
-        name: bill.name,
-        amount: effectiveBillAmount(bill),
-        dueDate: effectiveBillDueDate(bill),
-        category: bill.category,
-        source: "bill" as const,
-      };
-      return { ...item, score: 1 };
-    });
+  // ─────────────────────────────────────────────
+  // DERIVED VALUES
+  // ─────────────────────────────────────────────
 
-    const debtItems = storeDebts.map((debt) => {
-      const item = {
-        id: `debt-${debt.id}`,
-        name: debt.name,
-        amount: effectiveDebtAmount(debt),
-        dueDate: effectiveDebtDueDate(debt),
-        category: "debt",
-        source: "debt" as const,
-      };
-      return { ...item, score: 1 };
-    });
+  const income = useMemo(() => {
+    return sideHustles.reduce(
+      (sum, h) => sum + h.rate * h.planned_quantity,
+      0
+    );
+  }, [sideHustles]);
 
-    return [...billItems, ...debtItems].slice(0, 3);
-  }, [bills, storeDebts]);
+  const billTotal = useMemo(() => {
+    return bills.reduce((sum, b) => sum + getBillAmount(b), 0);
+  }, [bills]);
+
+  const debtTotal = useMemo(() => {
+    return debts.reduce((sum, d) => sum + getDebtAmount(d), 0);
+  }, [debts]);
+
+  const remaining = income - billTotal - debtTotal - totals.spending - totals.payments;
+
+  const dueSoon = useMemo(() => {
+    const now = startOfToday();
+    const end = new Date();
+    end.setDate(end.getDate() + 7);
+
+    const items: { name: string; amount: number; due: string | null }[] = [];
+
+    for (const b of bills) {
+      const due = getBillDueDate(b);
+      const d = parseDate(due);
+      if (d && d >= now && d <= end) {
+        items.push({ name: b.name, amount: getBillAmount(b), due });
+      }
+    }
+
+    for (const d of debts) {
+      const due = getDebtDueDate(d);
+      const date = parseDate(due);
+      if (date && date >= now && date <= end) {
+        items.push({ name: d.name, amount: getDebtAmount(d), due });
+      }
+    }
+
+    return items;
+  }, [bills, debts]);
 
   if (loading) {
-    return <main className="text-white p-10">Loading...</main>;
+    return (
+      <main className="min-h-screen bg-black text-white p-10">
+        Loading dashboard...
+      </main>
+    );
   }
+
+  // ─────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────
 
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto max-w-6xl p-6">
         <div className="grid gap-4 md:grid-cols-4">
-          <StatCard label="Income" value={formatUSD(totals.income)} />
-          <StatCard label="Spending" value={formatUSD(totals.spending)} />
-          <StatCard label="Payments" value={formatUSD(totals.payments)} />
-          <StatCard
-            label="Remaining"
-            value={formatUSD(totals.income - totals.spending - totals.payments)}
-          />
+          <StatCard label="Income" value={formatUSD(income)} />
+          <StatCard label="Bills" value={formatUSD(billTotal)} />
+          <StatCard label="Debt" value={formatUSD(debtTotal)} />
+          <StatCard label="Remaining" value={formatUSD(remaining)} />
+        </div>
+
+        <div className="mt-10">
+          <h2 className="text-xl font-bold mb-4">Due Soon</h2>
+          <div className="space-y-2">
+            {dueSoon.map((item, i) => (
+              <div key={i} className="p-3 rounded-xl bg-white/10">
+                <div className="flex justify-between">
+                  <span>{item.name}</span>
+                  <span>{formatUSD(item.amount)}</span>
+                </div>
+                <div className="text-sm text-zinc-400">{item.due}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </main>
