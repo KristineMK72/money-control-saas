@@ -1,77 +1,133 @@
 "use client";
 
-import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+
 import type {
   Bucket,
   DebtEntry,
-  Entry,
+  IncomeEntry,
   IncomeSource,
   PaymentEntry,
   SpendEntry,
-} from './types';
-import { STORAGE_KEY } from './storageKey';
-import { clampMoney } from './utils';
+} from "./types";
+
+import { STORAGE_KEY } from "./storageKey";
+import { clampMoney } from "./utils";
+
+// ─────────────────────────────────────────────
+// STORE SHAPE
+// ─────────────────────────────────────────────
 
 interface MoneyStore {
   buckets: Bucket[];
-  entries: Entry[];
+  income: IncomeEntry[];
   spend: SpendEntry[];
-  payments: PaymentEntry[];   // bills / recurring payments
+  payments: PaymentEntry[];
   debts: DebtEntry[];
   incomeSources: IncomeSource[];
 
+  // ─────────────────────────────
   // Actions
+  // ─────────────────────────────
+
   addBucket: (bucket: Bucket) => void;
+
   addSpend: (item: SpendEntry) => void;
   removeSpend: (id: string) => void;
+
   addPayment: (item: PaymentEntry) => void;
   removePayment: (id: string) => void;
+
   addDebt: (item: DebtEntry) => void;
   removeDebt: (id: string) => void;
+
   addIncomeSource: (name: string) => void;
+
   addIncomeEntry: (params: {
     dateISO: string;
     sourceName: string;
     amount: number;
     note?: string;
   }) => void;
+
   removeIncomeEntry: (id: string) => void;
+
   resetAll: () => void;
 }
+
+// ─────────────────────────────────────────────
+// STORE
+// ─────────────────────────────────────────────
 
 export const useMoneyStore = create<MoneyStore>()(
   persist(
     (set, get) => ({
-      // Initial state
+      // ─────────────────────────────
+      // STATE
+      // ─────────────────────────────
+
       buckets: [],
-      entries: [],
+      income: [],
       spend: [],
       payments: [],
       debts: [],
       incomeSources: [],
 
-      // Actions (same logic as your original store)
+      // ─────────────────────────────
+      // BUCKETS
+      // ─────────────────────────────
+
       addBucket: (bucket) =>
-        set((state) => ({ buckets: [bucket, ...state.buckets] })),
+        set((state) => ({
+          buckets: [bucket, ...state.buckets],
+        })),
+
+      // ─────────────────────────────
+      // SPEND
+      // ─────────────────────────────
 
       addSpend: (item) =>
-        set((state) => ({ spend: [item, ...state.spend] })),
+        set((state) => ({
+          spend: [item, ...state.spend],
+        })),
 
       removeSpend: (id) =>
-        set((state) => ({ spend: state.spend.filter((item) => item.id !== id) })),
+        set((state) => ({
+          spend: state.spend.filter((s) => s.id !== id),
+        })),
+
+      // ─────────────────────────────
+      // PAYMENTS
+      // ─────────────────────────────
 
       addPayment: (item) =>
-        set((state) => ({ payments: [item, ...state.payments] })),
+        set((state) => ({
+          payments: [item, ...state.payments],
+        })),
 
       removePayment: (id) =>
-        set((state) => ({ payments: state.payments.filter((item) => item.id !== id) })),
+        set((state) => ({
+          payments: state.payments.filter((p) => p.id !== id),
+        })),
+
+      // ─────────────────────────────
+      // DEBTS
+      // ─────────────────────────────
 
       addDebt: (item) =>
-        set((state) => ({ debts: [item, ...state.debts] })),
+        set((state) => ({
+          debts: [item, ...state.debts],
+        })),
 
       removeDebt: (id) =>
-        set((state) => ({ debts: state.debts.filter((item) => item.id !== id) })),
+        set((state) => ({
+          debts: state.debts.filter((d) => d.id !== id),
+        })),
+
+      // ─────────────────────────────
+      // INCOME SOURCES
+      // ─────────────────────────────
 
       addIncomeSource: (name) => {
         const clean = name.trim();
@@ -80,6 +136,7 @@ export const useMoneyStore = create<MoneyStore>()(
         const exists = get().incomeSources.some(
           (s) => s.name.toLowerCase() === clean.toLowerCase()
         );
+
         if (exists) return;
 
         const source: IncomeSource = {
@@ -94,30 +151,35 @@ export const useMoneyStore = create<MoneyStore>()(
         }));
       },
 
+      // ─────────────────────────────
+      // INCOME ENTRIES (UPDATED)
+      // ─────────────────────────────
+
       addIncomeEntry: (params) => {
         const cleanSource = params.sourceName.trim();
-        const amt = clampMoney(params.amount);
+        const amount = clampMoney(params.amount);
 
-        if (!cleanSource || !Number.isFinite(amt) || amt <= 0) return;
+        if (!cleanSource || amount <= 0) return;
 
-        const entry: Entry = {
+        const entry: IncomeEntry = {
           id: crypto.randomUUID(),
           dateISO: params.dateISO,
           sourceName: cleanSource,
-          amount: amt,
-          note: params.note?.trim() || undefined,
+          amount,
+          note: params.note?.trim(),
           allocations: {},
         };
 
         set((state) => ({
-          entries: [entry, ...state.entries].sort((a, b) =>
-            a.dateISO < b.dateISO ? 1 : -1
+          income: [entry, ...state.income].sort(
+            (a, b) => (a.dateISO < b.dateISO ? 1 : -1)
           ),
         }));
 
         const exists = get().incomeSources.some(
           (s) => s.name.toLowerCase() === cleanSource.toLowerCase()
         );
+
         if (!exists) {
           get().addIncomeSource(cleanSource);
         }
@@ -125,13 +187,17 @@ export const useMoneyStore = create<MoneyStore>()(
 
       removeIncomeEntry: (id) =>
         set((state) => ({
-          entries: state.entries.filter((e) => e.id !== id),
+          income: state.income.filter((e) => e.id !== id),
         })),
+
+      // ─────────────────────────────
+      // RESET
+      // ─────────────────────────────
 
       resetAll: () =>
         set({
           buckets: [],
-          entries: [],
+          income: [],
           spend: [],
           payments: [],
           debts: [],
@@ -142,33 +208,46 @@ export const useMoneyStore = create<MoneyStore>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
+
       partialize: (state) => ({
         buckets: state.buckets,
-        entries: state.entries,
+        income: state.income,
         spend: state.spend,
-        payments: state.payments,   // ← bills
-        debts: state.debts,         // ← debts
+        payments: state.payments,
+        debts: state.debts,
         incomeSources: state.incomeSources,
       }),
     }
   )
 );
 
-// Fresh totals calculation (call this whenever you need totals)
-export const getTotals = () => {
-  const { entries, spend, payments, debts } = useMoneyStore.getState();
+// ─────────────────────────────────────────────
+// TOTALS (UPDATED)
+// ─────────────────────────────────────────────
 
-  const income = entries.reduce((sum, e) => sum + e.amount, 0);
-  const spending = spend.reduce((sum, s) => sum + s.amount, 0);
+export const getTotals = () => {
+  const { income, spend, payments, debts } =
+    useMoneyStore.getState();
+
+  const incomeTotal = income.reduce((sum, e) => sum + e.amount, 0);
+  const spendingTotal = spend.reduce((sum, s) => sum + s.amount, 0);
   const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
-  const debtTotal = debts.reduce((sum, d) => sum + (d.balance || 0), 0);
-  const minDueTotal = debts.reduce((sum, d) => sum + (d.minPayment || 0), 0);
+
+  const debtBalance = debts.reduce(
+    (sum, d) => sum + (d.balance || 0),
+    0
+  );
+
+  const debtMinimums = debts.reduce(
+    (sum, d) => sum + (d.minPayment || 0),
+    0
+  );
 
   return {
-    income: clampMoney(income),
-    spending: clampMoney(spending),
+    income: clampMoney(incomeTotal),
+    spending: clampMoney(spendingTotal),
     payments: clampMoney(paymentTotal),
-    debtBalance: clampMoney(debtTotal),
-    debtMinimums: clampMoney(minDueTotal),
+    debtBalance: clampMoney(debtBalance),
+    debtMinimums: clampMoney(debtMinimums),
   };
 };
