@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type {
   Bucket,
   DebtEntry,
@@ -9,175 +10,202 @@ import type {
   PaymentEntry,
   SpendEntry,
   StorageShape,
-} from "./types";
-import { STORAGE_KEY } from "./storageKey";
-import { clampMoney } from "./utils";
+} from './types';
+import { STORAGE_KEY } from './storageKey';
+import { clampMoney } from './utils';
 
-export function useMoneyStore() {
-  const [buckets, setBuckets] = useState<Bucket[]>([]);
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [spend, setSpend] = useState<SpendEntry[]>([]);
-  const [payments, setPayments] = useState<PaymentEntry[]>([]);
-  const [debts, setDebts] = useState<DebtEntry[]>([]);
-  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
+interface MoneyStore extends StorageShape {
+  totals: {
+    income: number;
+    spending: number;
+    payments: number;
+    debtBalance: number;
+    debtMinimums: number;
+  };
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Partial<StorageShape>;
+  // Actions
+  addBucket: (bucket: Bucket) => void;
+  addSpend: (item: SpendEntry) => void;
+  removeSpend: (id: string) => void;
+  addPayment: (item: PaymentEntry) => void;
+  removePayment: (id: string) => void;
+  addDebt: (item: DebtEntry) => void;
+  removeDebt: (id: string) => void;
+  addIncomeSource: (name: string) => void;
+  addIncomeEntry: (params: {
+    dateISO: string;
+    sourceName: string;
+    amount: number;
+    note?: string;
+  }) => void;
+  removeIncomeEntry: (id: string) => void;
+  resetAll: () => void;
+}
 
-      setBuckets(Array.isArray(parsed.buckets) ? parsed.buckets : []);
-      setEntries(Array.isArray(parsed.entries) ? parsed.entries : []);
-      setSpend(Array.isArray(parsed.spend) ? parsed.spend : []);
-      setPayments(Array.isArray(parsed.payments) ? parsed.payments : []);
-      setDebts(Array.isArray(parsed.debts) ? parsed.debts : []);
-      setIncomeSources(
-        Array.isArray(parsed.incomeSources) ? parsed.incomeSources : []
-      );
-    } catch {}
-  }, []);
+export const useMoneyStore = create<MoneyStore>()(
+  persist(
+    (set, get) => ({
+      // Initial state
+      buckets: [],
+      entries: [],
+      spend: [],
+      payments: [],
+      debts: [],
+      incomeSources: [],
 
-  useEffect(() => {
-    try {
-      const payload: StorageShape = {
-        buckets,
-        entries,
-        spend,
-        payments,
-        debts,
-        incomeSources,
-        meta: {},
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch {}
-  }, [buckets, entries, spend, payments, debts, incomeSources]);
+      totals: {
+        income: 0,
+        spending: 0,
+        payments: 0,
+        debtBalance: 0,
+        debtMinimums: 0,
+      },
 
-  const totals = useMemo(() => {
+      // Computed totals (updated automatically on any change)
+      addBucket: (bucket) =>
+        set((state) => ({
+          buckets: [bucket, ...state.buckets],
+        })),
+
+      addSpend: (item) =>
+        set((state) => ({
+          spend: [item, ...state.spend],
+        })),
+
+      removeSpend: (id) =>
+        set((state) => ({
+          spend: state.spend.filter((item) => item.id !== id),
+        })),
+
+      addPayment: (item) =>
+        set((state) => ({
+          payments: [item, ...state.payments],
+        })),
+
+      removePayment: (id) =>
+        set((state) => ({
+          payments: state.payments.filter((item) => item.id !== id),
+        })),
+
+      addDebt: (item) =>
+        set((state) => ({
+          debts: [item, ...state.debts],
+        })),
+
+      removeDebt: (id) =>
+        set((state) => ({
+          debts: state.debts.filter((item) => item.id !== id),
+        })),
+
+      addIncomeSource: (name) => {
+        const clean = name.trim();
+        if (!clean) return;
+
+        const exists = get().incomeSources.some(
+          (s) => s.name.toLowerCase() === clean.toLowerCase()
+        );
+        if (exists) return;
+
+        const source: IncomeSource = {
+          id: crypto.randomUUID(),
+          name: clean,
+        };
+
+        set((state) => ({
+          incomeSources: [source, ...state.incomeSources].sort((a, b) =>
+            a.name.localeCompare(b.name)
+          ),
+        }));
+      },
+
+      addIncomeEntry: (params) => {
+        const cleanSource = params.sourceName.trim();
+        const amt = clampMoney(params.amount);
+
+        if (!cleanSource || !Number.isFinite(amt) || amt <= 0) return;
+
+        const entry: Entry = {
+          id: crypto.randomUUID(),
+          dateISO: params.dateISO,
+          sourceName: cleanSource,
+          amount: amt,
+          note: params.note?.trim() || undefined,
+          allocations: {},
+        };
+
+        set((state) => ({
+          entries: [entry, ...state.entries].sort((a, b) =>
+            a.dateISO < b.dateISO ? 1 : -1
+          ),
+        }));
+
+        // Auto-add income source if new
+        const exists = get().incomeSources.some(
+          (s) => s.name.toLowerCase() === cleanSource.toLowerCase()
+        );
+        if (!exists) {
+          get().addIncomeSource(cleanSource);
+        }
+      },
+
+      removeIncomeEntry: (id) =>
+        set((state) => ({
+          entries: state.entries.filter((e) => e.id !== id),
+        })),
+
+      resetAll: () =>
+        set({
+          buckets: [],
+          entries: [],
+          spend: [],
+          payments: [],
+          debts: [],
+          incomeSources: [],
+        }),
+    }),
+
+    {
+      name: STORAGE_KEY,                    // Uses your existing storage key
+      storage: createJSONStorage(() => localStorage),
+      // Optional: Skip persisting actions/totals if you want (but totals are derived so it's fine)
+      partialize: (state) => ({
+        buckets: state.buckets,
+        entries: state.entries,
+        spend: state.spend,
+        payments: state.payments,
+        debts: state.debts,
+        incomeSources: state.incomeSources,
+      }),
+    }
+  )
+);
+
+// Re-compute totals whenever relevant state changes
+// (Zustand will only re-render components that subscribe to `totals`)
+useMoneyStore.subscribe(
+  (state) => ({
+    entries: state.entries,
+    spend: state.spend,
+    payments: state.payments,
+    debts: state.debts,
+  }),
+  () => {
+    const { entries, spend, payments, debts } = useMoneyStore.getState();
+
     const income = entries.reduce((sum, e) => sum + e.amount, 0);
     const spending = spend.reduce((sum, s) => sum + s.amount, 0);
     const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
     const debtTotal = debts.reduce((sum, d) => sum + d.balance, 0);
     const minDueTotal = debts.reduce((sum, d) => sum + (d.minPayment || 0), 0);
 
-    return {
-      income: clampMoney(income),
-      spending: clampMoney(spending),
-      payments: clampMoney(paymentTotal),
-      debtBalance: clampMoney(debtTotal),
-      debtMinimums: clampMoney(minDueTotal),
-    };
-  }, [entries, spend, payments, debts]);
-
-  function addBucket(bucket: Bucket) {
-    setBuckets((prev) => [bucket, ...prev]);
+    useMoneyStore.setState({
+      totals: {
+        income: clampMoney(income),
+        spending: clampMoney(spending),
+        payments: clampMoney(paymentTotal),
+        debtBalance: clampMoney(debtTotal),
+        debtMinimums: clampMoney(minDueTotal),
+      },
+    });
   }
-
-  function addSpend(item: SpendEntry) {
-    setSpend((prev) => [item, ...prev]);
-  }
-
-  function removeSpend(id: string) {
-    setSpend((prev) => prev.filter((item) => item.id !== id));
-  }
-
-  function addPayment(item: PaymentEntry) {
-    setPayments((prev) => [item, ...prev]);
-  }
-
-  function removePayment(id: string) {
-    setPayments((prev) => prev.filter((item) => item.id !== id));
-  }
-
-  function addDebt(item: DebtEntry) {
-    setDebts((prev) => [item, ...prev]);
-  }
-
-  function removeDebt(id: string) {
-    setDebts((prev) => prev.filter((item) => item.id !== id));
-  }
-
-  function addIncomeSource(name: string) {
-    const clean = name.trim();
-    if (!clean) return;
-
-    const exists = incomeSources.some(
-      (s) => s.name.toLowerCase() === clean.toLowerCase()
-    );
-    if (exists) return;
-
-    const source: IncomeSource = {
-      id: crypto.randomUUID(),
-      name: clean,
-    };
-
-    setIncomeSources((prev) =>
-      [source, ...prev].sort((a, b) => a.name.localeCompare(b.name))
-    );
-  }
-
-  function addIncomeEntry(params: {
-    dateISO: string;
-    sourceName: string;
-    amount: number;
-    note?: string;
-  }) {
-    const cleanSource = params.sourceName.trim();
-    const amt = clampMoney(params.amount);
-
-    if (!cleanSource || !Number.isFinite(amt) || amt <= 0) return;
-
-    const entry: Entry = {
-      id: crypto.randomUUID(),
-      dateISO: params.dateISO,
-      sourceName: cleanSource,
-      amount: amt,
-      note: params.note?.trim() || undefined,
-      allocations: {},
-    };
-
-    setEntries((prev) =>
-      [entry, ...prev].sort((a, b) => (a.dateISO < b.dateISO ? 1 : -1))
-    );
-
-    const exists = incomeSources.some(
-      (s) => s.name.toLowerCase() === cleanSource.toLowerCase()
-    );
-    if (!exists) addIncomeSource(cleanSource);
-  }
-
-  function removeIncomeEntry(id: string) {
-    setEntries((prev) => prev.filter((e) => e.id !== id));
-  }
-
-  function resetAll() {
-    setBuckets([]);
-    setEntries([]);
-    setSpend([]);
-    setPayments([]);
-    setDebts([]);
-    setIncomeSources([]);
-    localStorage.removeItem(STORAGE_KEY);
-  }
-
-  return {
-    buckets,
-    entries,
-    spend,
-    payments,
-    debts,
-    incomeSources,
-    totals,
-    addBucket,
-    addSpend,
-    removeSpend,
-    addPayment,
-    removePayment,
-    addDebt,
-    removeDebt,
-    addIncomeSource,
-    addIncomeEntry,
-    removeIncomeEntry,
-    resetAll,
-  };
-}
+);
