@@ -1,8 +1,8 @@
-export type ID = string;
+// lib/money/types.ts
 
-export type PriorityLevel = 1 | 2 | 3 | 4 | 5;
+export type BucketKind = "bill" | "credit" | "loan" | "savings";
 
-export type Category =
+export type BucketCategory =
   | "housing"
   | "utilities"
   | "transportation"
@@ -10,105 +10,74 @@ export type Category =
   | "food"
   | "other";
 
-export type BucketKind = "bill" | "credit" | "loan";
-
-// ── Bucket ───────────────────────────────
 export type Bucket = {
-  id: ID;
+  key: string;
   name: string;
   kind: BucketKind;
-  category?: Category;
-
-  target: number;
-  saved: number;
-
-  dueDate?: string | null;
-  isMonthly?: boolean;
-  dueDay?: number | null;
-
-  priority?: PriorityLevel;
-  focus?: boolean;
-
-  balance?: number;
-  apr?: number;
-  minPayment?: number;
-  creditLimit?: number;
+  category?: BucketCategory;
 };
 
-// ── Income ───────────────────────────────
+/* ─────────────────────────────
+   INCOME
+──────────────────────────── */
+
 export type IncomeSource = {
-  id: ID;
+  id: string;
   name: string;
 };
 
-export type IncomeEntry = {
-  id: ID;
+export type Entry = {
+  id: string;
   dateISO: string;
   sourceName: string;
   amount: number;
   note?: string;
-  allocations: Partial<Record<ID, number>>;
+  allocations: Record<string, number>;
 };
 
-// ── Spending ─────────────────────────────
-export type SpendEntry = {
-  id: string;
-  dateISO: string;
-  amount: number;   // 🔥 REQUIRED (this is missing right now)
+/* ─────────────────────────────
+   SPENDING (FIXED)
+──────────────────────────── */
 
-  export type SpendCategory =
+export type SpendCategory =
   | "groceries"
   | "gas"
   | "eating_out"
-  | "kids"
-  | "business"
-  | "self_care"
-  | "subscriptions"
-  | "misc";
+  | "bills"
+  | "other";
 
-  merchant?: string;
-  note?: string;
-};
-
-// ── Payments ─────────────────────────────
-export type PaymentEntry = {
-  id: ID;
+export type SpendEntry = {
+  id: string;
   dateISO: string;
-  amount: number;
-  bucketId?: ID;
-  debtId?: ID;
-  merchant?: string;
+  merchant: string;
+  amount: number;   // IMPORTANT (your error source)
+  category: SpendCategory;
   note?: string;
 };
 
-// ── Debt (CLEAN FINAL FORM) ──────────────
-export type DebtEntry = {
-  id: ID;
+/* ─────────────────────────────
+   PAYMENTS / BILLS
+──────────────────────────── */
+
+export type PaymentEntry = {
+  id: string;
   name: string;
-  kind: "credit" | "loan";
+  amount: number;
+  dueDate?: string;
+};
 
+/* ─────────────────────────────
+   DEBT (STABLE MODEL)
+──────────────────────────── */
+
+export type DebtEntry = {
+  id: string;
+  name: string;
   balance: number;
-
-  minPayment?: number;
-  dueDate?: string | null;
+  minPayment: number;
+  dueDate?: string;
 
   isMonthly?: boolean;
-  dueDay?: number | null;
-
-  apr?: number;
-  creditLimit?: number;
-};
-
-// ── STORAGE ──────────────────────────────
-export type StorageShape = {
-  buckets: Bucket[];
-  income: IncomeEntry[];
-  spend: SpendEntry[];
-  payments: PaymentEntry[];
-  debts: DebtEntry[];
-  incomeSources: IncomeSource[];
-
-  meta?: {
-    lastMonthlyApplied?: string;
-  };
+  dueDay?: number;
+  note?: string;
 };
