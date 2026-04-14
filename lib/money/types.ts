@@ -1,9 +1,3 @@
-// lib/money/types.ts
-
-/* ─────────────────────────────
-   CORE BUCKET SYSTEM
-──────────────────────────── */
-
 export type BucketKind = "bill" | "credit" | "loan" | "savings";
 
 export type BucketCategory =
@@ -21,10 +15,7 @@ export type Bucket = {
   category?: BucketCategory;
 };
 
-/* ─────────────────────────────
-   INCOME SYSTEM
-──────────────────────────── */
-
+/* ───────── INCOME ───────── */
 export type IncomeSource = {
   id: string;
   name: string;
@@ -39,23 +30,17 @@ export type Entry = {
   allocations: Record<string, number>;
 };
 
-/* ─────────────────────────────
-   SPENDING SYSTEM (FIXED + MATCHES UI)
-──────────────────────────── */
-
-export const SPEND_CATEGORIES = [
-  "groceries",
-  "gas",
-  "eating_out",
-  "kids",
-  "business",
-  "self_care",
-  "subscriptions",
-  "bills",
-  "other",
-] as const;
-
-export type SpendCategory = typeof SPEND_CATEGORIES[number];
+/* ───────── SPENDING (STABLE CORE) ───────── */
+export type SpendCategory =
+  | "groceries"
+  | "gas"
+  | "eating_out"
+  | "bills"
+  | "kids"
+  | "business"
+  | "self_care"
+  | "subscriptions"
+  | "misc";
 
 export type SpendEntry = {
   id: string;
@@ -66,10 +51,7 @@ export type SpendEntry = {
   note?: string;
 };
 
-/* ─────────────────────────────
-   PAYMENTS (BILLS / RECURRING)
-──────────────────────────── */
-
+/* ───────── PAYMENTS ───────── */
 export type PaymentEntry = {
   id: string;
   name: string;
@@ -77,21 +59,14 @@ export type PaymentEntry = {
   dueDate?: string;
 };
 
-/* ─────────────────────────────
-   DEBT SYSTEM (STABLE MODEL)
-──────────────────────────── */
-
+/* ───────── DEBT ───────── */
 export type DebtEntry = {
   id: string;
   name: string;
-
   balance: number;
   minPayment: number;
-
   dueDate?: string;
-
   isMonthly?: boolean;
   dueDay?: number;
-
   note?: string;
 };
