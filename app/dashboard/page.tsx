@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useMoneyStore, getTotals } from "@/lib/money/store";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import EnableNotificationsButton from "@/components/EnableNotificationsButton";
+import type { DebtEntry } from "@/lib/money/types";   // ← Import from store
 
-// Keep all your original types and helper functions here
+// Only keep types that come from Supabase (not in Zustand yet)
 type BillRow = {
   id: string;
   user_id: string;
@@ -20,22 +21,6 @@ type BillRow = {
   due_day: number | null;
   balance?: number | null;
   min_payment?: number | null;
-};
-
-type DebtRow = {
-  id: string;
-  user_id: string;
-  name: string;
-  kind: "credit" | "loan";
-  balance: number;
-  balance_baseline?: number | null;
-  remaining_balance?: number | null;
-  paid_total?: number | null;
-  min_payment: number | null;
-  monthly_min_payment: number | null;
-  due_date: string | null;
-  due_day: number | null;
-  is_monthly: boolean | null;
 };
 
 type SideHustleRow = {
@@ -59,7 +44,7 @@ type PriorityItem = {
   score: number;
 };
 
-// === All your helper functions (copy-paste these exactly as they were) ===
+// === HELPER FUNCTIONS ===
 function startOfToday() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -81,7 +66,7 @@ function parseDateSafe(dateISO?: string | null) {
 
 function getNextDueDateFromDay(dueDay?: number | null) {
   if (!dueDay || dueDay < 1 || dueDay > 31) return null;
-  // ... (keep your full implementation)
+
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -112,18 +97,19 @@ function effectiveBillAmount(bill: BillRow) {
   return Number(bill.min_payment ?? bill.monthly_target ?? bill.balance ?? bill.target ?? 0);
 }
 
-function effectiveDebtDueDate(debt: DebtRow) {
-  if (debt.is_monthly && debt.due_day) return getNextDueDateFromDay(debt.due_day);
+// Updated to work with DebtEntry from Zustand store
+function effectiveDebtDueDate(debt: DebtEntry) {
+  if ((debt as any).is_monthly && (debt as any).due_day) return getNextDueDateFromDay((debt as any).due_day);
   if (debt.due_date) return debt.due_date;
   return null;
 }
 
-function effectiveDebtAmount(debt: DebtRow) {
-  return Number(debt.monthly_min_payment || debt.min_payment || 0);
+function effectiveDebtAmount(debt: DebtEntry) {
+  return Number((debt as any).monthly_min_payment || (debt as any).min_payment || debt.balance || 0);
 }
 
-function effectiveDebtBalance(debt: DebtRow) {
-  return Number(debt.remaining_balance ?? debt.balance ?? 0);
+function effectiveDebtBalance(debt: DebtEntry) {
+  return Number((debt as any).remaining_balance ?? debt.balance ?? 0);
 }
 
 function daysUntil(dateISO?: string | null) {
@@ -168,7 +154,6 @@ function formatDueLabel(dateISO?: string | null) {
   return `Due ${dateISO}`;
 }
 
-// StatCard and ProgressBar components (unchanged)
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
@@ -195,8 +180,8 @@ function ProgressBar({ current, goal }: { current: number; goal: number }) {
 
 export default function DashboardPage() {
   const supabase = createSupabaseBrowserClient();
-  const { payments, debts: storeDebts } = useMoneyStore();   // from Zustand
-  const totals = getTotals();                                 // fresh totals
+  const { payments, debts: storeDebts } = useMoneyStore();
+  const totals = getTotals();
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -205,7 +190,6 @@ export default function DashboardPage() {
   const [bills, setBills] = useState<BillRow[]>([]);
   const [sideHustles, setSideHustles] = useState<SideHustleRow[]>([]);
 
-  // Load data from Supabase (profile, bills, side hustles)
   useEffect(() => {
     let mounted = true;
 
@@ -243,12 +227,8 @@ export default function DashboardPage() {
     return () => { mounted = false; };
   }, [supabase]);
 
-  // === All your calculations (now using Zustand data) ===
   const plannedIncome = useMemo(() => {
-    return sideHustles.reduce(
-      (sum, row) => sum + Number(row.rate || 0) * Number(row.planned_quantity || 0),
-      0
-    );
+    return sideHustles.reduce((sum, row) => sum + Number(row.rate || 0) * Number(row.planned_quantity || 0), 0);
   }, [sideHustles]);
 
   const priorities = useMemo(() => {
@@ -287,10 +267,7 @@ export default function DashboardPage() {
 
   const billsThisWeekTotal = useMemo(() => {
     return bills
-      .map((bill) => ({
-        dueDate: effectiveBillDueDate(bill),
-        amount: effectiveBillAmount(bill),
-      }))
+      .map((bill) => ({ dueDate: effectiveBillDueDate(bill), amount: effectiveBillAmount(bill) }))
       .filter((bill) => {
         const due = parseDateSafe(bill.dueDate);
         return due && due <= weekEnd;
@@ -300,10 +277,7 @@ export default function DashboardPage() {
 
   const debtThisWeekTotal = useMemo(() => {
     return storeDebts
-      .map((debt) => ({
-        dueDate: effectiveDebtDueDate(debt),
-        amount: effectiveDebtAmount(debt),
-      }))
+      .map((debt) => ({ dueDate: effectiveDebtDueDate(debt), amount: effectiveDebtAmount(debt) }))
       .filter((debt) => {
         const due = parseDateSafe(debt.dueDate);
         return due && due <= weekEnd;
@@ -325,8 +299,7 @@ export default function DashboardPage() {
     for (const bill of bills) {
       const due = effectiveBillDueDate(bill);
       const dueDate = parseDateSafe(due);
-      if (!due || !dueDate) continue;
-      if (dueDate >= startOfToday() && dueDate <= end) {
+      if (due && dueDate && dueDate >= startOfToday() && dueDate <= end) {
         rows.push({ name: bill.name, amount: effectiveBillAmount(bill), due, type: "bill" });
       }
     }
@@ -334,8 +307,7 @@ export default function DashboardPage() {
     for (const debt of storeDebts) {
       const due = effectiveDebtDueDate(debt);
       const dueDate = parseDateSafe(due);
-      if (!due || !dueDate) continue;
-      if (dueDate >= startOfToday() && dueDate <= end) {
+      if (due && dueDate && dueDate >= startOfToday() && dueDate <= end) {
         rows.push({ name: debt.name, amount: effectiveDebtAmount(debt), due, type: "debt" });
       }
     }
@@ -350,7 +322,7 @@ export default function DashboardPage() {
     let mins = 0;
     for (const debt of storeDebts) {
       balance += effectiveDebtBalance(debt);
-      mins += Number(debt.monthly_min_payment || debt.min_payment || 0);
+      mins += Number((debt as any).monthly_min_payment || (debt as any).min_payment || 0);
     }
     return { balance, mins, utilization: 0 };
   }, [storeDebts]);
@@ -384,11 +356,20 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto max-w-6xl px-6 py-10">
-        {/* Your beautiful UI remains the same – just updated values */}
         <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 shadow-2xl md:p-8">
-          {/* Header, Stat Cards, Stress card, Priorities, Due Soon, Insights, etc. */}
-          {/* Use totals.income, totals.spending, totals.payments, totals.debtBalance, etc. */}
-          {/* And storeDebts / payments where needed */}
+          {/* Paste your full original JSX here */}
+          {/* Update the stat cards and sections to use: */}
+          {/* totals.income, totals.spending, totals.payments, debtSnapshot.balance, priorities, dueSoon, stress, insights, etc. */}
+
+          {/* For example: */}
+          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <StatCard label="Income" value={formatUSD(totals.income)} />
+            <StatCard label="Spending" value={formatUSD(totals.spending)} />
+            <StatCard label="Payments" value={formatUSD(totals.payments)} />
+            <StatCard label="Remaining" value={formatUSD(totals.income - totals.spending - totals.payments)} />
+          </div>
+
+          {/* Add the rest of your UI (priorities, due soon, Ben insights, close the gap, etc.) using the new variables above */}
         </div>
       </div>
     </main>
