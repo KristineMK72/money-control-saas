@@ -11,21 +11,21 @@ type PaymentRow = {
   amount: number;
   merchant: string | null;
   note: string | null;
-  debt_id?: string | null;
-  bill_id?: string | null;
+  debt_id: string | null;
+  bill_id: string | null;
   created_at: string;
 };
 
 type DebtRow = {
   id: string;
   name: string;
-  remaining_balance?: number | null;
+  remaining_balance: number | null;
 };
 
 type BillRow = {
   id: string;
   name: string;
-  amount?: number | null;
+  amount: number | null;
 };
 
 function todayISO() {
@@ -36,31 +36,63 @@ export default function PaymentsPage() {
   const supabase = createSupabaseBrowserClient();
   const router = useRouter();
 
+  const [userId, setUserId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [userId, setUserId] = useState<string | null>(null);
 
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [bills, setBills] = useState<BillRow[]>([]);
 
-  // form state
   const [dateISO, setDateISO] = useState(todayISO());
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
 
-  // NEW: type + selection
   const [payType, setPayType] = useState<"debt" | "bill">("debt");
   const [debtId, setDebtId] = useState("");
   const [billId, setBillId] = useState("");
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/signup");
-    router.refresh();
+  /* ---------------- AUTH INIT ---------------- */
+
+  useEffect(() => {
+    init();
+  }, []);
+
+  async function init() {
+    setLoading(true);
+    setMessage("");
+
+    const { data, error } = await supabase.auth.getSession();
+
+    if (error) {
+      setMessage(error.message);
+      setLoading(false);
+      return;
+    }
+
+    const user = data.session?.user;
+
+    if (!user) {
+      setMessage("Please log in first.");
+      setLoading(false);
+      return;
+    }
+
+    setUserId(user.id);
+
+    await Promise.all([
+      loadPayments(user.id),
+      loadDebts(user.id),
+      loadBills(user.id),
+    ]);
+
+    setLoading(false);
   }
+
+  /* ---------------- LOADERS ---------------- */
 
   async function loadPayments(uid: string) {
     const { data, error } = await supabase
@@ -69,8 +101,12 @@ export default function PaymentsPage() {
       .eq("user_id", uid)
       .order("date_iso", { ascending: false });
 
-    if (error) throw error;
-    setPayments((data || []) as PaymentRow[]);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setPayments(data || []);
   }
 
   async function loadDebts(uid: string) {
@@ -78,62 +114,37 @@ export default function PaymentsPage() {
       .from("debt_status")
       .select("id, name, remaining_balance")
       .eq("user_id", uid)
-      .order("name", { ascending: true });
+      .order("name");
 
-    if (error) throw error;
-    setDebts((data || []) as DebtRow[]);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setDebts(data || []);
   }
 
   async function loadBills(uid: string) {
     const { data, error } = await supabase
-      .from("buckets")
-      .select("id, name, amount")
+      .from("bills")
+      .select("id, name, target")
       .eq("user_id", uid)
-      .eq("kind", "bill")
-      .order("name", { ascending: true });
+      .order("name");
 
-    if (error) throw error;
-    setBills((data || []) as BillRow[]);
-  }
-
-  useEffect(() => {
-    async function init() {
-      setLoading(true);
-      setMessage("");
-
-      const { data, error } = await supabase.auth.getSession();
-      if (error) {
-        setMessage(error.message);
-        setLoading(false);
-        return;
-      }
-
-      const session = data.session;
-      if (!session?.user) {
-        setMessage("Please log in first.");
-        setLoading(false);
-        return;
-      }
-
-      const uid = session.user.id;
-      setUserId(uid);
-
-      await Promise.all([
-        loadPayments(uid),
-        loadDebts(uid),
-        loadBills(uid),
-      ]);
-
-      setLoading(false);
+    if (error) {
+      setMessage(error.message);
+      return;
     }
 
-    init();
-  }, []);
+    setBills(data || []);
+  }
 
-  async function refresh() {
+  async function refreshPayments() {
     if (!userId) return;
     await loadPayments(userId);
   }
+
+  /* ---------------- ADD PAYMENT ---------------- */
 
   async function handleAddPayment() {
     setMessage("");
@@ -141,8 +152,9 @@ export default function PaymentsPage() {
     if (!userId) return;
 
     const amt = Number(amount);
+
     if (!merchant.trim() || !Number.isFinite(amt) || amt <= 0) {
-      setMessage("Enter a valid payment and amount.");
+      setMessage("Enter valid merchant + amount.");
       return;
     }
 
@@ -159,7 +171,7 @@ export default function PaymentsPage() {
     try {
       setSaving(true);
 
-      const payload = {
+      const { error } = await supabase.from("payments").insert({
         user_id: userId,
         date_iso: dateISO,
         amount: amt,
@@ -167,20 +179,19 @@ export default function PaymentsPage() {
         note: note.trim() || null,
         debt_id: payType === "debt" ? debtId : null,
         bill_id: payType === "bill" ? billId : null,
-      };
+      });
 
-      const { error } = await supabase.from("payments").insert(payload);
       if (error) throw error;
 
-      setDateISO(todayISO());
       setMerchant("");
       setAmount("");
       setNote("");
       setDebtId("");
       setBillId("");
       setPayType("debt");
+      setDateISO(todayISO());
 
-      await refresh();
+      await refreshPayments();
       setMessage("Payment added.");
     } catch (err: any) {
       setMessage(err.message || "Failed to add payment.");
@@ -189,19 +200,23 @@ export default function PaymentsPage() {
     }
   }
 
-  const total = useMemo(
-    () => payments.reduce((s, p) => s + Number(p.amount || 0), 0),
-    [payments]
-  );
+  /* ---------------- TOTALS ---------------- */
+
+  const total = useMemo(() => {
+    return payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  }, [payments]);
+
+  /* ---------------- UI ---------------- */
+
+  if (loading) {
+    return <div className="p-6 text-white">Loading...</div>;
+  }
 
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto max-w-5xl px-6 py-10">
 
         <h1 className="text-4xl font-black">Payments</h1>
-        <p className="text-zinc-400 mt-2">
-          Log payments toward debt or bills.
-        </p>
 
         {message && (
           <div className="mt-4 rounded-xl bg-emerald-500/10 p-3 text-emerald-300">
@@ -209,8 +224,7 @@ export default function PaymentsPage() {
           </div>
         )}
 
-        {/* SUMMARY */}
-        <div className="mt-6 text-2xl font-bold">
+        <div className="mt-4 text-2xl font-bold">
           Total: ${total.toFixed(2)}
         </div>
 
@@ -218,6 +232,7 @@ export default function PaymentsPage() {
 
           {/* FORM */}
           <div className="rounded-2xl bg-white p-5 text-black">
+
             <h2 className="text-xl font-bold">Add Payment</h2>
 
             <input
@@ -228,7 +243,7 @@ export default function PaymentsPage() {
             />
 
             <input
-              placeholder="What was this payment for?"
+              placeholder="Merchant / Name"
               value={merchant}
               onChange={(e) => setMerchant(e.target.value)}
               className="mt-3 w-full border p-2 rounded"
@@ -242,7 +257,7 @@ export default function PaymentsPage() {
               className="mt-3 w-full border p-2 rounded"
             />
 
-            {/* TYPE SELECT */}
+            {/* TYPE */}
             <select
               value={payType}
               onChange={(e) => {
@@ -256,7 +271,7 @@ export default function PaymentsPage() {
               <option value="bill">Bill</option>
             </select>
 
-            {/* CONDITIONAL DROPDOWN */}
+            {/* DEBT */}
             {payType === "debt" && (
               <select
                 value={debtId}
@@ -272,6 +287,7 @@ export default function PaymentsPage() {
               </select>
             )}
 
+            {/* BILL */}
             {payType === "bill" && (
               <select
                 value={billId}
@@ -282,7 +298,6 @@ export default function PaymentsPage() {
                 {bills.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
-                    {b.amount ? ` - $${b.amount}` : ""}
                   </option>
                 ))}
               </select>
@@ -306,12 +321,11 @@ export default function PaymentsPage() {
 
           {/* HISTORY */}
           <div className="rounded-2xl bg-white p-5 text-black">
+
             <h2 className="text-xl font-bold">History</h2>
 
-            {loading ? (
-              <p>Loading...</p>
-            ) : payments.length === 0 ? (
-              <p>No payments yet.</p>
+            {payments.length === 0 ? (
+              <p className="mt-3">No payments yet.</p>
             ) : (
               payments.map((p) => (
                 <div key={p.id} className="border-b py-2">
