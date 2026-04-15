@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { ocrImageFile, parseDebtScreenshot } from "@/lib/money/receiptOcr";
 
 /* -------------------- Types -------------------- */
 
@@ -29,36 +28,18 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function getNextDueDate(dueDay?: number | null) {
-  if (!dueDay || dueDay < 1 || dueDay > 31) return null;
-
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-
-  const lastDay = new Date(y, m + 1, 0).getDate();
-  const safeDay = Math.min(dueDay, lastDay);
-
-  const thisMonth = new Date(y, m, safeDay);
-
-  if (thisMonth >= now) return thisMonth.toISOString().slice(0, 10);
-
-  const nextMonth = new Date(y, m + 1, safeDay);
-  return nextMonth.toISOString().slice(0, 10);
-}
-
 /* -------------------- Chart -------------------- */
 
 function DonutChart({
   values,
   size = 180,
-  stroke = 22,
+  stroke = 20,
 }: {
   values: { label: string; value: number }[];
   size?: number;
   stroke?: number;
 }) {
-  const total = values.reduce((s, v) => s + v.value, 0);
+  const total = values.reduce((sum, v) => sum + v.value, 0);
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
 
@@ -68,7 +49,15 @@ function DonutChart({
 
   return (
     <svg width={size} height={size}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={stroke} />
+      {/* base ring */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="#e5e7eb"
+        strokeWidth={stroke}
+      />
 
       {values.map((v, i) => {
         const frac = total ? v.value / total : 0;
@@ -93,7 +82,13 @@ function DonutChart({
         );
       })}
 
-      <text x="50%" y="50%" textAnchor="middle" fontSize={18} fontWeight={800}>
+      <text
+        x="50%"
+        y="52%"
+        textAnchor="middle"
+        fontSize={18}
+        fontWeight={800}
+      >
         ${total.toFixed(0)}
       </text>
     </svg>
@@ -121,40 +116,35 @@ export default function DebtPage() {
   const [dueDate, setDueDate] = useState("");
   const [note, setNote] = useState("");
 
-  /* recurring */
-  const [isMonthly, setIsMonthly] = useState(true);
-  const [dueDay, setDueDay] = useState("");
-  const [monthlyMin, setMonthlyMin] = useState("");
-
   /* pay */
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState("");
-  const [payDate, setPayDate] = useState(todayISO());
-
-  /* OCR */
-  const [file, setFile] = useState<File | null>(null);
-  const [ocrBusy, setOcrBusy] = useState(false);
 
   /* -------------------- Load -------------------- */
 
   useEffect(() => {
     async function init() {
-      const { data } = await supabase.auth.getUser();
+      const { data, error } = await supabase.auth.getUser();
 
-      if (!data.user) {
+      if (error || !data.user) {
         window.location.href = "/signup?mode=login";
         return;
       }
 
       setUserId(data.user.id);
 
-      const { data: debtsData } = await supabase
+      const { data: debtsData, error: dbError } = await supabase
         .from("debts")
         .select("*")
         .eq("user_id", data.user.id)
         .order("created_at", { ascending: false });
 
-      setDebts((debtsData || []) as DebtRow[]);
+      if (dbError) {
+        setMessage(dbError.message);
+      } else {
+        setDebts((debtsData || []) as DebtRow[]);
+      }
+
       setLoading(false);
     }
 
@@ -179,8 +169,9 @@ export default function DebtPage() {
     if (!userId) return;
 
     const bal = Number(balance);
+
     if (!name.trim() || !Number.isFinite(bal)) {
-      setMessage("Enter valid name and balance");
+      setMessage("Enter valid name + balance");
       return;
     }
 
@@ -194,24 +185,19 @@ export default function DebtPage() {
       credit_limit: creditLimit ? Number(creditLimit) : null,
       due_date: dueDate || null,
       note: note || null,
-      is_monthly: isMonthly,
-      due_day: dueDay ? Number(dueDay) : null,
-      monthly_min_payment: monthlyMin ? Number(monthlyMin) : null,
     };
 
-    if (editingId) {
-      await supabase.from("debts").update(payload).eq("id", editingId);
-      setMessage("Updated debt");
-    } else {
-      await supabase.from("debts").insert(payload);
-      setMessage("Added debt");
+    const { error } = editingId
+      ? await supabase.from("debts").update(payload).eq("id", editingId)
+      : await supabase.from("debts").insert(payload);
+
+    if (error) {
+      setMessage(error.message);
+      return;
     }
 
-    reset();
-    refresh();
-  }
+    setMessage(editingId ? "Debt updated" : "Debt added");
 
-  function reset() {
     setEditingId(null);
     setName("");
     setBalance("");
@@ -220,13 +206,13 @@ export default function DebtPage() {
     setCreditLimit("");
     setDueDate("");
     setNote("");
-    setDueDay("");
-    setMonthlyMin("");
+
+    refresh();
   }
 
   /* -------------------- Delete -------------------- */
 
-  async function removeDebt(id: string) {
+  async function deleteDebt(id: string) {
     await supabase.from("debts").delete().eq("id", id);
     setDebts((d) => d.filter((x) => x.id !== id));
   }
@@ -235,13 +221,13 @@ export default function DebtPage() {
 
   async function payDebt(id: string) {
     const amt = Number(payAmount);
-    if (!amt) return;
+    if (!amt || !userId) return;
 
     await supabase.from("payments").insert({
       user_id: userId,
       debt_id: id,
       amount: amt,
-      date_iso: payDate,
+      date_iso: todayISO(),
     });
 
     setPayingId(null);
@@ -252,10 +238,10 @@ export default function DebtPage() {
 
   const totals = useMemo(() => {
     return debts.reduce(
-      (a, d) => {
-        a.balance += d.balance || 0;
-        a.min += d.monthly_min_payment || d.min_payment || 0;
-        return a;
+      (acc, d) => {
+        acc.balance += d.balance || 0;
+        acc.min += d.monthly_min_payment || d.min_payment || 0;
+        return acc;
       },
       { balance: 0, min: 0 }
     );
@@ -277,6 +263,11 @@ export default function DebtPage() {
     <main className="min-h-screen bg-zinc-50 p-6">
       <h1 className="text-3xl font-black">Debt</h1>
 
+      {message ? (
+        <div className="mt-3 text-sm text-zinc-600">{message}</div>
+      ) : null}
+
+      {/* Summary */}
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         <Card label="Total Debt" value={totals.balance} />
         <Card label="Monthly Minimums" value={totals.min} />
@@ -285,6 +276,7 @@ export default function DebtPage() {
         </div>
       </div>
 
+      {/* List */}
       <div className="mt-8 space-y-3">
         {debts.map((d) => (
           <div key={d.id} className="rounded-xl bg-white p-4">
@@ -292,13 +284,13 @@ export default function DebtPage() {
               <div>
                 <div className="font-semibold">{d.name}</div>
                 <div className="text-sm text-zinc-500">
-                  ${d.balance} · {d.kind}
+                  ${d.balance.toFixed(2)} · {d.kind}
                 </div>
               </div>
 
               <div className="flex gap-2">
                 <button onClick={() => setPayingId(d.id)}>Pay</button>
-                <button onClick={() => removeDebt(d.id)}>Delete</button>
+                <button onClick={() => deleteDebt(d.id)}>Delete</button>
               </div>
             </div>
 
@@ -307,7 +299,6 @@ export default function DebtPage() {
                 <input
                   value={payAmount}
                   onChange={(e) => setPayAmount(e.target.value)}
-                  placeholder="amount"
                   className="border p-2"
                 />
                 <button onClick={() => payDebt(d.id)}>Submit</button>
@@ -317,14 +308,33 @@ export default function DebtPage() {
         ))}
       </div>
 
-      <div className="mt-10">
-        <button onClick={saveDebt} className="bg-black text-white px-4 py-2 rounded">
+      {/* Save */}
+      <div className="mt-10 space-y-2">
+        <input
+          placeholder="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="border p-2"
+        />
+        <input
+          placeholder="Balance"
+          value={balance}
+          onChange={(e) => setBalance(e.target.value)}
+          className="border p-2"
+        />
+
+        <button
+          onClick={saveDebt}
+          className="bg-black text-white px-4 py-2 rounded"
+        >
           Save Debt
         </button>
       </div>
     </main>
   );
 }
+
+/* -------------------- Card -------------------- */
 
 function Card({ label, value }: { label: string; value: number }) {
   return (
