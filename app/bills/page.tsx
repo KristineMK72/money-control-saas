@@ -1,65 +1,67 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 /* ---------------- TYPES ---------------- */
 
-type PaymentRow = {
+type BillRow = {
   id: string;
   user_id: string;
-  date_iso: string;
-  amount: number;
-  merchant: string | null;
-  note: string | null;
-  debt_id: string | null;
-  bill_id: string | null;
+  name: string;
+  target: number;
+  category: string | null;
+  due_date: string | null;
+  due_day: number | null;
   created_at: string;
 };
 
-type DebtRow = {
-  id: string;
-  name: string;
-  remaining_balance: number | null;
-};
-
-type BillRow = {
-  id: string;
-  name: string;
-  target: number; // ✅ FIXED (not amount)
+type PaymentInsert = {
+  user_id: string;
+  date_iso: string;
+  amount: number;
+  merchant: string;
+  note: string | null;
+  bill_id: string;
+  debt_id: null;
 };
 
 /* ---------------- HELPERS ---------------- */
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+function getNextDueDate(dueDay?: number | null) {
+  if (!dueDay || dueDay < 1 || dueDay > 31) return null;
+
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  const safeDay = Math.min(dueDay, lastDay);
+
+  const thisMonth = new Date(y, m, safeDay);
+  if (thisMonth >= now) return thisMonth.toISOString().slice(0, 10);
+
+  const nextMonth = new Date(y, m + 1, safeDay);
+  return nextMonth.toISOString().slice(0, 10);
 }
 
 /* ---------------- PAGE ---------------- */
 
-export default function PaymentsPage() {
+export default function BillsPage() {
   const supabase = createSupabaseBrowserClient();
-  const router = useRouter();
 
+  const [bills, setBills] = useState<BillRow[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [payingId, setPayingId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
-  const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [debts, setDebts] = useState<DebtRow[]>([]);
-  const [bills, setBills] = useState<BillRow[]>([]);
-
-  const [dateISO, setDateISO] = useState(todayISO());
-  const [merchant, setMerchant] = useState("");
+  const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
-
-  const [payType, setPayType] = useState<"debt" | "bill">("debt");
-  const [debtId, setDebtId] = useState("");
-  const [billId, setBillId] = useState("");
+  const [category, setCategory] = useState("other");
+  const [dueDate, setDueDate] = useState("");
 
   /* ---------------- INIT ---------------- */
 
@@ -89,53 +91,19 @@ export default function PaymentsPage() {
 
     setUserId(user.id);
 
-    await Promise.all([
-      loadPayments(user.id),
-      loadDebts(user.id),
-      loadBills(user.id),
-    ]);
+    await loadBills(user.id);
 
     setLoading(false);
   }
 
-  /* ---------------- LOADERS ---------------- */
-
-  async function loadPayments(uid: string) {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("user_id", uid)
-      .order("date_iso", { ascending: false });
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setPayments(data || []);
-  }
-
-  async function loadDebts(uid: string) {
-    const { data, error } = await supabase
-      .from("debt_status")
-      .select("id, name, remaining_balance")
-      .eq("user_id", uid)
-      .order("name");
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setDebts(data || []);
-  }
+  /* ---------------- LOAD BILLS ---------------- */
 
   async function loadBills(uid: string) {
     const { data, error } = await supabase
       .from("bills")
-      .select("id, name, target")
+      .select<BillRow>("id, user_id, name, target, category, due_date, due_day, created_at")
       .eq("user_id", uid)
-      .order("name");
+      .order("created_at", { ascending: false });
 
     if (error) {
       setMessage(error.message);
@@ -145,212 +113,198 @@ export default function PaymentsPage() {
     setBills(data || []);
   }
 
-  async function refreshPayments() {
-    if (!userId) return;
-    await loadPayments(userId);
-  }
+  /* ---------------- ADD BILL ---------------- */
 
-  /* ---------------- ADD PAYMENT ---------------- */
-
-  async function handleAddPayment() {
-    setMessage("");
-
+  async function addBill() {
     if (!userId) return;
 
     const amt = Number(amount);
 
-    if (!merchant.trim() || !Number.isFinite(amt) || amt <= 0) {
-      setMessage("Enter valid name + amount.");
+    if (!name.trim() || !Number.isFinite(amt) || amt <= 0) {
+      setMessage("Invalid bill.");
       return;
     }
 
-    if (payType === "debt" && !debtId) {
-      setMessage("Select a debt.");
+    setSaving(true);
+
+    const { error } = await supabase.from("bills").insert({
+      user_id: userId,
+      name: name.trim(),
+      target: amt,
+      category,
+      due_date: dueDate || null,
+      due_day: null,
+    });
+
+    if (error) {
+      setMessage(error.message);
+      setSaving(false);
       return;
     }
 
-    if (payType === "bill" && !billId) {
-      setMessage("Select a bill.");
+    setName("");
+    setAmount("");
+    setDueDate("");
+    setCategory("other");
+
+    await loadBills(userId);
+
+    setSaving(false);
+    setMessage("Bill added.");
+  }
+
+  /* ---------------- PAY BILL ---------------- */
+
+  async function payBill(bill: BillRow) {
+    if (!userId) {
+      setMessage("Not logged in.");
       return;
     }
+
+    setPayingId(bill.id);
+    setMessage("");
+
+    const payload: PaymentInsert = {
+      user_id: userId,
+      date_iso: new Date().toISOString().slice(0, 10),
+      amount: bill.target,
+      merchant: bill.name,
+      note: "Paid from Bills page",
+      bill_id: bill.id,
+      debt_id: null,
+    };
 
     try {
-      setSaving(true);
-
-      const { error } = await supabase.from("payments").insert({
-        user_id: userId,
-        date_iso: dateISO,
-        amount: amt,
-        merchant: merchant.trim(),
-        note: note.trim() || null,
-        debt_id: payType === "debt" ? debtId : null,
-        bill_id: payType === "bill" ? billId : null,
-      });
+      const { error } = await supabase.from("payments").insert(payload);
 
       if (error) throw error;
 
-      // reset form
-      setMerchant("");
-      setAmount("");
-      setNote("");
-      setDebtId("");
-      setBillId("");
-      setPayType("debt");
-      setDateISO(todayISO());
-
-      await refreshPayments();
-      setMessage("Payment added.");
-
+      setMessage(`Paid ${bill.name}`);
     } catch (err: any) {
-      setMessage(err.message || "Failed to add payment.");
+      setMessage(err.message || "Payment failed");
     } finally {
-      setSaving(false);
+      setPayingId(null);
     }
   }
 
-  /* ---------------- TOTAL ---------------- */
+  /* ---------------- DELETE BILL ---------------- */
 
-  const total = useMemo(() => {
-    return payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  }, [payments]);
+  async function deleteBill(id: string) {
+    if (!userId) return;
+
+    await supabase.from("bills").delete().eq("id", id).eq("user_id", userId);
+
+    setBills((prev) => prev.filter((b) => b.id !== id));
+  }
+
+  /* ---------------- TOTALS ---------------- */
+
+  const totals = useMemo(() => {
+    const total = bills.reduce((s, b) => s + Number(b.target || 0), 0);
+    return { total };
+  }, [bills]);
 
   /* ---------------- UI ---------------- */
 
-  if (loading) {
-    return <div className="p-6 text-white">Loading...</div>;
-  }
+  if (loading) return <div className="p-6">Loading...</div>;
 
   return (
-    <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto max-w-5xl px-6 py-10">
+    <main className="max-w-4xl mx-auto p-6">
 
-        <h1 className="text-4xl font-black">Payments</h1>
+      <h1 className="text-2xl font-bold">Bills</h1>
 
-        {message && (
-          <div className="mt-4 rounded-xl bg-emerald-500/10 p-3 text-emerald-300">
-            {message}
-          </div>
-        )}
+      {message && (
+        <div className="mt-2 text-sm text-zinc-600">{message}</div>
+      )}
 
-        <div className="mt-4 text-2xl font-bold">
-          Total: ${total.toFixed(2)}
-        </div>
+      <div className="mt-4 text-xl font-bold">
+        Total Bills: ${totals.total.toFixed(2)}
+      </div>
 
-        <div className="mt-10 grid gap-6 md:grid-cols-2">
+      {/* ADD BILL */}
+      <div className="mt-6 border rounded-xl p-4 bg-white">
+        <h2 className="font-semibold">Add Bill</h2>
 
-          {/* FORM */}
-          <div className="rounded-2xl bg-white p-5 text-black">
+        <input
+          placeholder="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="mt-2 w-full border p-2 rounded"
+        />
 
-            <h2 className="text-xl font-bold">Add Payment</h2>
+        <input
+          placeholder="Amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="mt-2 w-full border p-2 rounded"
+        />
 
-            <input
-              type="date"
-              value={dateISO}
-              onChange={(e) => setDateISO(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
-            />
+        <input
+          type="date"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+          className="mt-2 w-full border p-2 rounded"
+        />
 
-            <input
-              placeholder="What did you pay?"
-              value={merchant}
-              onChange={(e) => setMerchant(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
-            />
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className="mt-2 w-full border p-2 rounded"
+        >
+          <option value="housing">Housing</option>
+          <option value="utilities">Utilities</option>
+          <option value="transportation">Transportation</option>
+          <option value="debt">Debt</option>
+          <option value="food">Food</option>
+          <option value="other">Other</option>
+        </select>
 
-            <input
-              type="number"
-              placeholder="Amount"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
-            />
+        <button
+          onClick={addBill}
+          disabled={saving}
+          className="mt-3 w-full bg-black text-white p-2 rounded"
+        >
+          {saving ? "Saving..." : "Add Bill"}
+        </button>
+      </div>
 
-            {/* TYPE */}
-            <select
-              value={payType}
-              onChange={(e) => {
-                setPayType(e.target.value as "debt" | "bill");
-                setDebtId("");
-                setBillId("");
-              }}
-              className="mt-3 w-full border p-2 rounded"
+      {/* LIST */}
+      <div className="mt-6 space-y-3">
+        {bills.map((b) => {
+          const due = b.due_date || getNextDueDate(b.due_day);
+
+          return (
+            <div
+              key={b.id}
+              className="border rounded-xl p-3 flex justify-between items-center"
             >
-              <option value="debt">Debt</option>
-              <option value="bill">Bill</option>
-            </select>
-
-            {/* DEBT DROPDOWN */}
-            {payType === "debt" && (
-              <select
-                value={debtId}
-                onChange={(e) => setDebtId(e.target.value)}
-                className="mt-3 w-full border p-2 rounded"
-              >
-                <option value="">Select debt</option>
-                {debts.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {/* BILL DROPDOWN */}
-            {payType === "bill" && (
-              <select
-                value={billId}
-                onChange={(e) => setBillId(e.target.value)}
-                className="mt-3 w-full border p-2 rounded"
-              >
-                <option value="">Select bill</option>
-                {bills.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} — ${b.target}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <textarea
-              placeholder="Note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
-            />
-
-            <button
-              onClick={handleAddPayment}
-              disabled={saving}
-              className="mt-4 w-full bg-black text-white p-3 rounded"
-            >
-              {saving ? "Saving..." : "Add Payment"}
-            </button>
-
-          </div>
-
-          {/* HISTORY */}
-          <div className="rounded-2xl bg-white p-5 text-black">
-
-            <h2 className="text-xl font-bold">History</h2>
-
-            {payments.length === 0 ? (
-              <p className="mt-3">No payments yet.</p>
-            ) : (
-              payments.map((p) => (
-                <div key={p.id} className="border-b py-2">
-                  <div className="font-semibold">
-                    {p.merchant} — ${p.amount}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    {p.date_iso}
-                  </div>
+              <div>
+                <div className="font-semibold">{b.name}</div>
+                <div className="text-sm text-zinc-500">
+                  ${b.target}
+                  {due ? ` · due ${due}` : ""}
                 </div>
-              ))
-            )}
+              </div>
 
-          </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => payBill(b)}
+                  disabled={payingId === b.id}
+                  className="text-xs bg-black text-white px-3 py-1 rounded"
+                >
+                  {payingId === b.id ? "Paying..." : "Pay"}
+                </button>
 
-        </div>
+                <button
+                  onClick={() => deleteBill(b.id)}
+                  className="text-xs text-red-500"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </main>
   );
