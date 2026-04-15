@@ -1,4 +1,3 @@
-cat > lib/money/types.ts << 'EOF'
 export type BucketKind = "bill" | "credit" | "loan" | "savings";
 
 export type BucketCategory =
