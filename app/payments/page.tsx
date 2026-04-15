@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
+/* ---------------- TYPES ---------------- */
+
 type PaymentRow = {
   id: string;
   user_id: string;
@@ -25,12 +27,16 @@ type DebtRow = {
 type BillRow = {
   id: string;
   name: string;
-  amount: number | null;
+  target: number;
 };
+
+/* ---------------- HELPERS ---------------- */
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
+
+/* ---------------- PAGE ---------------- */
 
 export default function PaymentsPage() {
   const supabase = createSupabaseBrowserClient();
@@ -55,7 +61,7 @@ export default function PaymentsPage() {
   const [debtId, setDebtId] = useState("");
   const [billId, setBillId] = useState("");
 
-  /* ---------------- AUTH INIT ---------------- */
+  /* ---------------- INIT ---------------- */
 
   useEffect(() => {
     init();
@@ -76,7 +82,7 @@ export default function PaymentsPage() {
     const user = data.session?.user;
 
     if (!user) {
-      setMessage("Please log in first.");
+      setMessage("Please log in.");
       setLoading(false);
       return;
     }
@@ -97,7 +103,7 @@ export default function PaymentsPage() {
   async function loadPayments(uid: string) {
     const { data, error } = await supabase
       .from("payments")
-      .select("*")
+      .select<PaymentRow>("*")
       .eq("user_id", uid)
       .order("date_iso", { ascending: false });
 
@@ -112,7 +118,7 @@ export default function PaymentsPage() {
   async function loadDebts(uid: string) {
     const { data, error } = await supabase
       .from("debt_status")
-      .select("id, name, remaining_balance")
+      .select<DebtRow>("id, name, remaining_balance")
       .eq("user_id", uid)
       .order("name");
 
@@ -127,7 +133,7 @@ export default function PaymentsPage() {
   async function loadBills(uid: string) {
     const { data, error } = await supabase
       .from("bills")
-      .select("id, name, target")
+      .select<BillRow>("id, name, target")
       .eq("user_id", uid)
       .order("name");
 
@@ -154,7 +160,7 @@ export default function PaymentsPage() {
     const amt = Number(amount);
 
     if (!merchant.trim() || !Number.isFinite(amt) || amt <= 0) {
-      setMessage("Enter valid merchant + amount.");
+      setMessage("Enter valid name + amount.");
       return;
     }
 
@@ -183,6 +189,7 @@ export default function PaymentsPage() {
 
       if (error) throw error;
 
+      // reset form
       setMerchant("");
       setAmount("");
       setNote("");
@@ -193,6 +200,7 @@ export default function PaymentsPage() {
 
       await refreshPayments();
       setMessage("Payment added.");
+
     } catch (err: any) {
       setMessage(err.message || "Failed to add payment.");
     } finally {
@@ -200,7 +208,7 @@ export default function PaymentsPage() {
     }
   }
 
-  /* ---------------- TOTALS ---------------- */
+  /* ---------------- TOTAL ---------------- */
 
   const total = useMemo(() => {
     return payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
@@ -243,7 +251,7 @@ export default function PaymentsPage() {
             />
 
             <input
-              placeholder="Merchant / Name"
+              placeholder="What did you pay?"
               value={merchant}
               onChange={(e) => setMerchant(e.target.value)}
               className="mt-3 w-full border p-2 rounded"
@@ -271,7 +279,7 @@ export default function PaymentsPage() {
               <option value="bill">Bill</option>
             </select>
 
-            {/* DEBT */}
+            {/* DEBT DROPDOWN */}
             {payType === "debt" && (
               <select
                 value={debtId}
@@ -287,7 +295,7 @@ export default function PaymentsPage() {
               </select>
             )}
 
-            {/* BILL */}
+            {/* BILL DROPDOWN */}
             {payType === "bill" && (
               <select
                 value={billId}
@@ -297,7 +305,7 @@ export default function PaymentsPage() {
                 <option value="">Select bill</option>
                 {bills.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.name}
+                    {b.name} — ${b.target}
                   </option>
                 ))}
               </select>
@@ -317,6 +325,7 @@ export default function PaymentsPage() {
             >
               {saving ? "Saving..." : "Add Payment"}
             </button>
+
           </div>
 
           {/* HISTORY */}
@@ -338,6 +347,7 @@ export default function PaymentsPage() {
                 </div>
               ))
             )}
+
           </div>
 
         </div>
