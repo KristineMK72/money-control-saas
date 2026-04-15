@@ -1,3 +1,4 @@
+cat > lib/money/types.ts << 'EOF'
 export type BucketKind = "bill" | "credit" | "loan" | "savings";
 
 export type BucketCategory =
@@ -8,6 +9,7 @@ export type BucketCategory =
   | "food"
   | "other";
 
+/* ───────────────── BUCKETS ───────────────── */
 export type Bucket = {
   key: string;
   name: string;
@@ -15,22 +17,23 @@ export type Bucket = {
   category?: BucketCategory;
 };
 
-/* ───────── INCOME ───────── */
+/* ───────────────── INCOME ───────────────── */
 export type IncomeSource = {
   id: string;
   name: string;
 };
 
-export type Entry = {
+export type IncomeEntry = {
   id: string;
-  dateISO: string;
+  user_id: string;
+  date_iso: string;
   sourceName: string;
   amount: number;
-  note?: string;
+  note?: string | null;
   allocations: Record<string, number>;
 };
 
-/* ───────── SPENDING (STABLE CORE) ───────── */
+/* ───────────────── SPENDING ───────────────── */
 export type SpendCategory =
   | "groceries"
   | "gas"
@@ -44,24 +47,28 @@ export type SpendCategory =
 
 export type SpendEntry = {
   id: string;
-  dateISO: string;
-  merchant: string;
+  user_id: string;
+  date_iso: string;
+  merchant: string | null;
   amount: number;
   category: SpendCategory;
-  note?: string;
+  note?: string | null;
 };
 
-/* ───────── PAYMENTS ───────── */
+/* ───────────────── PAYMENTS ───────────────── */
 export type PaymentEntry = {
   id: string;
-  name: string;
+  user_id: string;
+  date_iso: string;
+  merchant: string;
   amount: number;
-  dueDate?: string;
+  note?: string | null;
 };
 
-/* ───────── DEBT ───────── */
+/* ───────────────── DEBT ───────────────── */
 export type DebtEntry = {
   id: string;
+  user_id: string;
   name: string;
   balance: number;
   minPayment: number;
@@ -70,3 +77,4 @@ export type DebtEntry = {
   dueDay?: number;
   note?: string;
 };
+EOF
