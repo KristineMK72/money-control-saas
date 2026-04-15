@@ -3,20 +3,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
+/* ---------------- TYPES ---------------- */
+
 type SpendRow = {
   id: string;
   amount: number;
   category: string | null;
+  user_id?: string;
 };
 
 type IncomeRow = {
   id: string;
   amount: number;
+  user_id?: string;
 };
 
 type DebtRow = {
   id: string;
   balance: number;
+  user_id?: string;
 };
 
 type BucketRow = {
@@ -25,12 +30,16 @@ type BucketRow = {
   due_date: string | null;
   kind: string;
   category: string | null;
+  user_id?: string;
 };
 
 type PaymentRow = {
   id: string;
   amount: number;
+  user_id?: string;
 };
+
+/* ---------------- PAGE ---------------- */
 
 export default function DashboardPage() {
   const supabase = createSupabaseBrowserClient();
@@ -42,17 +51,31 @@ export default function DashboardPage() {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
 
+  /* ---------------- LOAD DATA ---------------- */
+
   useEffect(() => {
     async function load() {
       setLoading(true);
 
+      // Get user
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (sessionError || !sessionData.session?.user) {
+        setLoading(false);
+        return;
+      }
+
+      const uid = sessionData.session.user.id;
+
+      // Load all tables for this user
       const [spendRes, incomeRes, debtRes, bucketRes, paymentRes] =
         await Promise.all([
-          supabase.from("spend").select("*"),
-          supabase.from("income").select("*"),
-          supabase.from("debts").select("*"),
-          supabase.from("buckets").select("*"),
-          supabase.from("payments").select("*"),
+          supabase.from("spend").select("*").eq("user_id", uid),
+          supabase.from("income").select("*").eq("user_id", uid),
+          supabase.from("debts").select("*").eq("user_id", uid),
+          supabase.from("buckets").select("*").eq("user_id", uid),
+          supabase.from("payments").select("*").eq("user_id", uid),
         ]);
 
       setSpend((spendRes.data || []) as SpendRow[]);
@@ -66,6 +89,8 @@ export default function DashboardPage() {
 
     load();
   }, []);
+
+  /* ---------------- TOTALS ---------------- */
 
   const totalSpend = useMemo(
     () => spend.reduce((a, b) => a + Number(b.amount || 0), 0),
@@ -94,6 +119,8 @@ export default function DashboardPage() {
 
     return Object.entries(map).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
   }, [spend]);
+
+  /* ---------------- UI ---------------- */
 
   if (loading) return <div className="p-6">Loading...</div>;
 
