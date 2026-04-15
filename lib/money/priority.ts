@@ -2,6 +2,7 @@ import type { Bucket } from "./types";
 import { daysUntil } from "./utils";
 
 function getDueDate(bucket: Bucket): string | null {
+  // safe access after type fix
   return bucket.due_date ?? bucket.dueDate ?? null;
 }
 
@@ -17,17 +18,9 @@ export function scoreBucket(bucket: Bucket) {
     else if (d <= 14) score += 10;
   }
 
-  switch (bucket.category) {
-    case "housing":
-      score += 30;
-      break;
-    case "utilities":
-      score += 20;
-      break;
-    case "transportation":
-      score += 20;
-      break;
-  }
+  if (bucket.category === "housing") score += 30;
+  if (bucket.category === "utilities") score += 20;
+  if (bucket.category === "transportation") score += 20;
 
   if (bucket.kind === "loan") score += 10;
   if (bucket.kind === "credit") score += 5;
@@ -39,9 +32,6 @@ export function scoreBucket(bucket: Bucket) {
 
 export function getPriorityBuckets(buckets: Bucket[]) {
   return buckets
-    .map((bucket) => ({
-      bucket,
-      score: scoreBucket(bucket),
-    }))
+    .map((bucket) => ({ bucket, score: scoreBucket(bucket) }))
     .sort((a, b) => b.score - a.score);
 }
