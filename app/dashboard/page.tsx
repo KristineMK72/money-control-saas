@@ -3,25 +3,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-/* ---------------- TYPES ---------------- */
+/* ---------------- TYPES (match your schema) ---------------- */
 
 type SpendRow = {
   id: string;
   amount: number;
   category: string | null;
-  user_id?: string;
+  // extra fields exist in DB but we don't need them here
 };
 
 type IncomeRow = {
   id: string;
   amount: number;
-  user_id?: string;
 };
 
 type DebtRow = {
   id: string;
   balance: number;
-  user_id?: string;
 };
 
 type BucketRow = {
@@ -30,13 +28,11 @@ type BucketRow = {
   due_date: string | null;
   kind: string;
   category: string | null;
-  user_id?: string;
 };
 
 type PaymentRow = {
   id: string;
   amount: number;
-  user_id?: string;
 };
 
 /* ---------------- PAGE ---------------- */
@@ -51,44 +47,55 @@ export default function DashboardPage() {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  /* ---------------- LOAD DATA ---------------- */
-
   useEffect(() => {
     async function load() {
       setLoading(true);
 
-      // Get user
       const { data: sessionData, error: sessionError } =
         await supabase.auth.getSession();
 
-      if (sessionError || !sessionData.session?.user) {
+      if (sessionError || !sessionData?.session?.user) {
         setLoading(false);
         return;
       }
 
       const uid = sessionData.session.user.id;
 
-      // Load all tables for this user
-      const [spendRes, incomeRes, debtRes, bucketRes, paymentRes] =
+      const [spendRes, incomeRes, debtRes, billRes, paymentRes] =
         await Promise.all([
-          supabase.from("spend").select("*").eq("user_id", uid),
-          supabase.from("income").select("*").eq("user_id", uid),
-          supabase.from("debts").select("*").eq("user_id", uid),
-          supabase.from("buckets").select("*").eq("user_id", uid),
-          supabase.from("payments").select("*").eq("user_id", uid),
+          supabase
+            .from("spend_entries")
+            .select("id, amount, category")
+            .eq("user_id", uid),
+          supabase
+            .from("income_entries")
+            .select("id, amount")
+            .eq("user_id", uid),
+          supabase
+            .from("debts")
+            .select("id, balance")
+            .eq("user_id", uid),
+          supabase
+            .from("bills")
+            .select("id, name, due_date, kind, category")
+            .eq("user_id", uid),
+          supabase
+            .from("payments")
+            .select("id, amount")
+            .eq("user_id", uid),
         ]);
 
       setSpend((spendRes.data || []) as SpendRow[]);
       setIncome((incomeRes.data || []) as IncomeRow[]);
       setDebts((debtRes.data || []) as DebtRow[]);
-      setBuckets((bucketRes.data || []) as BucketRow[]);
+      setBuckets((billRes.data || []) as BucketRow[]);
       setPayments((paymentRes.data || []) as PaymentRow[]);
 
       setLoading(false);
     }
 
     load();
-  }, []);
+  }, [supabase]);
 
   /* ---------------- TOTALS ---------------- */
 
@@ -144,7 +151,7 @@ export default function DashboardPage() {
         <div>Spend entries: {spend.length}</div>
         <div>Income entries: {income.length}</div>
         <div>Debts: {debts.length}</div>
-        <div>Buckets: {buckets.length}</div>
+        <div>Bills (buckets): {buckets.length}</div>
         <div>Payments: {payments.length}</div>
       </div>
     </main>
