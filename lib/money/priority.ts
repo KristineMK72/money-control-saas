@@ -2,8 +2,7 @@ import type { Bucket } from "./types";
 import { daysUntil } from "./utils";
 
 function getDueDate(bucket: Bucket): string | null {
-  // safe access after type fix
-  return bucket.due_date ?? bucket.dueDate ?? null;
+  return bucket.due_date ?? null;
 }
 
 export function scoreBucket(bucket: Bucket) {
