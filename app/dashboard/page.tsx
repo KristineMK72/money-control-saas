@@ -1,261 +1,170 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useMoneyStore, getTotals } from "@/lib/money/store";
+import { useEffect } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import type { DebtEntry } from "@/lib/money/types";
-
-// ─────────────────────────────────────────────
-// Supabase Types
-// ─────────────────────────────────────────────
-
-type BillRow = {
-  id: string;
-  user_id: string;
-  name: string;
-  category: "housing" | "utilities" | "transportation" | "debt" | "food" | "other" | null;
-  target: number | null;
-  due_date: string | null;
-  due_day: number | null;
-  is_monthly: boolean | null;
-  min_payment: number | null;
-  monthly_target: number | null;
-  balance?: number | null;
-};
-
-type SideHustleRow = {
-  id: string;
-  user_id: string;
-  name: string;
-  rate: number;
-  planned_quantity: number;
-};
-
-// ─────────────────────────────────────────────
-// Helpers (STANDARDIZED DATE ENGINE)
-// ─────────────────────────────────────────────
-
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function addDays(days: number) {
-  const d = startOfToday();
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-function parseDate(date?: string | null) {
-  if (!date) return null;
-  const d = new Date(`${date}T12:00:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function daysUntil(date?: string | null) {
-  const d = parseDate(date);
-  if (!d) return null;
-  return Math.ceil((d.getTime() - startOfToday().getTime()) / 86400000);
-}
-
-// ─────────────────────────────────────────────
-// BILL LOGIC
-// ─────────────────────────────────────────────
-
-function getBillDueDate(bill: BillRow) {
-  if (bill.is_monthly && bill.due_day) {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    const safeDay = Math.min(bill.due_day, lastDay);
-
-    return new Date(year, month, safeDay).toISOString().slice(0, 10);
-  }
-
-  return bill.due_date;
-}
-
-function getBillAmount(bill: BillRow) {
-  return Number(
-    bill.min_payment ??
-    bill.monthly_target ??
-    bill.balance ??
-    bill.target ??
-    0
-  );
-}
-
-// ─────────────────────────────────────────────
-// DEBT LOGIC (SAFE + MATCHES ZUSTAND TYPE)
-// ─────────────────────────────────────────────
-
-function getDebtDueDate(debt: DebtEntry) {
-  if ((debt as any).isMonthly && (debt as any).dueDay) {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    const safeDay = Math.min((debt as any).dueDay, lastDay);
-
-    return new Date(year, month, safeDay).toISOString().slice(0, 10);
-  }
-
-  return debt.dueDate ?? null;
-}
-
-function getDebtAmount(debt: DebtEntry) {
-  return Number(debt.minPayment ?? debt.balance ?? 0);
-}
-
-// ─────────────────────────────────────────────
-// UI
-// ─────────────────────────────────────────────
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
-      <div className="text-sm text-zinc-500">{label}</div>
-      <div className="mt-2 text-3xl font-black text-zinc-950">{value}</div>
-    </div>
-  );
-}
-
-function formatUSD(n: number) {
-  return `$${Number(n || 0).toFixed(2)}`;
-}
-
-// ─────────────────────────────────────────────
-// PAGE
-// ─────────────────────────────────────────────
+import { useMoneyStore } from "@/lib/money/store";
 
 export default function DashboardPage() {
   const supabase = createSupabaseBrowserClient();
-  const { debts, spend, payments } = useMoneyStore();
-  const totals = getTotals();
 
-  const [loading, setLoading] = useState(true);
-  const [bills, setBills] = useState<BillRow[]>([]);
-  const [sideHustles, setSideHustles] = useState<SideHustleRow[]>([]);
+  const {
+    spend,
+    income,
+    debts,
+    buckets,
+    payments,
+    setAll,
+  } = useMoneyStore();
 
   useEffect(() => {
-    let mounted = true;
-
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !mounted) return;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      const [billsRes, hustlesRes] = await Promise.all([
-        supabase.from("bills").select("*").eq("user_id", user.id),
-        supabase.from("side_hustles").select("*").eq("user_id", user.id),
-      ]);
+      if (!user) return;
 
-      if (!mounted) return;
+      const [billsRes, debtsRes, incomeRes, spendRes, paymentsRes] =
+        await Promise.all([
+          supabase.from("bills").select("*").eq("user_id", user.id),
+          supabase.from("debts").select("*").eq("user_id", user.id),
+          supabase.from("income").select("*").eq("user_id", user.id),
+          supabase.from("spend_entries").select("*").eq("user_id", user.id),
+          supabase.from("payments").select("*").eq("user_id", user.id),
+        ]);
 
-      setBills((billsRes.data ?? []) as BillRow[]);
-      setSideHustles((hustlesRes.data ?? []) as SideHustleRow[]);
-      setLoading(false);
+      setAll({
+        buckets: billsRes.data ?? [],
+        debts: debtsRes.data ?? [],
+        income: incomeRes.data ?? [],
+        spend: spendRes.data ?? [],
+        payments: paymentsRes.data ?? [],
+      });
     }
 
     load();
-    return () => {
-      mounted = false;
-    };
-  }, [supabase]);
+  }, [supabase, setAll]);
 
-  // ─────────────────────────────────────────────
-  // DERIVED VALUES
-  // ─────────────────────────────────────────────
+  // -------------------------
+  // DERIVED METRICS
+  // -------------------------
 
-  const income = useMemo(
-    () => sideHustles.reduce((s, h) => s + h.rate * h.planned_quantity, 0),
-    [sideHustles]
+  const totalSpend = spend.reduce(
+    (sum, s: any) => sum + Number(s.amount || 0),
+    0
   );
 
-  const billTotal = useMemo(
-    () => bills.reduce((s, b) => s + getBillAmount(b), 0),
-    [bills]
+  const totalIncome = income.reduce(
+    (sum: number, i: any) => sum + Number(i.amount || 0),
+    0
   );
 
-  const debtTotal = useMemo(
-    () => debts.reduce((s, d) => s + getDebtAmount(d), 0),
-    [debts]
+  const totalDebt = debts.reduce(
+    (sum: number, d: any) => sum + Number(d.amount || 0),
+    0
   );
 
-  const remaining =
-    income -
-    billTotal -
-    debtTotal -
-    totals.spending -
-    totals.payments;
+  const net = totalIncome - totalSpend - totalDebt;
 
-  const dueSoon = useMemo(() => {
-    const end = addDays(7);
+  const categoryTotals: Record<string, number> = {};
 
-    const items: { name: string; amount: number; due: string | null }[] = [];
-
-    for (const b of bills) {
-      const due = getBillDueDate(b);
-      const d = parseDate(due);
-      if (d && d >= startOfToday() && d <= end) {
-        items.push({ name: b.name, amount: getBillAmount(b), due });
-      }
-    }
-
-    for (const d of debts) {
-      const due = getDebtDueDate(d);
-      const dt = parseDate(due);
-      if (dt && dt >= startOfToday() && dt <= end) {
-        items.push({ name: d.name, amount: getDebtAmount(d), due });
-      }
-    }
-
-    return items.sort((a, b) => (a.due ?? "").localeCompare(b.due ?? ""));
-  }, [bills, debts]);
-
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-black text-white p-10">
-        Loading dashboard...
-      </main>
-    );
+  for (const s of spend) {
+    const cat = s.category || "misc";
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(s.amount || 0);
   }
 
-  // ─────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────
+  const topCategory =
+    Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+    "—";
+
+  // -------------------------
+  // UI
+  // -------------------------
 
   return (
-    <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto max-w-6xl p-6">
-        <div className="grid gap-4 md:grid-cols-4">
-          <StatCard label="Income" value={formatUSD(income)} />
-          <StatCard label="Bills" value={formatUSD(billTotal)} />
-          <StatCard label="Debt" value={formatUSD(debtTotal)} />
-          <StatCard label="Remaining" value={formatUSD(remaining)} />
+    <main className="min-h-screen bg-zinc-50 text-zinc-900">
+      <div className="mx-auto max-w-6xl px-6 py-10">
+        <h1 className="text-3xl font-black">Dashboard</h1>
+        <p className="mt-2 text-zinc-600">
+          Your financial snapshot powered by AskBen.
+        </p>
+
+        {/* SUMMARY CARDS */}
+        <div className="mt-8 grid gap-4 md:grid-cols-4">
+          <Card label="Income" value={totalIncome} />
+          <Card label="Spend" value={totalSpend} />
+          <Card label="Debt" value={totalDebt} />
+          <Card label="Net" value={net} highlight />
         </div>
 
-        <div className="mt-10">
-          <h2 className="text-xl font-bold mb-4">Due Soon</h2>
+        {/* INSIGHTS */}
+        <div className="mt-10 grid gap-6 md:grid-cols-2">
+          <div className="rounded-2xl border bg-white p-6">
+            <h2 className="font-bold">Top Spending Category</h2>
+            <p className="mt-3 text-2xl font-black">{topCategory}</p>
+          </div>
 
-          <div className="space-y-2">
-            {dueSoon.map((item, i) => (
-              <div key={i} className="p-3 rounded-xl bg-white/10">
-                <div className="flex justify-between">
-                  <span>{item.name}</span>
-                  <span>{formatUSD(item.amount)}</span>
+          <div className="rounded-2xl border bg-white p-6">
+            <h2 className="font-bold">Accounts Overview</h2>
+
+            <div className="mt-3 space-y-2 text-sm text-zinc-600">
+              <div>Buckets: {buckets.length}</div>
+              <div>Income sources: {income.length}</div>
+              <div>Debts: {debts.length}</div>
+              <div>Payments: {payments.length}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* SPEND BREAKDOWN */}
+        <div className="mt-10 rounded-2xl border bg-white p-6">
+          <h2 className="font-bold">Spend Breakdown</h2>
+
+          <div className="mt-4 grid gap-2">
+            {Object.entries(categoryTotals).length === 0 ? (
+              <p className="text-sm text-zinc-500">No spending yet.</p>
+            ) : (
+              Object.entries(categoryTotals).map(([cat, val]) => (
+                <div
+                  key={cat}
+                  className="flex items-center justify-between rounded-lg bg-zinc-50 px-4 py-2"
+                >
+                  <span className="text-sm font-medium">{cat}</span>
+                  <span className="text-sm font-semibold">
+                    ${Number(val).toFixed(2)}
+                  </span>
                 </div>
-                <div className="text-sm text-zinc-400">
-                  {item.due ?? "No date"}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
     </main>
+  );
+}
+
+// -------------------------
+// SMALL UI COMPONENT
+// -------------------------
+function Card({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: number;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border bg-white p-5 ${
+        highlight ? "border-black" : "border-zinc-200"
+      }`}
+    >
+      <div className="text-sm text-zinc-500">{label}</div>
+      <div className="mt-2 text-2xl font-black">
+        ${Number(value).toFixed(2)}
+      </div>
+    </div>
   );
 }
