@@ -10,12 +10,12 @@ type PaymentRow = {
   id: string;
   user_id: string;
   date_iso: string;
-  amount: number;
   merchant: string | null;
+  amount: number;
   note: string | null;
+  created_at: string;
   debt_id: string | null;
   bill_id: string | null;
-  created_at: string;
 };
 
 type DebtRow = {
@@ -103,7 +103,7 @@ export default function PaymentsPage() {
   async function loadPayments(uid: string) {
     const { data, error } = await supabase
       .from("payments")
-      .select<PaymentRow>("*")
+      .select("*")
       .eq("user_id", uid)
       .order("date_iso", { ascending: false });
 
@@ -112,13 +112,13 @@ export default function PaymentsPage() {
       return;
     }
 
-    setPayments(data || []);
+    setPayments((data as PaymentRow[]) || []);
   }
 
   async function loadDebts(uid: string) {
     const { data, error } = await supabase
       .from("debt_status")
-      .select<DebtRow>("id, name, remaining_balance")
+      .select("id, name, remaining_balance")
       .eq("user_id", uid)
       .order("name");
 
@@ -127,13 +127,13 @@ export default function PaymentsPage() {
       return;
     }
 
-    setDebts(data || []);
+    setDebts((data as DebtRow[]) || []);
   }
 
   async function loadBills(uid: string) {
     const { data, error } = await supabase
       .from("bills")
-      .select<BillRow>("id, name, target")
+      .select("id, name, target")
       .eq("user_id", uid)
       .order("name");
 
@@ -142,7 +142,7 @@ export default function PaymentsPage() {
       return;
     }
 
-    setBills(data || []);
+    setBills((data as BillRow[]) || []);
   }
 
   async function refreshPayments() {
