@@ -15,12 +15,6 @@ type BillRow = {
   created_at: string;
 };
 
-/* -------------------- Helpers -------------------- */
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function getNextDueDate(dueDay?: number | null) {
   if (!dueDay || dueDay < 1 || dueDay > 31) return null;
 
@@ -32,16 +26,11 @@ function getNextDueDate(dueDay?: number | null) {
   const safeDay = Math.min(dueDay, lastDay);
 
   const thisMonth = new Date(y, m, safeDay);
-
-  if (thisMonth >= now) {
-    return thisMonth.toISOString().slice(0, 10);
-  }
+  if (thisMonth >= now) return thisMonth.toISOString().slice(0, 10);
 
   const nextMonth = new Date(y, m + 1, safeDay);
   return nextMonth.toISOString().slice(0, 10);
 }
-
-/* -------------------- Page -------------------- */
 
 export default function BillsPage() {
   const supabase = createSupabaseBrowserClient();
@@ -50,7 +39,6 @@ export default function BillsPage() {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
 
-  /* form */
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("other");
@@ -59,37 +47,36 @@ export default function BillsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  /* -------------------- LOAD -------------------- */
+  /* ---------------- LOAD ---------------- */
 
   useEffect(() => {
     async function load() {
       setLoading(true);
 
-      const { data: session } = await supabase.auth.getSession();
+      const { data } = await supabase.auth.getSession();
+      const user = data.session?.user;
 
-      if (!session?.session?.user) {
-        setMessage("Please log in first.");
+      if (!user) {
         setLoading(false);
         return;
       }
 
-      const uid = session.session.user.id;
-      setUserId(uid);
+      setUserId(user.id);
 
-      const { data } = await supabase
+      const { data: billsData } = await supabase
         .from("bills")
         .select("*")
-        .eq("user_id", uid)
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
-      setBills((data || []) as BillRow[]);
+      setBills(billsData || []);
       setLoading(false);
     }
 
     load();
   }, []);
 
-  /* -------------------- ADD -------------------- */
+  /* ---------------- ADD BILL ---------------- */
 
   async function addBill() {
     if (!userId) return;
@@ -97,7 +84,7 @@ export default function BillsPage() {
     const amt = Number(amount);
 
     if (!name.trim() || !Number.isFinite(amt) || amt <= 0) {
-      setMessage("Enter valid name and amount.");
+      setMessage("Enter valid bill + amount");
       return;
     }
 
@@ -109,8 +96,6 @@ export default function BillsPage() {
       target: amt,
       category,
       due_date: dueDate || null,
-
-      // 🔥 CONSISTENCY FIX (matches debt system)
       is_monthly: Boolean(dueDate),
       due_day: null,
     });
@@ -123,8 +108,8 @@ export default function BillsPage() {
 
     setName("");
     setAmount("");
-    setCategory("other");
     setDueDate("");
+    setCategory("other");
 
     const { data } = await supabase
       .from("bills")
@@ -132,121 +117,127 @@ export default function BillsPage() {
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
-    setBills((data || []) as BillRow[]);
+    setBills(data || []);
     setSaving(false);
-    setMessage("Bill added.");
+    setMessage("Bill added");
   }
 
-  /* -------------------- DELETE -------------------- */
+  /* ---------------- DELETE ---------------- */
 
   async function deleteBill(id: string) {
     if (!userId) return;
 
-    const { error } = await supabase
-      .from("bills")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", userId);
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
+    await supabase.from("bills").delete().eq("id", id).eq("user_id", userId);
 
     setBills((prev) => prev.filter((b) => b.id !== id));
   }
 
-  /* -------------------- TOTALS (FIXED due logic) -------------------- */
+  /* ---------------- PAY BILL (NEW CORE FEATURE) ---------------- */
+
+  async function payBill(bill: BillRow) {
+    if (!userId) return;
+
+    try {
+      const { error } = await supabase.from("payments").insert({
+        user_id: userId,
+        date_iso: new Date().toISOString().slice(0, 10),
+        amount: bill.target,
+        merchant: bill.name,
+        note: "Paid from Bills page",
+        bill_id: bill.id,
+        debt_id: null,
+      });
+
+      if (error) throw error;
+
+      setMessage(`Paid ${bill.name}`);
+    } catch (err: any) {
+      setMessage(err.message || "Payment failed");
+    }
+  }
+
+  /* ---------------- TOTALS ---------------- */
 
   const totals = useMemo(() => {
-    const total = bills.reduce((sum, b) => sum + Number(b.target || 0), 0);
+    const total = bills.reduce((s, b) => s + Number(b.target || 0), 0);
 
-    const dueSoon = bills.reduce((sum, b) => {
-      const due =
-        b.due_date || getNextDueDate(b.due_day);
+    const dueSoon = bills.reduce((s, b) => {
+      const due = b.due_date || getNextDueDate(b.due_day);
+      if (!due) return s;
 
-      if (!due) return sum;
-
-      const dueDate = new Date(due);
+      const d = new Date(due);
       const now = new Date();
       const in7 = new Date();
       in7.setDate(now.getDate() + 7);
 
-      if (dueDate <= in7) {
-        return sum + Number(b.target || 0);
-      }
-
-      return sum;
+      return d <= in7 ? s + Number(b.target || 0) : s;
     }, 0);
 
     return { total, dueSoon };
   }, [bills]);
 
-  /* -------------------- UI -------------------- */
+  /* ---------------- UI ---------------- */
 
   if (loading) return <div className="p-6">Loading...</div>;
 
   return (
-    <main className="p-6 max-w-4xl mx-auto">
+    <main className="max-w-4xl mx-auto p-6">
+
       <h1 className="text-2xl font-bold">Bills</h1>
 
-      {message ? (
-        <div className="mt-3 text-sm text-zinc-600">{message}</div>
-      ) : null}
+      {message && <div className="mt-2 text-sm">{message}</div>}
 
       {/* SUMMARY */}
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
+      <div className="mt-6 grid grid-cols-2 gap-4">
         <Card label="Total Bills" value={totals.total} />
-        <Card label="Due Soon (7 days)" value={totals.dueSoon} />
+        <Card label="Due Soon" value={totals.dueSoon} />
       </div>
 
-      {/* ADD */}
-      <div className="mt-6 rounded-xl border bg-white p-4">
+      {/* ADD BILL */}
+      <div className="mt-6 border rounded-xl p-4 bg-white">
         <h2 className="font-semibold">Add Bill</h2>
 
-        <div className="mt-3 grid gap-2">
-          <input
-            placeholder="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="border p-2 rounded"
-          />
+        <input
+          placeholder="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="mt-2 w-full border p-2 rounded"
+        />
 
-          <input
-            placeholder="Amount"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="border p-2 rounded"
-          />
+        <input
+          placeholder="Amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="mt-2 w-full border p-2 rounded"
+        />
 
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            className="border p-2 rounded"
-          />
+        <input
+          type="date"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+          className="mt-2 w-full border p-2 rounded"
+        />
 
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="border p-2 rounded"
-          >
-            <option value="housing">Housing</option>
-            <option value="utilities">Utilities</option>
-            <option value="transportation">Transportation</option>
-            <option value="debt">Debt</option>
-            <option value="food">Food</option>
-            <option value="other">Other</option>
-          </select>
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className="mt-2 w-full border p-2 rounded"
+        >
+          <option value="housing">Housing</option>
+          <option value="utilities">Utilities</option>
+          <option value="transportation">Transportation</option>
+          <option value="debt">Debt</option>
+          <option value="food">Food</option>
+          <option value="other">Other</option>
+        </select>
 
-          <button
-            onClick={addBill}
-            disabled={saving}
-            className="bg-black text-white p-2 rounded"
-          >
-            {saving ? "Saving..." : "Add Bill"}
-          </button>
-        </div>
+        <button
+          onClick={addBill}
+          disabled={saving}
+          className="mt-3 w-full bg-black text-white p-2 rounded"
+        >
+          {saving ? "Saving..." : "Add Bill"}
+        </button>
       </div>
 
       {/* LIST */}
@@ -255,7 +246,10 @@ export default function BillsPage() {
           const due = b.due_date || getNextDueDate(b.due_day);
 
           return (
-            <div key={b.id} className="border rounded p-3 flex justify-between">
+            <div
+              key={b.id}
+              className="border rounded-xl p-3 flex justify-between items-center"
+            >
               <div>
                 <div className="font-semibold">{b.name}</div>
                 <div className="text-sm text-zinc-500">
@@ -264,12 +258,21 @@ export default function BillsPage() {
                 </div>
               </div>
 
-              <button
-                onClick={() => deleteBill(b.id)}
-                className="text-sm text-red-500"
-              >
-                Delete
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => payBill(b)}
+                  className="text-xs bg-black text-white px-3 py-1 rounded"
+                >
+                  Pay
+                </button>
+
+                <button
+                  onClick={() => deleteBill(b.id)}
+                  className="text-xs text-red-500"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           );
         })}
@@ -280,7 +283,7 @@ export default function BillsPage() {
 
 function Card({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border bg-white p-4">
+    <div className="border rounded-xl p-4 bg-white">
       <div className="text-sm text-zinc-500">{label}</div>
       <div className="text-2xl font-bold">${value.toFixed(2)}</div>
     </div>
