@@ -16,46 +16,24 @@ type BillRow = {
   created_at: string;
 };
 
-type PaymentInsert = {
-  user_id: string;
-  date_iso: string;
+type PaymentRow = {
+  id: string;
   amount: number;
-  merchant: string;
-  note: string | null;
-  bill_id: string;
-  debt_id: null;
+  bill_id: string | null;
+  date_iso: string;
 };
-
-/* ---------------- HELPERS ---------------- */
-
-function getNextDueDate(dueDay?: number | null) {
-  if (!dueDay || dueDay < 1 || dueDay > 31) return null;
-
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-
-  const lastDay = new Date(y, m + 1, 0).getDate();
-  const safeDay = Math.min(dueDay, lastDay);
-
-  const thisMonth = new Date(y, m, safeDay);
-  if (thisMonth >= now) return thisMonth.toISOString().slice(0, 10);
-
-  const nextMonth = new Date(y, m + 1, safeDay);
-  return nextMonth.toISOString().slice(0, 10);
-}
-
-/* ---------------- PAGE ---------------- */
 
 export default function BillsPage() {
   const supabase = createSupabaseBrowserClient();
 
   const [bills, setBills] = useState<BillRow[]>([]);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [payAmount, setPayAmount] = useState("");
   const [message, setMessage] = useState("");
 
   const [name, setName] = useState("");
@@ -71,16 +49,8 @@ export default function BillsPage() {
 
   async function init() {
     setLoading(true);
-    setMessage("");
 
-    const { data, error } = await supabase.auth.getSession();
-
-    if (error) {
-      setMessage(error.message);
-      setLoading(false);
-      return;
-    }
-
+    const { data } = await supabase.auth.getSession();
     const user = data.session?.user;
 
     if (!user) {
@@ -91,28 +61,30 @@ export default function BillsPage() {
 
     setUserId(user.id);
 
-    await loadBills(user.id);
+    await Promise.all([loadBills(user.id), loadPayments(user.id)]);
 
     setLoading(false);
   }
 
-  /* ---------------- LOAD BILLS ---------------- */
+  /* ---------------- LOADERS ---------------- */
 
   async function loadBills(uid: string) {
     const { data, error } = await supabase
       .from("bills")
-      .select(
-        "id, user_id, name, target, category, due_date, due_day, created_at"
-      )
+      .select("id, user_id, name, target, category, due_date, due_day, created_at")
       .eq("user_id", uid)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
+    if (!error) setBills((data as BillRow[]) || []);
+  }
 
-    setBills((data as BillRow[]) || []);
+  async function loadPayments(uid: string) {
+    const { data, error } = await supabase
+      .from("payments")
+      .select("id, amount, bill_id, date_iso")
+      .eq("user_id", uid);
+
+    if (!error) setPayments((data as PaymentRow[]) || []);
   }
 
   /* ---------------- ADD BILL ---------------- */
@@ -121,8 +93,7 @@ export default function BillsPage() {
     if (!userId) return;
 
     const amt = Number(amount);
-
-    if (!name.trim() || !Number.isFinite(amt) || amt <= 0) {
+    if (!name.trim() || amt <= 0) {
       setMessage("Invalid bill.");
       return;
     }
@@ -138,73 +109,59 @@ export default function BillsPage() {
       due_day: null,
     });
 
-    if (error) {
-      setMessage(error.message);
-      setSaving(false);
-      return;
+    if (!error) {
+      setName("");
+      setAmount("");
+      setDueDate("");
+      setCategory("other");
+      await loadBills(userId);
+      setMessage("Bill added.");
     }
 
-    setName("");
-    setAmount("");
-    setDueDate("");
-    setCategory("other");
-
-    await loadBills(userId);
-
     setSaving(false);
-    setMessage("Bill added.");
   }
 
   /* ---------------- PAY BILL ---------------- */
 
   async function payBill(bill: BillRow) {
-    if (!userId) {
-      setMessage("Not logged in.");
+    if (!userId) return;
+
+    const amt = Number(payAmount);
+    if (!amt || amt <= 0) {
+      setMessage("Enter a valid payment amount.");
       return;
     }
 
-    setPayingId(bill.id);
-    setMessage("");
-
-    const payload: PaymentInsert = {
+    const payload = {
       user_id: userId,
       date_iso: new Date().toISOString().slice(0, 10),
-      amount: bill.target,
+      amount: amt,
       merchant: bill.name,
-      note: "Paid from Bills page",
+      note: "Bill payment",
       bill_id: bill.id,
       debt_id: null,
     };
 
-    try {
-      const { error } = await supabase.from("payments").insert(payload);
+    const { error } = await supabase.from("payments").insert(payload);
 
-      if (error) throw error;
-
+    if (!error) {
       setMessage(`Paid ${bill.name}`);
-    } catch (err: any) {
-      setMessage(err.message || "Payment failed");
-    } finally {
       setPayingId(null);
+      setPayAmount("");
+      await loadPayments(userId);
     }
   }
 
-  /* ---------------- DELETE BILL ---------------- */
+  /* ---------------- MONTHLY PROGRESS ---------------- */
 
-  async function deleteBill(id: string) {
-    if (!userId) return;
+  function getMonthlyPaid(billId: string) {
+    const now = new Date();
+    const month = now.toISOString().slice(0, 7); // "2026-04"
 
-    await supabase.from("bills").delete().eq("id", id).eq("user_id", userId);
-
-    setBills((prev) => prev.filter((b) => b.id !== id));
+    return payments
+      .filter((p) => p.bill_id === billId && p.date_iso.startsWith(month))
+      .reduce((sum, p) => sum + Number(p.amount), 0);
   }
-
-  /* ---------------- TOTALS ---------------- */
-
-  const totals = useMemo(() => {
-    const total = bills.reduce((s, b) => s + Number(b.target || 0), 0);
-    return { total };
-  }, [bills]);
 
   /* ---------------- UI ---------------- */
 
@@ -212,16 +169,9 @@ export default function BillsPage() {
 
   return (
     <main className="max-w-4xl mx-auto p-6">
-
       <h1 className="text-2xl font-bold">Bills</h1>
 
-      {message && (
-        <div className="mt-2 text-sm text-zinc-600">{message}</div>
-      )}
-
-      <div className="mt-4 text-xl font-bold">
-        Total Bills: ${totals.total.toFixed(2)}
-      </div>
+      {message && <div className="mt-2 text-sm text-zinc-600">{message}</div>}
 
       {/* ADD BILL */}
       <div className="mt-6 border rounded-xl p-4 bg-white">
@@ -270,39 +220,68 @@ export default function BillsPage() {
         </button>
       </div>
 
-      {/* LIST */}
-      <div className="mt-6 space-y-3">
+      {/* BILL LIST */}
+      <div className="mt-6 space-y-4">
         {bills.map((b) => {
-          const due = b.due_date || getNextDueDate(b.due_day);
+          const paid = getMonthlyPaid(b.id);
+          const pct = Math.min((paid / b.target) * 100, 100);
 
           return (
-            <div
-              key={b.id}
-              className="border rounded-xl p-3 flex justify-between items-center"
-            >
-              <div>
-                <div className="font-semibold">{b.name}</div>
-                <div className="text-sm text-zinc-500">
-                  ${b.target}
-                  {due ? ` · due ${due}` : ""}
+            <div key={b.id} className="border rounded-xl p-4 bg-white">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="font-semibold">{b.name}</div>
+                  <div className="text-sm text-zinc-500">
+                    Target: ${b.target.toFixed(2)}
+                  </div>
                 </div>
+
+                {payingId === b.id ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Amount"
+                      value={payAmount}
+                      onChange={(e) => setPayAmount(e.target.value)}
+                      className="border p-1 rounded w-24 text-xs"
+                    />
+                    <button
+                      onClick={() => payBill(b)}
+                      className="text-xs bg-green-600 text-white px-3 py-1 rounded"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPayingId(null);
+                        setPayAmount("");
+                      }}
+                      className="text-xs text-red-500"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setPayingId(b.id)}
+                    className="text-xs bg-black text-white px-3 py-1 rounded"
+                  >
+                    Pay
+                  </button>
+                )}
               </div>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => payBill(b)}
-                  disabled={payingId === b.id}
-                  className="text-xs bg-black text-white px-3 py-1 rounded"
-                >
-                  {payingId === b.id ? "Paying..." : "Pay"}
-                </button>
-
-                <button
-                  onClick={() => deleteBill(b.id)}
-                  className="text-xs text-red-500"
-                >
-                  Delete
-                </button>
+              {/* PROGRESS BAR */}
+              <div className="mt-3">
+                <div className="text-xs text-zinc-500 mb-1">
+                  {paid.toFixed(2)} / {b.target.toFixed(2)} paid this month
+                </div>
+                <div className="w-full h-3 bg-zinc-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-green-600"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
               </div>
             </div>
           );
