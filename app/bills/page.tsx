@@ -10,7 +10,6 @@ type BillRow = {
   target: number;
   category: string | null;
   due_date: string | null;
-  is_monthly: boolean | null;
   due_day: number | null;
   created_at: string;
 };
@@ -36,45 +35,64 @@ export default function BillsPage() {
   const supabase = createSupabaseBrowserClient();
 
   const [bills, setBills] = useState<BillRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
 
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("other");
   const [dueDate, setDueDate] = useState("");
 
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-
   /* ---------------- LOAD ---------------- */
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
+    init();
+  }, []);
 
-      const { data } = await supabase.auth.getSession();
-      const user = data.session?.user;
+  async function init() {
+    setLoading(true);
 
-      if (!user) {
-        setLoading(false);
-        return;
-      }
+    const { data, error } = await supabase.auth.getSession();
 
-      setUserId(user.id);
-
-      const { data: billsData } = await supabase
-        .from("bills")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      setBills(billsData || []);
+    if (error) {
+      setMessage(error.message);
       setLoading(false);
+      return;
     }
 
-    load();
-  }, []);
+    const user = data.session?.user;
+
+    if (!user) {
+      setMessage("Please log in.");
+      setLoading(false);
+      return;
+    }
+
+    setUserId(user.id);
+
+    await loadBills(user.id);
+
+    setLoading(false);
+  }
+
+  async function loadBills(uid: string) {
+    const { data, error } = await supabase
+      .from("bills")
+      .select("*")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setBills(data || []);
+  }
 
   /* ---------------- ADD BILL ---------------- */
 
@@ -84,7 +102,7 @@ export default function BillsPage() {
     const amt = Number(amount);
 
     if (!name.trim() || !Number.isFinite(amt) || amt <= 0) {
-      setMessage("Enter valid bill + amount");
+      setMessage("Invalid bill.");
       return;
     }
 
@@ -96,7 +114,6 @@ export default function BillsPage() {
       target: amt,
       category,
       due_date: dueDate || null,
-      is_monthly: Boolean(dueDate),
       due_day: null,
     });
 
@@ -111,15 +128,47 @@ export default function BillsPage() {
     setDueDate("");
     setCategory("other");
 
-    const { data } = await supabase
-      .from("bills")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
+    await loadBills(userId);
 
-    setBills(data || []);
     setSaving(false);
-    setMessage("Bill added");
+    setMessage("Bill added.");
+  }
+
+  /* ---------------- PAY BILL (FIXED CORE) ---------------- */
+
+  async function payBill(bill: BillRow) {
+    if (!userId) {
+      setMessage("Not logged in.");
+      return;
+    }
+
+    setPayingId(bill.id);
+    setMessage("");
+
+    try {
+      const { data, error } = await supabase.from("payments").insert({
+        user_id: userId,
+        date_iso: new Date().toISOString().slice(0, 10),
+        amount: bill.target,
+        merchant: bill.name,
+        note: "Paid from Bills page",
+        bill_id: bill.id,
+        debt_id: null,
+      }).select();
+
+      if (error) throw error;
+
+      if (!data) {
+        throw new Error("No confirmation from server");
+      }
+
+      setMessage(`Paid ${bill.name}`);
+
+    } catch (err: any) {
+      setMessage(err.message || "Payment failed");
+    } finally {
+      setPayingId(null);
+    }
   }
 
   /* ---------------- DELETE ---------------- */
@@ -132,48 +181,12 @@ export default function BillsPage() {
     setBills((prev) => prev.filter((b) => b.id !== id));
   }
 
-  /* ---------------- PAY BILL (NEW CORE FEATURE) ---------------- */
-
-  async function payBill(bill: BillRow) {
-    if (!userId) return;
-
-    try {
-      const { error } = await supabase.from("payments").insert({
-        user_id: userId,
-        date_iso: new Date().toISOString().slice(0, 10),
-        amount: bill.target,
-        merchant: bill.name,
-        note: "Paid from Bills page",
-        bill_id: bill.id,
-        debt_id: null,
-      });
-
-      if (error) throw error;
-
-      setMessage(`Paid ${bill.name}`);
-    } catch (err: any) {
-      setMessage(err.message || "Payment failed");
-    }
-  }
-
   /* ---------------- TOTALS ---------------- */
 
   const totals = useMemo(() => {
     const total = bills.reduce((s, b) => s + Number(b.target || 0), 0);
 
-    const dueSoon = bills.reduce((s, b) => {
-      const due = b.due_date || getNextDueDate(b.due_day);
-      if (!due) return s;
-
-      const d = new Date(due);
-      const now = new Date();
-      const in7 = new Date();
-      in7.setDate(now.getDate() + 7);
-
-      return d <= in7 ? s + Number(b.target || 0) : s;
-    }, 0);
-
-    return { total, dueSoon };
+    return { total };
   }, [bills]);
 
   /* ---------------- UI ---------------- */
@@ -185,15 +198,15 @@ export default function BillsPage() {
 
       <h1 className="text-2xl font-bold">Bills</h1>
 
-      {message && <div className="mt-2 text-sm">{message}</div>}
+      {message && (
+        <div className="mt-2 text-sm text-zinc-600">{message}</div>
+      )}
 
-      {/* SUMMARY */}
-      <div className="mt-6 grid grid-cols-2 gap-4">
-        <Card label="Total Bills" value={totals.total} />
-        <Card label="Due Soon" value={totals.dueSoon} />
+      <div className="mt-4 text-xl font-bold">
+        Total Bills: ${totals.total.toFixed(2)}
       </div>
 
-      {/* ADD BILL */}
+      {/* ADD */}
       <div className="mt-6 border rounded-xl p-4 bg-white">
         <h2 className="font-semibold">Add Bill</h2>
 
@@ -253,7 +266,7 @@ export default function BillsPage() {
               <div>
                 <div className="font-semibold">{b.name}</div>
                 <div className="text-sm text-zinc-500">
-                  ${b.target} · {b.category || "other"}
+                  ${b.target}
                   {due ? ` · due ${due}` : ""}
                 </div>
               </div>
@@ -261,9 +274,10 @@ export default function BillsPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => payBill(b)}
+                  disabled={payingId === b.id || !userId}
                   className="text-xs bg-black text-white px-3 py-1 rounded"
                 >
-                  Pay
+                  {payingId === b.id ? "Paying..." : "Pay"}
                 </button>
 
                 <button
@@ -278,14 +292,5 @@ export default function BillsPage() {
         })}
       </div>
     </main>
-  );
-}
-
-function Card({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="border rounded-xl p-4 bg-white">
-      <div className="text-sm text-zinc-500">{label}</div>
-      <div className="text-2xl font-bold">${value.toFixed(2)}</div>
-    </div>
   );
 }
