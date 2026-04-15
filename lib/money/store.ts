@@ -1,11 +1,18 @@
 import { create } from "zustand";
 
-export type Spend = { amount: number; category: string };
-export type Debt = any;
-export type Income = any;
+/* ---------------- TYPES ---------------- */
+export type Spend = {
+  id?: string;
+  amount: number;
+  category: string;
+};
+
+export type Income = { amount: number };
+export type Debt = { amount: number };
 export type Bucket = any;
 export type Payment = any;
 
+/* ---------------- STATE ---------------- */
 type MoneyState = {
   buckets: Bucket[];
   debts: Debt[];
@@ -15,15 +22,10 @@ type MoneyState = {
 
   setAll: (data: Partial<MoneyState>) => void;
   reset: () => void;
-
-  // 👇 ADD THIS (fixes your error)
-  getTotals: () => {
-    totalSpend: number;
-    byCategory: Record<string, number>;
-  };
 };
 
-export const useMoneyStore = create<MoneyState>((set, get) => ({
+/* ---------------- STORE ---------------- */
+export const useMoneyStore = create<MoneyState>((set) => ({
   buckets: [],
   debts: [],
   income: [],
@@ -44,21 +46,4 @@ export const useMoneyStore = create<MoneyState>((set, get) => ({
       spend: [],
       payments: [],
     }),
-
-  getTotals: () => {
-    const spend = get().spend;
-
-    const byCategory: Record<string, number> = {};
-
-    let totalSpend = 0;
-
-    for (const item of spend) {
-      totalSpend += Number(item.amount || 0);
-
-      const cat = item.category || "misc";
-      byCategory[cat] = (byCategory[cat] || 0) + Number(item.amount || 0);
-    }
-
-    return { totalSpend, byCategory };
-  },
 }));
