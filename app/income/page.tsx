@@ -1,29 +1,28 @@
 "use client";
 
-
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { todayISO } from "@/lib/money/utils";
 
 type IncomeSourceRow = {
   id: string;
-  user_id: string;
   name: string;
-  created_at: string;
 };
 
 type IncomeEntryRow = {
   id: string;
-  user_id: string;
   source_name: string;
   amount: number;
   date_iso: string;
   note: string | null;
-  created_at: string;
 };
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export default function IncomePage() {
   const supabase = createSupabaseBrowserClient();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -37,46 +36,49 @@ export default function IncomePage() {
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
 
+  async function loadData(uid: string) {
+    const [sourcesRes, entriesRes] = await Promise.all([
+      supabase
+        .from("income_sources")
+        .select("*")
+        .eq("user_id", uid)
+        .order("name", { ascending: true }),
+
+      supabase
+        .from("income_entries")
+        .select("*")
+        .eq("user_id", uid)
+        .order("date_iso", { ascending: false }),
+    ]);
+
+    if (sourcesRes.error) setMessage(sourcesRes.error.message);
+    if (entriesRes.error) setMessage(entriesRes.error.message);
+
+    setSources((sourcesRes.data || []) as IncomeSourceRow[]);
+    setEntries((entriesRes.data || []) as IncomeEntryRow[]);
+  }
+
   useEffect(() => {
     async function init() {
       setLoading(true);
-      setMessage("");
 
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getUser();
 
-      if (sessionError) {
-        setMessage(sessionError.message);
+      if (error) {
+        setMessage(error.message);
         setLoading(false);
         return;
       }
 
-      if (!session?.user) {
+      const user = data?.user;
+      if (!user) {
         setMessage("Please log in first.");
         setLoading(false);
         return;
       }
 
-      setUserId(session.user.id);
-
-      const [sourcesRes, entriesRes] = await Promise.all([
-        supabase.from("income_sources").select("*").order("name", { ascending: true }),
-        supabase.from("income_entries").select("*").order("date_iso", { ascending: false }),
-      ]);
-
-      if (sourcesRes.error) {
-        setMessage(sourcesRes.error.message);
-      } else {
-        setSources((sourcesRes.data || []) as IncomeSourceRow[]);
-      }
-
-      if (entriesRes.error) {
-        setMessage(entriesRes.error.message);
-      } else {
-        setEntries((entriesRes.data || []) as IncomeEntryRow[]);
-      }
+      setUserId(user.id);
+      await loadData(user.id);
 
       setLoading(false);
     }
@@ -84,52 +86,34 @@ export default function IncomePage() {
     init();
   }, []);
 
-  async function refreshIncomeData() {
-    const [sourcesRes, entriesRes] = await Promise.all([
-      supabase.from("income_sources").select("*").order("name", { ascending: true }),
-      supabase.from("income_entries").select("*").order("date_iso", { ascending: false }),
-    ]);
-
-    if (!sourcesRes.error) {
-      setSources((sourcesRes.data || []) as IncomeSourceRow[]);
-    }
-
-    if (!entriesRes.error) {
-      setEntries((entriesRes.data || []) as IncomeEntryRow[]);
-    }
-  }
-
-  async function ensureSourceExists(userId: string, name: string) {
+  async function ensureSourceExists(uid: string, name: string) {
     const clean = name.trim();
     if (!clean) return;
 
-    const exists = sources.some((s) => s.name.toLowerCase() === clean.toLowerCase());
+    const exists = sources.some(
+      (s) => s.name.toLowerCase() === clean.toLowerCase()
+    );
+
     if (exists) return;
 
     const { error } = await supabase.from("income_sources").insert({
-      user_id: userId,
+      user_id: uid,
       name: clean,
     });
 
-    if (error) {
-      throw new Error(error.message);
-    }
+    if (error) throw new Error(error.message);
   }
 
   async function handleAddIncome() {
     setMessage("");
 
-    if (!userId) {
-      setMessage("You need to be logged in.");
-      return;
-    }
+    if (!userId) return setMessage("You need to be logged in.");
 
     const cleanSource = sourceName.trim();
     const amt = Number(amount);
 
     if (!cleanSource || !Number.isFinite(amt) || amt <= 0) {
-      setMessage("Please enter a source name and valid amount.");
-      return;
+      return setMessage("Enter a valid source and amount.");
     }
 
     setSaving(true);
@@ -155,209 +139,136 @@ export default function IncomePage() {
       setAmount("");
       setNote("");
       setDateISO(todayISO());
-      setMessage("Income added.");
 
-      await refreshIncomeData();
+      await loadData(userId);
+
+      setMessage("Income added.");
     } catch (err: any) {
-      setMessage(err?.message || "Failed to add income.");
-    } finally {
-      setSaving(false);
+      setMessage(err.message || "Failed to add income.");
     }
+
+    setSaving(false);
   }
 
-  async function handleDeleteIncome(id: string) {
-    setMessage("");
+  async function handleDelete(id: string) {
+    const { error } = await supabase
+      .from("income_entries")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId!);
 
-    const { error } = await supabase.from("income_entries").delete().eq("id", id);
+    if (error) return setMessage(error.message);
 
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setEntries((prev) => prev.filter((entry) => entry.id !== id));
+    setEntries((prev) => prev.filter((e) => e.id !== id));
   }
 
   const totalIncome = useMemo(() => {
-    return entries.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+    return entries.reduce((sum, e) => sum + Number(e.amount || 0), 0);
   }, [entries]);
 
   return (
     <main className="min-h-screen bg-zinc-50 text-zinc-900">
       <div className="mx-auto max-w-4xl px-6 py-10">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight">Income</h1>
-            <p className="mt-2 text-zinc-600">
-              Add as many income sources as you want and save them to the cloud.
-            </p>
-          </div>
 
-          <div className="flex flex-wrap gap-3">
-            <a
-              href="/dashboard"
-              className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-            >
-              Dashboard
-            </a>
-
-            <a
-              href="/forecast"
-              className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-            >
-              Forecast
-            </a>
-          </div>
+        <div>
+          <h1 className="text-3xl font-black">Income</h1>
+          <p className="mt-2 text-zinc-600">
+            Track all money coming in.
+          </p>
         </div>
 
         {message ? (
-          <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600">
+          <div className="mt-4 rounded-xl border bg-white p-4 text-sm text-zinc-600">
             {message}
           </div>
         ) : null}
 
-        {!userId && !loading ? (
-          <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <div className="font-semibold">You are not logged in.</div>
-            <p className="mt-2 text-sm text-zinc-600">
-              Go to signup/login first, then come back here.
-            </p>
-            <div className="mt-4">
-              <a
-                href="/signup"
-                className="inline-flex rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
-              >
-                Go to Signup / Login
-              </a>
-            </div>
-          </div>
-        ) : null}
-
         <div className="mt-8 grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Total income</div>
-            <div className="mt-2 text-3xl font-black">${totalIncome.toFixed(2)}</div>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Income sources</div>
-            <div className="mt-2 text-3xl font-black">{sources.length}</div>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-zinc-500">Entries logged</div>
-            <div className="mt-2 text-3xl font-black">{entries.length}</div>
-          </div>
+          <Stat label="Total Income" value={totalIncome} />
+          <Stat label="Sources" value={sources.length} />
+          <Stat label="Entries" value={entries.length} />
         </div>
 
-        <div className="mt-8 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-bold">Add income</h2>
+        {/* ADD INCOME */}
+        <div className="mt-8 rounded-3xl border bg-white p-6">
+          <h2 className="text-lg font-bold">Add Income</h2>
 
           <div className="mt-4 grid gap-3">
             <input
               type="date"
               value={dateISO}
               onChange={(e) => setDateISO(e.target.value)}
-              className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
+              className="rounded-xl border px-4 py-3"
             />
 
             <input
-              list="income-sources"
-              placeholder="Income source (Salon, DoorDash, Tax Refund, Tips)"
+              list="sources"
+              placeholder="Source (Job, Tips, Side hustle)"
               value={sourceName}
               onChange={(e) => setSourceName(e.target.value)}
-              className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
+              className="rounded-xl border px-4 py-3"
             />
-            <datalist id="income-sources">
-              {sources.map((source) => (
-                <option key={source.id} value={source.name} />
+
+            <datalist id="sources">
+              {sources.map((s) => (
+                <option key={s.id} value={s.name} />
               ))}
             </datalist>
 
             <input
-              placeholder="Amount"
               type="number"
-              inputMode="decimal"
+              placeholder="Amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
+              className="rounded-xl border px-4 py-3"
             />
 
             <input
-              placeholder="Note (optional)"
+              placeholder="Note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
+              className="rounded-xl border px-4 py-3"
             />
 
             <button
               onClick={handleAddIncome}
               disabled={saving || !userId}
-              className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white hover:bg-black disabled:opacity-60"
+              className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white"
             >
               {saving ? "Saving..." : "Add Income"}
             </button>
           </div>
         </div>
 
-        <div className="mt-8 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-bold">Saved income sources</h2>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {loading ? (
-              <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                Loading sources...
-              </div>
-            ) : sources.length === 0 ? (
-              <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                No income sources yet.
-              </div>
-            ) : (
-              sources.map((source) => (
-                <div
-                  key={source.id}
-                  className="rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-medium"
-                >
-                  {source.name}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="mt-8 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-bold">Income entries</h2>
+        {/* ENTRIES */}
+        <div className="mt-8 rounded-3xl border bg-white p-6">
+          <h2 className="text-lg font-bold">Income Entries</h2>
 
           <div className="mt-4 grid gap-3">
             {loading ? (
-              <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                Loading income...
-              </div>
+              <p className="text-sm text-zinc-500">Loading...</p>
             ) : entries.length === 0 ? (
-              <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                No income logged yet.
-              </div>
+              <p className="text-sm text-zinc-500">No income yet.</p>
             ) : (
-              entries.map((entry) => (
+              entries.map((e) => (
                 <div
-                  key={entry.id}
+                  key={e.id}
                   className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
                 >
                   <div>
-                    <div className="font-semibold">{entry.source_name}</div>
+                    <div className="font-semibold">{e.source_name}</div>
                     <div className="text-sm text-zinc-500">
-                      {entry.date_iso}
-                      {entry.note ? ` · ${entry.note}` : ""}
+                      {e.date_iso}{e.note ? ` · ${e.note}` : ""}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3">
                     <div className="font-semibold">
-                      ${Number(entry.amount).toFixed(2)}
+                      ${Number(e.amount).toFixed(2)}
                     </div>
                     <button
-                      onClick={() => handleDeleteIncome(entry.id)}
-                      className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
+                      onClick={() => handleDelete(e.id)}
+                      className="rounded-lg border px-3 py-2 text-xs"
                     >
                       Delete
                     </button>
@@ -369,5 +280,16 @@ export default function IncomePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border bg-white p-5">
+      <div className="text-sm text-zinc-500">{label}</div>
+      <div className="mt-2 text-3xl font-black">
+        {typeof value === "number" ? value.toFixed(0) : value}
+      </div>
+    </div>
   );
 }
