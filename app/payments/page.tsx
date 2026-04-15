@@ -12,14 +12,20 @@ type PaymentRow = {
   merchant: string | null;
   note: string | null;
   debt_id?: string | null;
+  bill_id?: string | null;
   created_at: string;
 };
 
 type DebtRow = {
   id: string;
   name: string;
-  kind: string | null;
   remaining_balance?: number | null;
+};
+
+type BillRow = {
+  id: string;
+  name: string;
+  amount?: number | null;
 };
 
 function todayISO() {
@@ -37,12 +43,18 @@ export default function PaymentsPage() {
 
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
+  const [bills, setBills] = useState<BillRow[]>([]);
 
+  // form state
   const [dateISO, setDateISO] = useState(todayISO());
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+
+  // NEW: type + selection
+  const [payType, setPayType] = useState<"debt" | "bill">("debt");
   const [debtId, setDebtId] = useState("");
+  const [billId, setBillId] = useState("");
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -50,81 +62,97 @@ export default function PaymentsPage() {
     router.refresh();
   }
 
-  async function loadPayments(currentUserId: string) {
+  async function loadPayments(uid: string) {
     const { data, error } = await supabase
       .from("payments")
       .select("*")
-      .eq("user_id", currentUserId)
-      .order("date_iso", { ascending: false })
-      .order("created_at", { ascending: false });
+      .eq("user_id", uid)
+      .order("date_iso", { ascending: false });
 
     if (error) throw error;
     setPayments((data || []) as PaymentRow[]);
   }
 
-  async function loadDebts(currentUserId: string) {
+  async function loadDebts(uid: string) {
     const { data, error } = await supabase
       .from("debt_status")
-      .select("id, name, kind, remaining_balance")
-      .eq("user_id", currentUserId)
+      .select("id, name, remaining_balance")
+      .eq("user_id", uid)
       .order("name", { ascending: true });
 
     if (error) throw error;
     setDebts((data || []) as DebtRow[]);
   }
 
+  async function loadBills(uid: string) {
+    const { data, error } = await supabase
+      .from("buckets")
+      .select("id, name, amount")
+      .eq("user_id", uid)
+      .eq("kind", "bill")
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+    setBills((data || []) as BillRow[]);
+  }
+
   useEffect(() => {
     async function init() {
-      try {
-        setLoading(true);
-        setMessage("");
+      setLoading(true);
+      setMessage("");
 
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-
-        const session = data.session;
-        if (!session?.user) {
-          setMessage("Please log in first.");
-          return;
-        }
-
-        setUserId(session.user.id);
-
-        await Promise.all([
-          loadPayments(session.user.id),
-          loadDebts(session.user.id),
-        ]);
-      } catch (err: any) {
-        setMessage(err.message || "Failed to load payments.");
-      } finally {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        setMessage(error.message);
         setLoading(false);
+        return;
       }
+
+      const session = data.session;
+      if (!session?.user) {
+        setMessage("Please log in first.");
+        setLoading(false);
+        return;
+      }
+
+      const uid = session.user.id;
+      setUserId(uid);
+
+      await Promise.all([
+        loadPayments(uid),
+        loadDebts(uid),
+        loadBills(uid),
+      ]);
+
+      setLoading(false);
     }
 
     init();
   }, []);
 
-  async function refreshPayments() {
+  async function refresh() {
     if (!userId) return;
-
-    try {
-      await loadPayments(userId);
-    } catch (err: any) {
-      setMessage(err.message || "Failed to refresh payments.");
-    }
+    await loadPayments(userId);
   }
 
   async function handleAddPayment() {
     setMessage("");
 
-    if (!userId) {
-      setMessage("You need to be logged in.");
-      return;
-    }
+    if (!userId) return;
 
     const amt = Number(amount);
     if (!merchant.trim() || !Number.isFinite(amt) || amt <= 0) {
-      setMessage("Please enter what you paid and a valid amount.");
+      setMessage("Enter a valid payment and amount.");
+      return;
+    }
+
+    if (payType === "debt" && !debtId) {
+      setMessage("Select a debt.");
+      return;
+    }
+
+    if (payType === "bill" && !billId) {
+      setMessage("Select a bill.");
       return;
     }
 
@@ -137,7 +165,8 @@ export default function PaymentsPage() {
         amount: amt,
         merchant: merchant.trim(),
         note: note.trim() || null,
-        debt_id: debtId || null,
+        debt_id: payType === "debt" ? debtId : null,
+        bill_id: payType === "bill" ? billId : null,
       };
 
       const { error } = await supabase.from("payments").insert(payload);
@@ -148,9 +177,11 @@ export default function PaymentsPage() {
       setAmount("");
       setNote("");
       setDebtId("");
-      setMessage("Payment added.");
+      setBillId("");
+      setPayType("debt");
 
-      await refreshPayments();
+      await refresh();
+      setMessage("Payment added.");
     } catch (err: any) {
       setMessage(err.message || "Failed to add payment.");
     } finally {
@@ -158,201 +189,143 @@ export default function PaymentsPage() {
     }
   }
 
-  async function handleDeletePayment(id: string) {
-    setMessage("");
-
-    try {
-      const { error } = await supabase
-        .from("payments")
-        .delete()
-        .eq("id", id)
-        .eq("user_id", userId);
-
-      if (error) throw error;
-
-      setPayments((prev) => prev.filter((p) => p.id !== id));
-    } catch (err: any) {
-      setMessage(err.message || "Failed to delete payment.");
-    }
-  }
-
-  const totalPayments = useMemo(() => {
-    return payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  }, [payments]);
-
-  const thisMonthPayments = useMemo(() => {
-    const monthKey = todayISO().slice(0, 7);
-    return payments
-      .filter((p) => (p.date_iso || "").slice(0, 7) === monthKey)
-      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  }, [payments]);
+  const total = useMemo(
+    () => payments.reduce((s, p) => s + Number(p.amount || 0), 0),
+    [payments]
+  );
 
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto max-w-5xl px-6 py-10">
-        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 md:p-8 shadow-2xl">
-          <div className="flex flex-col gap-3">
-            <div>
-              <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
-                Money out
-              </div>
-              <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
-                Payments
-              </h1>
-              <p className="mt-3 max-w-2xl text-lg text-zinc-300">
-                Log payments you made toward bills, credit cards, or loans.
-              </p>
-            </div>
 
-            <div className="flex flex-wrap gap-3">
-              <a href="/dashboard" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Dashboard</a>
-              <a href="/bills" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Bills</a>
-              <a href="/income" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Income</a>
-              <a href="/spend" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Spending</a>
-              <a href="/debt" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Credit & Loans</a>
-              <a href="/payments" className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black hover:bg-zinc-100">Payments</a>
-              <a href="/forecast" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Forecast</a>
-              <a href="/crisis" className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Crisis Mode</a>
-              <button onClick={handleLogout} className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">
-                Logout
-              </button>
-            </div>
+        <h1 className="text-4xl font-black">Payments</h1>
+        <p className="text-zinc-400 mt-2">
+          Log payments toward debt or bills.
+        </p>
+
+        {message && (
+          <div className="mt-4 rounded-xl bg-emerald-500/10 p-3 text-emerald-300">
+            {message}
+          </div>
+        )}
+
+        {/* SUMMARY */}
+        <div className="mt-6 text-2xl font-bold">
+          Total: ${total.toFixed(2)}
+        </div>
+
+        <div className="mt-10 grid gap-6 md:grid-cols-2">
+
+          {/* FORM */}
+          <div className="rounded-2xl bg-white p-5 text-black">
+            <h2 className="text-xl font-bold">Add Payment</h2>
+
+            <input
+              type="date"
+              value={dateISO}
+              onChange={(e) => setDateISO(e.target.value)}
+              className="mt-3 w-full border p-2 rounded"
+            />
+
+            <input
+              placeholder="What was this payment for?"
+              value={merchant}
+              onChange={(e) => setMerchant(e.target.value)}
+              className="mt-3 w-full border p-2 rounded"
+            />
+
+            <input
+              type="number"
+              placeholder="Amount"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="mt-3 w-full border p-2 rounded"
+            />
+
+            {/* TYPE SELECT */}
+            <select
+              value={payType}
+              onChange={(e) => {
+                setPayType(e.target.value as "debt" | "bill");
+                setDebtId("");
+                setBillId("");
+              }}
+              className="mt-3 w-full border p-2 rounded"
+            >
+              <option value="debt">Debt</option>
+              <option value="bill">Bill</option>
+            </select>
+
+            {/* CONDITIONAL DROPDOWN */}
+            {payType === "debt" && (
+              <select
+                value={debtId}
+                onChange={(e) => setDebtId(e.target.value)}
+                className="mt-3 w-full border p-2 rounded"
+              >
+                <option value="">Select debt</option>
+                {debts.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {payType === "bill" && (
+              <select
+                value={billId}
+                onChange={(e) => setBillId(e.target.value)}
+                className="mt-3 w-full border p-2 rounded"
+              >
+                <option value="">Select bill</option>
+                {bills.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                    {b.amount ? ` - $${b.amount}` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <textarea
+              placeholder="Note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="mt-3 w-full border p-2 rounded"
+            />
+
+            <button
+              onClick={handleAddPayment}
+              disabled={saving}
+              className="mt-4 w-full bg-black text-white p-3 rounded"
+            >
+              {saving ? "Saving..." : "Add Payment"}
+            </button>
           </div>
 
-          {message ? (
-            <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
-              {message}
-            </div>
-          ) : null}
+          {/* HISTORY */}
+          <div className="rounded-2xl bg-white p-5 text-black">
+            <h2 className="text-xl font-bold">History</h2>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-2">
-            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
-              <div className="text-sm text-zinc-500">Total payments</div>
-              <div className="mt-2 text-3xl font-black text-zinc-950">
-                ${totalPayments.toFixed(2)}
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
-              <div className="text-sm text-zinc-500">This month</div>
-              <div className="mt-2 text-3xl font-black text-zinc-950">
-                ${thisMonthPayments.toFixed(2)}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-              <h2 className="text-2xl font-black">Log a payment</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Link debt payments directly so balances update automatically.
-              </p>
-
-              <div className="mt-5 grid gap-3">
-                <input
-                  type="date"
-                  value={dateISO}
-                  onChange={(e) => setDateISO(e.target.value)}
-                  className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
-                />
-
-                <input
-                  placeholder="What did you pay?"
-                  value={merchant}
-                  onChange={(e) => setMerchant(e.target.value)}
-                  className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
-                />
-
-                <input
-                  placeholder="Amount"
-                  type="number"
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
-                />
-
-                <select
-                  value={debtId}
-                  onChange={(e) => setDebtId(e.target.value)}
-                  className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
-                >
-                  <option value="">No linked debt</option>
-                  {debts.map((debt) => (
-                    <option key={debt.id} value={debt.id}>
-                      {debt.name}
-                      {typeof debt.remaining_balance === "number"
-                        ? ` — $${debt.remaining_balance.toFixed(2)} left`
-                        : ""}
-                    </option>
-                  ))}
-                </select>
-
-                <input
-                  placeholder="Note"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
-                />
-
-                <button
-                  onClick={handleAddPayment}
-                  disabled={saving || !userId}
-                  className="rounded-xl bg-zinc-950 px-4 py-3 font-semibold text-white hover:bg-black disabled:opacity-60"
-                >
-                  {saving ? "Saving..." : "Add Payment"}
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-              <h2 className="text-2xl font-black">Payment history</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Logged payments are filtered to your account only.
-              </p>
-
-              <div className="mt-5 grid gap-3">
-                {loading ? (
-                  <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                    Loading payments...
+            {loading ? (
+              <p>Loading...</p>
+            ) : payments.length === 0 ? (
+              <p>No payments yet.</p>
+            ) : (
+              payments.map((p) => (
+                <div key={p.id} className="border-b py-2">
+                  <div className="font-semibold">
+                    {p.merchant} — ${p.amount}
                   </div>
-                ) : payments.length === 0 ? (
-                  <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                    No payments logged yet.
+                  <div className="text-sm text-gray-500">
+                    {p.date_iso}
                   </div>
-                ) : (
-                  payments.map((payment) => (
-                    <div
-                      key={payment.id}
-                      className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
-                    >
-                      <div>
-                        <div className="font-semibold">
-                          {payment.merchant || "Unnamed payment"}
-                        </div>
-                        <div className="text-sm text-zinc-500">
-                          {payment.date_iso}
-                          {payment.note ? ` · ${payment.note}` : ""}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <div className="font-bold">
-                          ${Number(payment.amount).toFixed(2)}
-                        </div>
-                        <button
-                          onClick={() => handleDeletePayment(payment.id)}
-                          className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-100"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+                </div>
+              ))
+            )}
           </div>
+
         </div>
       </div>
     </main>
