@@ -14,7 +14,11 @@ export type Bucket = {
   key: string;
   name: string;
   kind: BucketKind;
-  category?: BucketCategory;
+  category?: BucketCategory | null;
+
+  // ✅ Supabase standard
+  due_date?: string | null;
+  focus?: boolean | null;
 };
 
 /* ───────────────── INCOME ───────────────── */
@@ -27,9 +31,10 @@ export type IncomeEntry = {
   id: string;
   user_id: string;
   date_iso: string;
-  sourceName: string;
+  source_name: string;
   amount: number;
   note?: string | null;
+
   allocations: Record<string, number>;
 };
 
@@ -70,11 +75,18 @@ export type DebtEntry = {
   id: string;
   user_id: string;
   name: string;
+
   balance: number;
-  minPayment: number;
-  dueDate?: string;
-  isMonthly?: boolean;
-  dueDay?: number;
-  note?: string;
+
+  // ✅ unified Supabase-style naming
+  min_payment?: number | null;
+
+  due_date?: string | null;
+  is_monthly?: boolean | null;
+  due_day?: number | null;
+
+  apr?: number | null;
+  credit_limit?: number | null;
+
+  note?: string | null;
 };
-EOF
