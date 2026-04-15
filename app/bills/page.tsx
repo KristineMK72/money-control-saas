@@ -101,7 +101,9 @@ export default function BillsPage() {
   async function loadBills(uid: string) {
     const { data, error } = await supabase
       .from("bills")
-      .select<BillRow>("id, user_id, name, target, category, due_date, due_day, created_at")
+      .select(
+        "id, user_id, name, target, category, due_date, due_day, created_at"
+      )
       .eq("user_id", uid)
       .order("created_at", { ascending: false });
 
@@ -110,7 +112,7 @@ export default function BillsPage() {
       return;
     }
 
-    setBills(data || []);
+    setBills((data as BillRow[]) || []);
   }
 
   /* ---------------- ADD BILL ---------------- */
