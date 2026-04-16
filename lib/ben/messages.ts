@@ -1,4 +1,8 @@
-export const BenMessages = {
+// /lib/ben/messages.ts
+
+import { BenMood } from "./types";
+
+export const BenMessages: Record<BenMood, string[]> = {
   urgent: [
     "Trouble has knocked upon the door.",
     "Let us steady the ship before the storm grows.",
@@ -16,5 +20,6 @@ export const BenMessages = {
   ],
   celebratory: [
     "Well done! Prosperity smiles upon your efforts.",
+    "Prosperity nods approvingly at your course.",
   ],
 };
