@@ -12,13 +12,13 @@ type DebtRow = {
   kind: "credit" | "loan";
   balance: number;
   min_payment: number | null;
+  monthly_min_payment: number | null;
   due_date: string | null;
   apr: number | null;
   credit_limit: number | null;
   note: string | null;
   is_monthly: boolean | null;
   due_day: number | null;
-  monthly_min_payment: number | null;
   created_at: string;
 };
 
@@ -41,7 +41,7 @@ function todayISO() {
 }
 
 function monthPrefix() {
-  return new Date().toISOString().slice(0, 7); // "2026-04"
+  return new Date().toISOString().slice(0, 7); // "YYYY-MM"
 }
 
 /* -------------------- Page -------------------- */
@@ -95,7 +95,7 @@ export default function DebtPage() {
     }
 
     init();
-  }, []);
+  }, [supabase]);
 
   async function refresh() {
     if (!userId) return;
@@ -150,18 +150,39 @@ export default function DebtPage() {
     await refresh();
   }
 
+  /* -------------------- Delete -------------------- */
+
+  async function deleteDebt(id: string) {
+    if (!userId) return;
+
+    const { error } = await supabase
+      .from("debts")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setDebts((prev) => prev.filter((d) => d.id !== id));
+  }
+
   /* -------------------- Stats -------------------- */
 
-  const totals = useMemo(() => {
-    return debts.reduce(
-      (acc, d) => {
-        acc.balance += d.balance || 0;
-        acc.min += d.monthly_min_payment || d.min_payment || 0;
-        return acc;
-      },
-      { balance: 0, min: 0 }
-    );
-  }, [debts]);
+  const totals = useMemo(
+    () =>
+      debts.reduce(
+        (acc, d) => {
+          acc.balance += d.balance || 0;
+          acc.min += d.monthly_min_payment || d.min_payment || 0;
+          return acc;
+        },
+        { balance: 0, min: 0 }
+      ),
+    [debts]
+  );
 
   /* -------------------- UI -------------------- */
 
