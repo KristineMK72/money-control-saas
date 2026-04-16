@@ -9,7 +9,6 @@ type SpendRow = {
   id: string;
   amount: number;
   category: string | null;
-  // extra fields exist in DB but we don't need them here
 };
 
 type IncomeRow = {
@@ -20,11 +19,14 @@ type IncomeRow = {
 type DebtRow = {
   id: string;
   balance: number;
+  min_payment?: number | null;
+  monthly_min_payment?: number | null;
 };
 
-type BucketRow = {
+type BillRow = {
   id: string;
   name: string;
+  target: number;
   due_date: string | null;
   kind: string;
   category: string | null;
@@ -43,7 +45,7 @@ export default function DashboardPage() {
   const [spend, setSpend] = useState<SpendRow[]>([]);
   const [income, setIncome] = useState<IncomeRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
-  const [buckets, setBuckets] = useState<BucketRow[]>([]);
+  const [bills, setBills] = useState<BillRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -51,15 +53,14 @@ export default function DashboardPage() {
     async function load() {
       setLoading(true);
 
-      const { data: sessionData, error: sessionError } =
-        await supabase.auth.getSession();
-
-      if (sessionError || !sessionData?.session?.user) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData?.session?.user;
+      if (!user) {
         setLoading(false);
         return;
       }
 
-      const uid = sessionData.session.user.id;
+      const uid = user.id;
 
       const [spendRes, incomeRes, debtRes, billRes, paymentRes] =
         await Promise.all([
@@ -67,18 +68,22 @@ export default function DashboardPage() {
             .from("spend_entries")
             .select("id, amount, category")
             .eq("user_id", uid),
+
           supabase
             .from("income_entries")
             .select("id, amount")
             .eq("user_id", uid),
+
           supabase
             .from("debts")
-            .select("id, balance")
+            .select("id, balance, min_payment, monthly_min_payment")
             .eq("user_id", uid),
+
           supabase
             .from("bills")
-            .select("id, name, due_date, kind, category")
+            .select("id, name, target, due_date, kind, category")
             .eq("user_id", uid),
+
           supabase
             .from("payments")
             .select("id, amount")
@@ -88,7 +93,7 @@ export default function DashboardPage() {
       setSpend((spendRes.data || []) as SpendRow[]);
       setIncome((incomeRes.data || []) as IncomeRow[]);
       setDebts((debtRes.data || []) as DebtRow[]);
-      setBuckets((billRes.data || []) as BucketRow[]);
+      setBills((billRes.data || []) as BillRow[]);
       setPayments((paymentRes.data || []) as PaymentRow[]);
 
       setLoading(false);
@@ -116,6 +121,34 @@ export default function DashboardPage() {
 
   const net = totalIncome - totalSpend - totalDebt;
 
+  /* ---------------- MONTHLY OBLIGATIONS ---------------- */
+
+  // Bills: sum of bill.target
+  const totalBillTargets = useMemo(
+    () => bills.reduce((sum, b) => sum + Number(b.target || 0), 0),
+    [bills]
+  );
+
+  // Debts: sum of min_payment or monthly_min_payment
+  const totalDebtMinimums = useMemo(
+    () =>
+      debts.reduce(
+        (sum, d) =>
+          sum +
+          Number(
+            d.monthly_min_payment ??
+              d.min_payment ??
+              0
+          ),
+        0
+      ),
+    [debts]
+  );
+
+  const combinedMonthly = totalBillTargets + totalDebtMinimums;
+
+  /* ---------------- TOP CATEGORY ---------------- */
+
   const topCategory = useMemo(() => {
     const map: Record<string, number> = {};
 
@@ -135,28 +168,57 @@ export default function DashboardPage() {
     <main className="min-h-screen bg-zinc-50 p-6">
       <h1 className="text-3xl font-black">Dashboard</h1>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-4">
+      {/* MAIN CARDS */}
+      <div className="mt-6 grid gap-4 md:grid-cols-5">
         <Card label="Income" value={totalIncome} />
         <Card label="Spend" value={totalSpend} />
         <Card label="Debt" value={totalDebt} />
         <Card label="Net" value={net} />
+
+        {/* NEW Monthly Obligations Card */}
+        <div className="rounded-xl border bg-white p-4">
+          <div className="text-sm text-zinc-500 font-semibold">
+            Monthly Obligations
+          </div>
+
+          <div className="mt-3 space-y-1 text-sm text-zinc-600">
+            <div className="flex justify-between">
+              <span>Bills Total</span>
+              <span>${totalBillTargets.toFixed(2)}</span>
+            </div>
+
+            <div className="flex justify-between">
+              <span>Debt Minimums</span>
+              <span>${totalDebtMinimums.toFixed(2)}</span>
+            </div>
+
+            <div className="border-t pt-2 mt-2 flex justify-between font-bold">
+              <span>Total Monthly</span>
+              <span>${combinedMonthly.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
+      {/* TOP CATEGORY */}
       <div className="mt-8 rounded-xl bg-white p-6 border">
         <h2 className="font-bold">Top Category</h2>
         <p className="text-2xl font-black mt-2">{topCategory}</p>
       </div>
 
+      {/* COUNTS */}
       <div className="mt-8 rounded-xl bg-white p-6 border text-sm text-zinc-600 space-y-1">
         <div>Spend entries: {spend.length}</div>
         <div>Income entries: {income.length}</div>
         <div>Debts: {debts.length}</div>
-        <div>Bills (buckets): {buckets.length}</div>
+        <div>Bills: {bills.length}</div>
         <div>Payments: {payments.length}</div>
       </div>
     </main>
   );
 }
+
+/* ---------------- CARD COMPONENT ---------------- */
 
 function Card({ label, value }: { label: string; value: number }) {
   return (
