@@ -3,45 +3,56 @@
 import { BenMessages } from "./messages";
 import { BenInput, BenOutput, BenMood } from "./types";
 
+/* ---------------- UTILITIES ---------------- */
+
 function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function getMood(input: BenInput): BenMood {
+/* ---------------- MOOD LOGIC ---------------- */
+
+function determineMood(input: BenInput): BenMood {
   const { incomeSoFar, totalNeeded, incomeGap } = input;
 
-  // No obligations yet → calm encouragement
+  // No obligations → calm encouragement
   if (totalNeeded <= 0) return "encouraging";
 
-  // Big gap → urgent
+  // Large deficit → urgent
   if (incomeGap > totalNeeded * 0.4) return "urgent";
 
-  // Slightly behind → stern but not panicked
+  // Slight deficit → stern
   if (incomeGap > 0) return "stern";
 
-  // Ahead by a lot → celebratory
+  // Surplus → celebratory
   if (incomeSoFar >= totalNeeded * 1.2) return "celebratory";
 
-  // Slightly ahead or on track → encouraging
+  // On track → encouraging
   return "encouraging";
 }
+
+/* ---------------- PREFIX BUILDER ---------------- */
 
 function buildPrefix(name: string | null, timeframeLabel: string): string {
   const who = name ? `${name}, ` : "";
   const where = timeframeLabel ? `${timeframeLabel.toLowerCase()}. ` : "";
-  return who + (where ? where : "");
+  return who + where;
 }
+
+/* ---------------- ENGINE ---------------- */
 
 export const BenEngine = {
   getForecastMessage(input: BenInput): BenOutput {
-    const mood = getMood(input);
-    const lines = BenMessages[mood];
-    const base = pickRandom(lines);
+    const mood = determineMood(input);
 
+    // Pick a message from the correct mood bucket
+    const lines = BenMessages[mood];
+    const baseMessage = pickRandom(lines);
+
+    // Build prefix (name + timeframe)
     const prefix = buildPrefix(input.name, input.timeframeLabel);
 
     return {
-      text: `${prefix}${base}`,
+      text: `${prefix}${baseMessage}`,
       mood,
     };
   },
