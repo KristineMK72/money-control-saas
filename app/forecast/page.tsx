@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { BenEngine } from "@/lib/ben/engine";
+import BenBubble from "@/components/BenBubble";
 
 /* ---------------- TYPES ---------------- */
 
@@ -102,12 +104,10 @@ function formatDueLabel(dateISO?: string | null) {
   if (!dateISO) return "no due date";
   const due = parseDateSafe(dateISO);
   if (!due) return dateISO;
-
   const today = startOfToday();
   const diff = Math.ceil(
     (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
   );
-
   if (diff < 0) return `overdue (${dateISO})`;
   if (diff === 0) return "today";
   if (diff === 1) return "tomorrow";
@@ -125,22 +125,15 @@ function getNextDueDateFromDay(dueDay?: number | null) {
 
   const lastDayThisMonth = new Date(year, month + 1, 0).getDate();
   const safeDayThisMonth = Math.min(dueDay, lastDayThisMonth);
-  const thisMonthDue = new Date(
-    year,
-    month,
-    safeDayThisMonth,
-    12,
-    0,
-    0,
-    0
-  );
 
+  const thisMonthDue = new Date(year, month, safeDayThisMonth, 12, 0, 0, 0);
   if (thisMonthDue >= today) return thisMonthDue.toISOString().slice(0, 10);
 
   const nextMonthYear = month === 11 ? year + 1 : year;
   const nextMonth = month === 11 ? 0 : month + 1;
   const lastDayNextMonth = new Date(nextMonthYear, nextMonth + 1, 0).getDate();
   const safeDayNextMonth = Math.min(dueDay, lastDayNextMonth);
+
   const nextMonthDue = new Date(
     nextMonthYear,
     nextMonth,
@@ -231,6 +224,7 @@ export default function ForecastPage() {
       setMessage("");
 
       const { data, error } = await supabase.auth.getSession();
+
       if (error) {
         setMessage(error.message);
         setLoading(false);
@@ -238,6 +232,7 @@ export default function ForecastPage() {
       }
 
       const session = data.session;
+
       if (!session?.user) {
         setMessage("Please log in to view your forecast.");
         setLoading(false);
@@ -252,15 +247,9 @@ export default function ForecastPage() {
             .from("bills")
             .select("*")
             .order("created_at", { ascending: false }),
-          supabase
-            .from("income_entries")
-            .select("id, amount, date_iso"),
-          supabase
-            .from("spend_entries")
-            .select("id, amount, date_iso"),
-          supabase
-            .from("payments")
-            .select("id, amount, date_iso"),
+          supabase.from("income_entries").select("id, amount, date_iso"),
+          supabase.from("spend_entries").select("id, amount, date_iso"),
+          supabase.from("payments").select("id, amount, date_iso"),
           supabase
             .from("debts")
             .select("*")
@@ -319,20 +308,17 @@ export default function ForecastPage() {
   }
 
   const incomeInWindow = useMemo(
-    () =>
-      incomeEntries.filter((r) => inWindow(r.date_iso)),
+    () => incomeEntries.filter((r) => inWindow(r.date_iso)),
     [incomeEntries, windowEnd, today]
   );
 
   const spendInWindow = useMemo(
-    () =>
-      spendEntries.filter((r) => inWindow(r.date_iso)),
+    () => spendEntries.filter((r) => inWindow(r.date_iso)),
     [spendEntries, windowEnd, today]
   );
 
   const paymentsInWindow = useMemo(
-    () =>
-      paymentEntries.filter((r) => inWindow(r.date_iso)),
+    () => paymentEntries.filter((r) => inWindow(r.date_iso)),
     [paymentEntries, windowEnd, today]
   );
 
@@ -348,7 +334,10 @@ export default function ForecastPage() {
 
   const totalPayments = useMemo(
     () =>
-      paymentsInWindow.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+      paymentsInWindow.reduce(
+        (sum, row) => sum + Number(row.amount || 0),
+        0
+      ),
     [paymentsInWindow]
   );
 
@@ -403,7 +392,6 @@ export default function ForecastPage() {
   const totalNeeded = billsTotal + debtTotal;
   const incomeGap = Math.max(0, totalNeeded - totalIncome);
   const dailyIncomeNeeded = incomeGap / daysLeft;
-
   const remainingAfterObligations =
     totalIncome - billsTotal - debtTotal - totalSpending - totalPayments;
 
@@ -443,6 +431,17 @@ export default function ForecastPage() {
       return `${index + 1}. Set aside ${item.name}`;
     });
   }, [top3]);
+
+  /* ---------------- BEN MESSAGE ---------------- */
+
+  const ben = BenEngine.getForecastMessage({
+    name: null, // you can wire in profile name later if you want
+    timeframeLabel,
+    totalNeeded,
+    incomeSoFar: totalIncome,
+    incomeGap,
+    dailyIncomeNeeded,
+  });
 
   /* ---------------- SHARE ---------------- */
 
@@ -510,6 +509,11 @@ export default function ForecastPage() {
                 See what is due in your selected window, what to pay first, and
                 how much income you still need.
               </p>
+
+              {/* Ben narrator bubble */}
+              <div className="mt-6">
+                <BenBubble message={ben.text} mood={ben.mood} />
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -544,7 +548,7 @@ export default function ForecastPage() {
               onClick={() => setTimeframe("week")}
               className={`px-4 py-2 rounded-full ${
                 timeframe === "week"
-                  ? "bg-white text.black".replace(".","-")
+                  ? "bg-white text-black"
                   : "text-zinc-300 hover:text-white"
               }`}
             >
@@ -570,7 +574,7 @@ export default function ForecastPage() {
 
           {!userId && !loading ? (
             <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
-              <div className="font-semibold text.white".replace(".","-")>
+              <div className="font-semibold text-white">
                 You are not logged in.
               </div>
               <p className="mt-2 text-sm text-zinc-300">
@@ -601,10 +605,7 @@ export default function ForecastPage() {
               label={`Debt minimums (${timeframeLabel})`}
               value={formatUSD(debtTotal)}
             />
-            <StatCard
-              label="Income needed"
-              value={formatUSD(incomeGap)}
-            />
+            <StatCard label="Income needed" value={formatUSD(incomeGap)} />
             <StatCard
               label="Daily income needed"
               value={formatUSD(dailyIncomeNeeded)}
@@ -738,9 +739,7 @@ export default function ForecastPage() {
               </div>
 
               <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-xl font-black">
-                  {timeframeLabel} Snapshot
-                </h2>
+                <h2 className="text-xl font-black">{timeframeLabel} Snapshot</h2>
                 <div className="mt-4 grid gap-3">
                   <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
                     <span className="text-zinc-500">Income</span>
@@ -780,9 +779,7 @@ export default function ForecastPage() {
           </div>
 
           {loading ? (
-            <div className="mt-6 text-sm text-zinc-400">
-              Loading forecast...
-            </div>
+            <div className="mt-6 text-sm text-zinc-400">Loading forecast...</div>
           ) : null}
         </div>
       </div>
