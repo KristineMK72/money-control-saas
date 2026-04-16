@@ -1,13 +1,21 @@
 "use client";
 
-
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+
+/* ---------------- TYPES ---------------- */
 
 type BillRow = {
   id: string;
   name: string;
-  category: "housing" | "utilities" | "transportation" | "debt" | "food" | "other" | null;
+  category:
+    | "housing"
+    | "utilities"
+    | "transportation"
+    | "debt"
+    | "food"
+    | "other"
+    | null;
   target: number;
   due_date: string | null;
   is_monthly: boolean | null;
@@ -54,17 +62,30 @@ type PlanItem = {
   category?: string | null;
 };
 
+type Timeframe = "day" | "week" | "month";
+
+/* ---------------- HELPERS ---------------- */
+
 function startOfToday() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-function endOfWindow(daysFromNow: number) {
+function endOfWindowDays(daysFromNow: number) {
   const d = startOfToday();
   d.setDate(d.getDate() + daysFromNow);
   d.setHours(23, 59, 59, 999);
   return d;
+}
+
+function endOfMonth() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const lastDay = new Date(year, month + 1, 0);
+  lastDay.setHours(23, 59, 59, 999);
+  return lastDay;
 }
 
 function parseDateSafe(dateISO?: string | null) {
@@ -83,7 +104,9 @@ function formatDueLabel(dateISO?: string | null) {
   if (!due) return dateISO;
 
   const today = startOfToday();
-  const diff = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const diff = Math.ceil(
+    (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  );
 
   if (diff < 0) return `overdue (${dateISO})`;
   if (diff === 0) return "today";
@@ -102,7 +125,15 @@ function getNextDueDateFromDay(dueDay?: number | null) {
 
   const lastDayThisMonth = new Date(year, month + 1, 0).getDate();
   const safeDayThisMonth = Math.min(dueDay, lastDayThisMonth);
-  const thisMonthDue = new Date(year, month, safeDayThisMonth, 12, 0, 0, 0);
+  const thisMonthDue = new Date(
+    year,
+    month,
+    safeDayThisMonth,
+    12,
+    0,
+    0,
+    0
+  );
 
   if (thisMonthDue >= today) return thisMonthDue.toISOString().slice(0, 10);
 
@@ -110,7 +141,15 @@ function getNextDueDateFromDay(dueDay?: number | null) {
   const nextMonth = month === 11 ? 0 : month + 1;
   const lastDayNextMonth = new Date(nextMonthYear, nextMonth + 1, 0).getDate();
   const safeDayNextMonth = Math.min(dueDay, lastDayNextMonth);
-  const nextMonthDue = new Date(nextMonthYear, nextMonth, safeDayNextMonth, 12, 0, 0, 0);
+  const nextMonthDue = new Date(
+    nextMonthYear,
+    nextMonth,
+    safeDayNextMonth,
+    12,
+    0,
+    0,
+    0
+  );
 
   return nextMonthDue.toISOString().slice(0, 10);
 }
@@ -141,7 +180,9 @@ function scorePlanItem(item: PlanItem) {
   const today = startOfToday();
 
   if (due) {
-    const days = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const days = Math.ceil(
+      (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
     if (days < 0) score += 50;
     else if (days === 0) score += 40;
     else if (days === 1) score += 35;
@@ -158,13 +199,7 @@ function scorePlanItem(item: PlanItem) {
   return score;
 }
 
-function StatCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
       <div className="text-sm text-zinc-500">{label}</div>
@@ -173,8 +208,11 @@ function StatCard({
   );
 }
 
+/* ---------------- PAGE ---------------- */
+
 export default function ForecastPage() {
   const supabase = createSupabaseBrowserClient();
+
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
@@ -184,6 +222,8 @@ export default function ForecastPage() {
   const [spendEntries, setSpendEntries] = useState<SpendRow[]>([]);
   const [paymentEntries, setPaymentEntries] = useState<PaymentRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
+
+  const [timeframe, setTimeframe] = useState<Timeframe>("week");
 
   useEffect(() => {
     async function loadForecast() {
@@ -206,46 +246,115 @@ export default function ForecastPage() {
 
       setUserId(session.user.id);
 
-      const [billsRes, incomeRes, spendRes, paymentsRes, debtsRes] = await Promise.all([
-        supabase.from("bills").select("*").order("created_at", { ascending: false }),
-        supabase.from("income_entries").select("id, amount, date_iso"),
-        supabase.from("spend_entries").select("id, amount, date_iso"),
-        supabase.from("payments").select("id, amount, date_iso"),
-        supabase.from("debts").select("*").order("created_at", { ascending: false }),
-      ]);
+      const [billsRes, incomeRes, spendRes, paymentsRes, debtsRes] =
+        await Promise.all([
+          supabase
+            .from("bills")
+            .select("*")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("income_entries")
+            .select("id, amount, date_iso"),
+          supabase
+            .from("spend_entries")
+            .select("id, amount, date_iso"),
+          supabase
+            .from("payments")
+            .select("id, amount, date_iso"),
+          supabase
+            .from("debts")
+            .select("*")
+            .order("created_at", { ascending: false }),
+        ]);
 
       if (billsRes.error) setMessage(billsRes.error.message);
       else setBills((billsRes.data || []) as BillRow[]);
 
-      if (!incomeRes.error) setIncomeEntries((incomeRes.data || []) as IncomeRow[]);
-      if (!spendRes.error) setSpendEntries((spendRes.data || []) as SpendRow[]);
-      if (!paymentsRes.error) setPaymentEntries((paymentsRes.data || []) as PaymentRow[]);
+      if (!incomeRes.error)
+        setIncomeEntries((incomeRes.data || []) as IncomeRow[]);
+
+      if (!spendRes.error)
+        setSpendEntries((spendRes.data || []) as SpendRow[]);
+
+      if (!paymentsRes.error)
+        setPaymentEntries((paymentsRes.data || []) as PaymentRow[]);
+
       if (!debtsRes.error) setDebts((debtsRes.data || []) as DebtRow[]);
 
       setLoading(false);
     }
 
     loadForecast();
-  }, []);
+  }, [supabase]);
 
-  const weekEnd = endOfWindow(6);
+  /* ---------------- TIMEFRAME WINDOW ---------------- */
+
+  const today = startOfToday();
+
+  const windowEnd = useMemo(() => {
+    if (timeframe === "day") return endOfWindowDays(0);
+    if (timeframe === "week") return endOfWindowDays(6);
+    return endOfMonth();
+  }, [timeframe]);
+
+  const daysLeft = useMemo(() => {
+    const diff = Math.ceil(
+      (windowEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    return Math.max(1, diff + 1);
+  }, [windowEnd, today]);
+
+  const timeframeLabel = useMemo(() => {
+    if (timeframe === "day") return "Today";
+    if (timeframe === "week") return "This Week";
+    return "This Month";
+  }, [timeframe]);
+
+  /* ---------------- FILTER BY WINDOW ---------------- */
+
+  function inWindow(dateISO: string) {
+    const d = parseDateSafe(dateISO);
+    if (!d) return false;
+    return d >= today && d <= windowEnd;
+  }
+
+  const incomeInWindow = useMemo(
+    () =>
+      incomeEntries.filter((r) => inWindow(r.date_iso)),
+    [incomeEntries, windowEnd, today]
+  );
+
+  const spendInWindow = useMemo(
+    () =>
+      spendEntries.filter((r) => inWindow(r.date_iso)),
+    [spendEntries, windowEnd, today]
+  );
+
+  const paymentsInWindow = useMemo(
+    () =>
+      paymentEntries.filter((r) => inWindow(r.date_iso)),
+    [paymentEntries, windowEnd, today]
+  );
 
   const totalIncome = useMemo(
-    () => incomeEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
-    [incomeEntries]
+    () => incomeInWindow.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [incomeInWindow]
   );
 
   const totalSpending = useMemo(
-    () => spendEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
-    [spendEntries]
+    () => spendInWindow.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [spendInWindow]
   );
 
   const totalPayments = useMemo(
-    () => paymentEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
-    [paymentEntries]
+    () =>
+      paymentsInWindow.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [paymentsInWindow]
   );
 
-  const weekBills = useMemo(() => {
+  /* ---------------- BILLS + DEBT IN WINDOW ---------------- */
+
+  const billsInWindow = useMemo(() => {
     return bills
       .map((bill) => ({
         id: bill.id,
@@ -257,12 +366,12 @@ export default function ForecastPage() {
       }))
       .filter((bill) => {
         const due = parseDateSafe(bill.dueDate);
-        return due && due <= weekEnd;
+        return due && due <= windowEnd;
       })
       .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
-  }, [bills, weekEnd]);
+  }, [bills, windowEnd]);
 
-  const weekDebtMinimums = useMemo(() => {
+  const debtMinimumsInWindow = useMemo(() => {
     return debts
       .map((debt) => ({
         id: debt.id,
@@ -274,49 +383,47 @@ export default function ForecastPage() {
       }))
       .filter((debt) => {
         const due = parseDateSafe(debt.dueDate);
-        return due && due <= weekEnd && debt.amount > 0;
+        return due && due <= windowEnd && debt.amount > 0;
       })
       .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
-  }, [debts, weekEnd]);
+  }, [debts, windowEnd]);
 
-  const billsThisWeekTotal = useMemo(
-    () => weekBills.reduce((sum, item) => sum + item.amount, 0),
-    [weekBills]
+  const billsTotal = useMemo(
+    () => billsInWindow.reduce((sum, item) => sum + item.amount, 0),
+    [billsInWindow]
   );
 
-  const debtThisWeekTotal = useMemo(
-    () => weekDebtMinimums.reduce((sum, item) => sum + item.amount, 0),
-    [weekDebtMinimums]
+  const debtTotal = useMemo(
+    () => debtMinimumsInWindow.reduce((sum, item) => sum + item.amount, 0),
+    [debtMinimumsInWindow]
   );
 
-  const remainingAfterWeek = totalIncome - billsThisWeekTotal - debtThisWeekTotal;
-  const safeSpendingRemaining = remainingAfterWeek - totalSpending - totalPayments;
+  /* ---------------- INCOME NEED ---------------- */
+
+  const totalNeeded = billsTotal + debtTotal;
+  const incomeGap = Math.max(0, totalNeeded - totalIncome);
+  const dailyIncomeNeeded = incomeGap / daysLeft;
+
+  const remainingAfterObligations =
+    totalIncome - billsTotal - debtTotal - totalSpending - totalPayments;
+
+  /* ---------------- PRIORITIES ---------------- */
 
   const allPriorityItems = useMemo(() => {
-    return [...weekBills, ...weekDebtMinimums]
+    return [...billsInWindow, ...debtMinimumsInWindow]
       .map((item) => ({
         ...item,
         score: scorePlanItem(item),
       }))
       .sort((a, b) => b.score - a.score);
-  }, [weekBills, weekDebtMinimums]);
+  }, [billsInWindow, debtMinimumsInWindow]);
 
   const top3 = allPriorityItems.slice(0, 3);
-
-  const dailyNeed = useMemo(() => {
-    const totalNeeded = billsThisWeekTotal + debtThisWeekTotal;
-    const today = startOfToday();
-    const daysLeft = Math.max(
-      1,
-      Math.ceil((weekEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) + 1
-    );
-    return totalNeeded / daysLeft;
-  }, [billsThisWeekTotal, debtThisWeekTotal, weekEnd]);
 
   const recommendedPriorityLines = useMemo(() => {
     if (top3.length === 0) {
       return [
-        "Add bills and debt accounts to generate your weekly plan.",
+        "Add bills and debt accounts to generate your plan for this timeframe.",
       ];
     }
 
@@ -337,24 +444,37 @@ export default function ForecastPage() {
     });
   }, [top3]);
 
+  /* ---------------- SHARE ---------------- */
+
   const sharePlan = async () => {
     const text = [
-      "My Financial Plan (This Week)",
+      `My Financial Plan (${timeframeLabel})`,
       "",
-      `Income: ${formatUSD(totalIncome)}`,
+      `Income in ${timeframeLabel}: ${formatUSD(totalIncome)}`,
       "",
-      "Bills Due:",
-      ...(weekBills.length
-        ? weekBills.map((item) => `• ${item.name} — ${formatUSD(item.amount)} (${formatDueLabel(item.dueDate)})`)
+      "Bills:",
+      ...(billsInWindow.length
+        ? billsInWindow.map(
+            (item) =>
+              `• ${item.name} — ${formatUSD(item.amount)} (${formatDueLabel(
+                item.dueDate
+              )})`
+          )
         : ["• None"]),
       "",
       "Debt Minimums:",
-      ...(weekDebtMinimums.length
-        ? weekDebtMinimums.map((item) => `• ${item.name} — ${formatUSD(item.amount)} (${formatDueLabel(item.dueDate)})`)
+      ...(debtMinimumsInWindow.length
+        ? debtMinimumsInWindow.map(
+            (item) =>
+              `• ${item.name} — ${formatUSD(item.amount)} (${formatDueLabel(
+                item.dueDate
+              )})`
+          )
         : ["• None"]),
       "",
-      `Safe Spending Remaining: ${formatUSD(safeSpendingRemaining)}`,
-      `Daily Need To Cover This Week: ${formatUSD(dailyNeed)}`,
+      `Total Needed: ${formatUSD(totalNeeded)}`,
+      `Income Gap: ${formatUSD(incomeGap)}`,
+      `Daily Income Needed: ${formatUSD(dailyIncomeNeeded)}`,
       "",
       "Recommended Priorities:",
       ...recommendedPriorityLines,
@@ -372,6 +492,8 @@ export default function ForecastPage() {
     setMessage("Plan copied to clipboard.");
   };
 
+  /* ---------------- UI ---------------- */
+
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto max-w-6xl px-6 py-10">
@@ -379,13 +501,14 @@ export default function ForecastPage() {
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
-                Weekly plan
+                {timeframeLabel} plan
               </div>
               <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
                 Forecast
               </h1>
               <p className="mt-3 max-w-2xl text-lg text-zinc-300">
-                See what is due this week, what to pay first, and how much you need each day to stay covered.
+                See what is due in your selected window, what to pay first, and
+                how much income you still need.
               </p>
             </div>
 
@@ -405,6 +528,40 @@ export default function ForecastPage() {
             </div>
           </div>
 
+          {/* Timeframe toggle */}
+          <div className="mt-6 inline-flex rounded-full bg-white/5 p-1 text-xs font-semibold">
+            <button
+              onClick={() => setTimeframe("day")}
+              className={`px-4 py-2 rounded-full ${
+                timeframe === "day"
+                  ? "bg-white text-black"
+                  : "text-zinc-300 hover:text-white"
+              }`}
+            >
+              Today
+            </button>
+            <button
+              onClick={() => setTimeframe("week")}
+              className={`px-4 py-2 rounded-full ${
+                timeframe === "week"
+                  ? "bg-white text.black".replace(".","-")
+                  : "text-zinc-300 hover:text-white"
+              }`}
+            >
+              This Week
+            </button>
+            <button
+              onClick={() => setTimeframe("month")}
+              className={`px-4 py-2 rounded-full ${
+                timeframe === "month"
+                  ? "bg-white text-black"
+                  : "text-zinc-300 hover:text-white"
+              }`}
+            >
+              This Month
+            </button>
+          </div>
+
           {message ? (
             <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
               {message}
@@ -413,7 +570,9 @@ export default function ForecastPage() {
 
           {!userId && !loading ? (
             <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
-              <div className="font-semibold text-white">You are not logged in.</div>
+              <div className="font-semibold text.white".replace(".","-")>
+                You are not logged in.
+              </div>
               <p className="mt-2 text-sm text-zinc-300">
                 Go to signup/login first, then come back here.
               </p>
@@ -428,24 +587,43 @@ export default function ForecastPage() {
             </div>
           ) : null}
 
-          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            <StatCard label="Income" value={formatUSD(totalIncome)} />
-            <StatCard label="Bills this week" value={formatUSD(billsThisWeekTotal)} />
-            <StatCard label="Debt minimums this week" value={formatUSD(debtThisWeekTotal)} />
-            <StatCard label="Spending" value={formatUSD(totalSpending)} />
-            <StatCard label="Daily need" value={formatUSD(dailyNeed)} />
+          {/* Stats */}
+          <div className="mt-8 grid gap-4 md:grid-cols-5">
+            <StatCard
+              label={`Income (${timeframeLabel})`}
+              value={formatUSD(totalIncome)}
+            />
+            <StatCard
+              label={`Bills (${timeframeLabel})`}
+              value={formatUSD(billsTotal)}
+            />
+            <StatCard
+              label={`Debt minimums (${timeframeLabel})`}
+              value={formatUSD(debtTotal)}
+            />
+            <StatCard
+              label="Income needed"
+              value={formatUSD(incomeGap)}
+            />
+            <StatCard
+              label="Daily income needed"
+              value={formatUSD(dailyIncomeNeeded)}
+            />
           </div>
 
+          {/* Main layout */}
           <div className="mt-8 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+            {/* Plan */}
             <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-2xl font-black">My Financial Plan (This Week)</h2>
+                  <h2 className="text-2xl font-black">
+                    My Financial Plan ({timeframeLabel})
+                  </h2>
                   <p className="mt-1 text-sm text-zinc-500">
-                    A simple action plan based on what is due in the next 7 days.
+                    A simple action plan based on what is due in this window.
                   </p>
                 </div>
-
                 <button
                   onClick={sharePlan}
                   className="rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
@@ -456,25 +634,33 @@ export default function ForecastPage() {
 
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl bg-zinc-50 p-4">
-                  <div className="text-sm text-zinc-500">Income</div>
-                  <div className="mt-1 text-2xl font-black">{formatUSD(totalIncome)}</div>
+                  <div className="text-sm text-zinc-500">
+                    Income ({timeframeLabel})
+                  </div>
+                  <div className="mt-1 text-2xl font-black">
+                    {formatUSD(totalIncome)}
+                  </div>
                 </div>
-
                 <div className="rounded-2xl bg-zinc-50 p-4">
-                  <div className="text-sm text-zinc-500">Safe Spending Remaining</div>
-                  <div className="mt-1 text-2xl font-black">{formatUSD(safeSpendingRemaining)}</div>
+                  <div className="text-sm text-zinc-500">
+                    Remaining after obligations
+                  </div>
+                  <div className="mt-1 text-2xl font-black">
+                    {formatUSD(remainingAfterObligations)}
+                  </div>
                 </div>
               </div>
 
+              {/* Bills */}
               <div className="mt-6">
-                <h3 className="text-lg font-bold">Bills Due</h3>
+                <h3 className="text-lg font-bold">Bills</h3>
                 <div className="mt-3 grid gap-3">
-                  {weekBills.length === 0 ? (
+                  {billsInWindow.length === 0 ? (
                     <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                      No bills due this week.
+                      No bills due in this window.
                     </div>
                   ) : (
-                    weekBills.map((item) => (
+                    billsInWindow.map((item) => (
                       <div
                         key={item.id}
                         className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
@@ -485,22 +671,25 @@ export default function ForecastPage() {
                             {formatDueLabel(item.dueDate)}
                           </div>
                         </div>
-                        <div className="font-bold">{formatUSD(item.amount)}</div>
+                        <div className="font-bold">
+                          {formatUSD(item.amount)}
+                        </div>
                       </div>
                     ))
                   )}
                 </div>
               </div>
 
+              {/* Debt */}
               <div className="mt-6">
                 <h3 className="text-lg font-bold">Debt Minimums</h3>
                 <div className="mt-3 grid gap-3">
-                  {weekDebtMinimums.length === 0 ? (
+                  {debtMinimumsInWindow.length === 0 ? (
                     <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                      No debt minimums due this week.
+                      No debt minimums due in this window.
                     </div>
                   ) : (
-                    weekDebtMinimums.map((item) => (
+                    debtMinimumsInWindow.map((item) => (
                       <div
                         key={item.id}
                         className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
@@ -511,7 +700,9 @@ export default function ForecastPage() {
                             {formatDueLabel(item.dueDate)}
                           </div>
                         </div>
-                        <div className="font-bold">{formatUSD(item.amount)}</div>
+                        <div className="font-bold">
+                          {formatUSD(item.amount)}
+                        </div>
                       </div>
                     ))
                   )}
@@ -519,12 +710,16 @@ export default function ForecastPage() {
               </div>
             </div>
 
+            {/* Side panels */}
             <div className="grid gap-6">
               <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
                 <h2 className="text-xl font-black">Recommended Priorities</h2>
                 <div className="mt-4 grid gap-3">
                   {recommendedPriorityLines.map((line, idx) => (
-                    <div key={idx} className="rounded-2xl bg-zinc-50 p-4 font-medium">
+                    <div
+                      key={idx}
+                      className="rounded-2xl bg-zinc-50 p-4 font-medium"
+                    >
                       {line}
                     </div>
                   ))}
@@ -532,35 +727,52 @@ export default function ForecastPage() {
               </div>
 
               <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-xl font-black">Daily Need</h2>
+                <h2 className="text-xl font-black">Daily Income Needed</h2>
                 <p className="mt-2 text-sm text-zinc-500">
-                  The average amount you need per day to cover this week’s bills and debt minimums.
+                  The average income you need per day to cover this window’s
+                  bills and debt minimums.
                 </p>
-                <div className="mt-4 text-4xl font-black">{formatUSD(dailyNeed)}</div>
+                <div className="mt-4 text-4xl font-black">
+                  {formatUSD(dailyIncomeNeeded)}
+                </div>
               </div>
 
               <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-xl font-black">This Week Snapshot</h2>
+                <h2 className="text-xl font-black">
+                  {timeframeLabel} Snapshot
+                </h2>
                 <div className="mt-4 grid gap-3">
                   <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
                     <span className="text-zinc-500">Income</span>
-                    <span className="font-bold">{formatUSD(totalIncome)}</span>
+                    <span className="font-bold">
+                      {formatUSD(totalIncome)}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
                     <span className="text-zinc-500">Bills</span>
-                    <span className="font-bold">{formatUSD(billsThisWeekTotal)}</span>
+                    <span className="font-bold">
+                      {formatUSD(billsTotal)}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
                     <span className="text-zinc-500">Debt minimums</span>
-                    <span className="font-bold">{formatUSD(debtThisWeekTotal)}</span>
+                    <span className="font-bold">
+                      {formatUSD(debtTotal)}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
                     <span className="text-zinc-500">Spending</span>
-                    <span className="font-bold">{formatUSD(totalSpending)}</span>
+                    <span className="font-bold">
+                      {formatUSD(totalSpending)}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between rounded-2xl bg-emerald-50 p-4">
-                    <span className="text-emerald-700">Safe spending remaining</span>
-                    <span className="font-bold text-emerald-700">{formatUSD(safeSpendingRemaining)}</span>
+                    <span className="text-emerald-700">
+                      Safe spending remaining
+                    </span>
+                    <span className="font-bold text-emerald-700">
+                      {formatUSD(remainingAfterObligations)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -568,7 +780,9 @@ export default function ForecastPage() {
           </div>
 
           {loading ? (
-            <div className="mt-6 text-sm text-zinc-400">Loading forecast...</div>
+            <div className="mt-6 text-sm text-zinc-400">
+              Loading forecast...
+            </div>
           ) : null}
         </div>
       </div>
