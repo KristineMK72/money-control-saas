@@ -75,8 +75,8 @@ export default function DashboardPage() {
 
       const [spendRes, incomeRes, debtRes, bucketRes, paymentRes] =
         await Promise.all([
-          supabase.from("spend").select("*").eq("user_id", uid),
-          supabase.from("income").select("*").eq("user_id", uid),
+          supabase.from("spend_entries").select("*").eq("user_id", uid),
+          supabase.from("income_entries").select("*").eq("user_id", uid),
           supabase.from("debts").select("*").eq("user_id", uid),
           supabase.from("buckets").select("*").eq("user_id", uid),
           supabase.from("payments").select("*").eq("user_id", uid),
