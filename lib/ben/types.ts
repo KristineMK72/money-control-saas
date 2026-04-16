@@ -1,3 +1,5 @@
+// /lib/ben/types.ts
+
 export type BenMood =
   | "encouraging"
   | "stern"
