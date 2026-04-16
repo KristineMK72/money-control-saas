@@ -23,6 +23,7 @@ type IncomeRow = {
 type DebtRow = {
   id: string;
   balance: number;
+  minimum_payment?: number;
   user_id?: string;
 };
 
@@ -106,12 +107,23 @@ export default function DashboardPage() {
     [income]
   );
 
-  const totalDebt = useMemo(
+  // TOTAL DEBT BALANCE (for display only)
+  const totalDebtBalance = useMemo(
     () => debts.reduce((a, b) => a + Number(b.balance || 0), 0),
     [debts]
   );
 
-  const net = totalIncome - totalSpend - totalDebt;
+  // TOTAL MONTHLY MINIMUM PAYMENTS (for Ben + obligations)
+  const totalDebtMinimums = useMemo(
+    () =>
+      debts.reduce(
+        (a, b) => a + Number(b.minimum_payment || 0),
+        0
+      ),
+    [debts]
+  );
+
+  const net = totalIncome - totalSpend - totalDebtBalance;
 
   const topCategory = useMemo(() => {
     const map: Record<string, number> = {};
@@ -126,18 +138,15 @@ export default function DashboardPage() {
 
   /* ---------------- BEN MESSAGE (HYBRID) ---------------- */
 
-  const totalObligations = totalSpend + totalDebt;
+  const totalObligations = totalSpend + totalDebtMinimums;
   const incomeGap = Math.max(0, totalObligations - totalIncome);
 
   const ben = BenEngine.getForecastMessage({
-    // using the same engine method as Forecast for consistency
-    name: null, // you can wire in profile name later
+    name: null,
     timeframeLabel: "Dashboard",
     totalNeeded: totalObligations,
     incomeSoFar: totalIncome,
     incomeGap,
-    // dashboard is not timeframe‑based, so we set this to 0;
-    // the engine can still use the other fields for posture.
     dailyIncomeNeeded: 0,
   });
 
@@ -170,7 +179,7 @@ export default function DashboardPage() {
         <section className="mt-6 grid gap-4 md:grid-cols-4">
           <Card label="Income" value={totalIncome} />
           <Card label="Spend" value={totalSpend} />
-          <Card label="Debt" value={totalDebt} />
+          <Card label="Debt" value={totalDebtBalance} />
           <Card label="Net" value={net} />
         </section>
 
