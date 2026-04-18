@@ -4,25 +4,12 @@ import LogoutButton from "@/components/LogoutButton";
 import BenPersona from "@/components/BenPersona";
 import UserGreeting from "@/components/UserGreeting";
 import InstallBanner from "@/components/InstallBanner";
+import { SupabaseProvider } from "@/lib/supabase/provider";
 
 export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
   description: "Stop financial chaos. See exactly what to pay first.",
   metadataBase: new URL("https://www.askben.buzz"),
-import { SupabaseProvider } from "@/lib/supabase/provider";
-
-export default function RootLayout({ children }) {
-  return (
-    <html lang="en">
-      <body>
-        <SupabaseProvider>
-          {children}
-        </SupabaseProvider>
-      </body>
-    </html>
-  );
-}
-
   manifest: "/manifest.json",
 
   icons: {
@@ -102,138 +89,137 @@ export default function RootLayout({
           color: "#18181b",
         }}
       >
-        <header
-          style={{
-            position: "sticky",
-            top: 0,
-            zIndex: 100,
-            background: "#ffffff",
-            borderBottom: "1px solid #e7e5e4",
-          }}
-        >
-          <div
+        <SupabaseProvider>
+          <header
             style={{
-              maxWidth: 1100,
-              margin: "0 auto",
-              padding: "14px 20px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 16,
-              flexWrap: "wrap",
+              position: "sticky",
+              top: 0,
+              zIndex: 100,
+              background: "#ffffff",
+              borderBottom: "1px solid #e7e5e4",
             }}
           >
             <div
               style={{
+                maxWidth: 1100,
+                margin: "0 auto",
+                padding: "14px 20px",
                 display: "flex",
+                justifyContent: "space-between",
                 alignItems: "center",
-                gap: 14,
-              }}
-            >
-              <div
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 14,
-                  overflow: "hidden",
-                  background: "#0f172a",
-                  flexShrink: 0,
-                }}
-              >
-                <img
-                  src="/ben.png"
-                  alt="AskBen"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
-                  }}
-                />
-              </div>
-
-              <div
-                style={{
-                  fontWeight: 900,
-                  fontSize: 24,
-                  color: "#111827",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                AskBen
-              </div>
-
-              <UserGreeting />
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                alignItems: "center",
+                gap: 16,
                 flexWrap: "wrap",
-                justifyContent: "flex-end",
               }}
             >
-              <NavLink href="/">Home</NavLink>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                }}
+              >
+                <div
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    background: "#0f172a",
+                    flexShrink: 0,
+                  }}
+                >
+                  <img
+                    src="/ben.png"
+                    alt="AskBen"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
+                    }}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    fontWeight: 900,
+                    fontSize: 24,
+                    color: "#111827",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  AskBen
+                </div>
+
+                <UserGreeting />
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <NavLink href="/">Home</NavLink>
                 <NavLink href="/dashboard">Dashboard</NavLink>
 
-                {/* CORE APP AREAS */}
-                  <NavLink href="/spend">Spend</NavLink>
-                  <NavLink href="/income">Income</NavLink>
-                  <NavLink href="/bills">Bills</NavLink>
-                  <NavLink href="/debt">Debt</NavLink>
-                  <NavLink href="/payments">Payments</NavLink>
+                <NavLink href="/spend">Spend</NavLink>
+                <NavLink href="/income">Income</NavLink>
+                <NavLink href="/bills">Bills</NavLink>
+                <NavLink href="/debt">Debt</NavLink>
+                <NavLink href="/payments">Payments</NavLink>
 
-                {/* INTELLIGENCE */}
-                  <NavLink href="/forecast">Forecast</NavLink>
-                  <NavLink href="/chat">Ask Ben</NavLink>
+                <NavLink href="/forecast">Forecast</NavLink>
+                <NavLink href="/chat">Ask Ben</NavLink>
 
-                {/* AUTH */}
-                    <NavLink href="/signup">Signup / Login</NavLink>
+                <NavLink href="/signup">Signup / Login</NavLink>
 
                 <LogoutButton />
-        </div>
-          </div>
+              </div>
+            </div>
 
-          <BenPersona />
-        </header>
+            <BenPersona />
+          </header>
 
-        <main>{children}</main>
+          <main>{children}</main>
 
-        <InstallBanner />
+          <InstallBanner />
 
-        <a
-          href="/chat"
-          style={{
-            position: "fixed",
-            bottom: 24,
-            right: 24,
-            background: "#111827",
-            color: "#fff",
-            padding: "14px 18px",
-            borderRadius: 999,
-            fontWeight: 700,
-            textDecoration: "none",
-            boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
-            zIndex: 9999,
-            fontSize: 15,
-          }}
-        >
-          Ask Ben 💰
-        </a>
+          <a
+            href="/chat"
+            style={{
+              position: "fixed",
+              bottom: 24,
+              right: 24,
+              background: "#111827",
+              color: "#fff",
+              padding: "14px 18px",
+              borderRadius: 999,
+              fontWeight: 700,
+              textDecoration: "none",
+              boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
+              zIndex: 9999,
+              fontSize: 15,
+            }}
+          >
+            Ask Ben 💰
+          </a>
 
-        <footer
-          style={{
-            marginTop: 60,
-            padding: "20px",
-            textAlign: "center",
-            fontSize: 12,
-            color: "#71717a",
-          }}
-        >
-          © 2026 Spatialytics — Built with ❤️ in Minnesota
-        </footer>
+          <footer
+            style={{
+              marginTop: 60,
+              padding: "20px",
+              textAlign: "center",
+              fontSize: 12,
+              color: "#71717a",
+            }}
+          >
+            © 2026 Spatialytics — Built with ❤️ in Minnesota
+          </footer>
+        </SupabaseProvider>
       </body>
     </html>
   );
