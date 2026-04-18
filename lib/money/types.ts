@@ -43,6 +43,16 @@ export type SpendEntry = {
   payment_method: PaymentMethod;
   note?: string | null;
 };
+//------------------------------
+PaymentEntry
+//------------------------------
+export type PaymentEntry = {
+  id: UUID;
+  user_id: UUID;
+  date_iso: string;
+  amount: number;
+  note?: string | null;
+};
 
 // -----------------------------
 // Income Entry
