@@ -2,453 +2,349 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import {
-  Chart as ChartJS,
-  ArcElement,
-  Tooltip,
-  Legend,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  PointElement,
-  LineElement,
-  TimeScale,
-} from "chart.js";
-import { Doughnut, Bar, Line } from "react-chartjs-2";
+import { incomeNeedsEngine } from "@/lib/engines/incomeNeedsEngine";
 
-ChartJS.register(
-  ArcElement,
-  Tooltip,
-  Legend,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  PointElement,
-  LineElement,
-  TimeScale
-);
+type SpendRow = {
+  id: string;
+  user_id: string;
+  amount: number;
+  category: string | null;
+  merchant: string | null;
+  date_iso: string;
+  note: string | null;
+  created_at: string;
+};
 
-/* -------------------- Types -------------------- */
+type IncomeRow = {
+  id: string;
+  user_id: string;
+  amount: number;
+  source: string | null;
+  date_iso: string;
+  note: string | null;
+  created_at: string;
+};
+
+type BillRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  kind: string | null;
+  category: string | null;
+  target: number | null;
+  saved: number | null;
+  due_date: string | null;
+  due: string | null;
+  priority: number | null;
+  focus: boolean | null;
+  balance: number | null;
+  apr: number | null;
+  min_payment: number | null;
+  credit_limit: number | null;
+  is_monthly: boolean | null;
+  monthly_target: number | null;
+  due_day: number | null;
+  created_at: string;
+};
 
 type DebtRow = {
   id: string;
   user_id: string;
   name: string;
-  kind: "credit" | "loan";
-  balance: number;
+  kind: string | null;
+  balance: number | null;
   min_payment: number | null;
   monthly_min_payment: number | null;
   due_day: number | null;
+  due_date: string | null;
+  is_monthly: boolean | null;
+  note: string | null;
   created_at: string;
 };
 
 type PaymentRow = {
   id: string;
   user_id: string;
-  amount: number;
-  debt_id: string | null;
   bill_id: string | null;
+  debt_id: string | null;
+  amount: number;
   date_iso: string;
   merchant: string | null;
   note: string | null;
   created_at: string;
 };
 
-/* -------------------- Helpers -------------------- */
+function getBillMonthlyAmount(bill: BillRow): number {
+  if (bill.target != null) return Number(bill.target);
+  if (bill.monthly_target != null) return Number(bill.monthly_target);
+  if (bill.min_payment != null) return Number(bill.min_payment);
+  return 0;
+}
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const monthPrefix = () => new Date().toISOString().slice(0, 7);
-const fmt = (n: number | null | undefined) =>
-  typeof n === "number" && !isNaN(n) ? n.toFixed(2) : "0.00";
+function getDebtMonthlyMin(debt: DebtRow): number {
+  if (debt.monthly_min_payment != null)
+    return Number(debt.monthly_min_payment);
+  if (debt.min_payment != null) return Number(debt.min_payment);
+  return 0;
+}
 
-/* -------------------- Page -------------------- */
+function getDueLabel(billOrDebt: { due_day: number | null; due_date: string | null }) {
+  if (billOrDebt.due_day != null) return `Due day ${billOrDebt.due_day}`;
+  if (billOrDebt.due_date != null) return `Due ${billOrDebt.due_date}`;
+  return "Due date not set";
+}
 
-export default function DebtPage() {
+export default function DashboardPage() {
   const supabase = createSupabaseBrowserClient();
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [income, setIncome] = useState<IncomeRow[]>([]);
+  const [spend, setSpend] = useState<SpendRow[]>([]);
+  const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
-  const [payingId, setPayingId] = useState<string | null>(null);
-  const [payAmount, setPayAmount] = useState("");
-
-  /* -------------------- Load -------------------- */
-
   useEffect(() => {
     async function init() {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) {
-        window.location.href = "/signup?mode=login";
+      setLoading(true);
+
+      const { data, error } = await supabase.auth.getUser();
+      if (error) {
+        setMessage(error.message);
+        setLoading(false);
         return;
       }
 
-      const uid = data.user.id;
+      const user = data?.user;
+      if (!user) {
+        setMessage("Please log in first.");
+        setLoading(false);
+        return;
+      }
+
+      const uid = user.id;
       setUserId(uid);
 
-      const [debtsRes, paymentsRes] = await Promise.all([
+      const [
+        incomeRes,
+        spendRes,
+        billsRes,
+        debtsRes,
+        paymentsRes,
+      ] = await Promise.all([
+        supabase.from("income_entries").select("*").eq("user_id", uid),
+        supabase.from("spend_entries").select("*").eq("user_id", uid),
+        supabase.from("bills").select("*").eq("user_id", uid),
         supabase.from("debts").select("*").eq("user_id", uid),
         supabase.from("payments").select("*").eq("user_id", uid),
       ]);
 
+      if (incomeRes.error) setMessage(incomeRes.error.message);
+      if (spendRes.error) setMessage(spendRes.error.message);
+      if (billsRes.error) setMessage(billsRes.error.message);
       if (debtsRes.error) setMessage(debtsRes.error.message);
       if (paymentsRes.error) setMessage(paymentsRes.error.message);
 
-      setDebts((debtsRes.data || []) as DebtRow[]);
-      setPayments((paymentsRes.data || []) as PaymentRow[]);
+      setIncome(incomeRes.data || []);
+      setSpend(spendRes.data || []);
+      setBills(billsRes.data || []);
+      setDebts(debtsRes.data || []);
+      setPayments(paymentsRes.data || []);
+
       setLoading(false);
     }
 
     init();
   }, [supabase]);
 
-  async function refresh() {
-    if (!userId) return;
+  const totalIncome = useMemo(
+    () => income.reduce((s, e) => s + Number(e.amount || 0), 0),
+    [income]
+  );
 
-    const [debtsRes, paymentsRes] = await Promise.all([
-      supabase.from("debts").select("*").eq("user_id", userId),
-      supabase.from("payments").select("*").eq("user_id", userId),
-    ]);
+  const totalSpend = useMemo(
+    () => spend.reduce((s, e) => s + Number(e.amount || 0), 0),
+    [spend]
+  );
 
-    setDebts((debtsRes.data || []) as DebtRow[]);
-    setPayments((paymentsRes.data || []) as PaymentRow[]);
-  }
+  const totalMonthlyBills = useMemo(
+    () => bills.reduce((s, b) => s + getBillMonthlyAmount(b), 0),
+    [bills]
+  );
 
-  /* -------------------- Pay -------------------- */
-
-  async function payDebt(debt: DebtRow) {
-    if (!userId) return;
-
-    const amt = Number(payAmount);
-    if (!amt || amt <= 0) {
-      setMessage("Enter a valid payment amount.");
-      return;
-    }
-
-    const payload = {
-      user_id: userId,
-      debt_id: debt.id,
-      bill_id: null,
-      amount: amt,
-      date_iso: todayISO(),
-      merchant: debt.name,
-      note: "Debt payment",
-    };
-
-    const { error } = await supabase.from("payments").insert(payload);
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setPayingId(null);
-    setPayAmount("");
-    await refresh();
-  }
-
-  /* -------------------- Delete -------------------- */
-
-  async function deleteDebt(id: string) {
-    if (!userId) return;
-
-    const { error } = await supabase
-      .from("debts")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", userId);
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setDebts((prev) => prev.filter((d) => d.id !== id));
-  }
-
-  /* -------------------- Stats -------------------- */
-
-  const totals = useMemo(
-    () =>
-      debts.reduce(
-        (acc, d) => {
-          acc.balance += d.balance || 0;
-          acc.min += d.monthly_min_payment || d.min_payment || 0;
-          return acc;
-        },
-        { balance: 0, min: 0 }
-      ),
+  const totalDebtMinimums = useMemo(
+    () => debts.reduce((s, d) => s + getDebtMonthlyMin(d), 0),
     [debts]
   );
 
-  const sortedDebts = useMemo(
-    () =>
-      [...debts].sort((a, b) => {
-        const aDay = a.due_day ?? 32;
-        const bDay = b.due_day ?? 32;
-        return aDay - bDay;
-      }),
-    [debts]
+  const cashflow = useMemo(
+    () => totalIncome - totalSpend - totalMonthlyBills - totalDebtMinimums,
+    [totalIncome, totalSpend, totalMonthlyBills, totalDebtMinimums]
   );
 
-  /* -------------------- Charts -------------------- */
-
-  // Doughnut: balance distribution
-  const doughnutData = useMemo(
-    () => ({
-      labels: debts.map((d) => d.name),
-      datasets: [
-        {
-          data: debts.map((d) => d.balance),
-          backgroundColor: [
-            "#4ade80",
-            "#60a5fa",
-            "#f472b6",
-            "#facc15",
-            "#fb923c",
-            "#a78bfa",
-            "#34d399",
-            "#f97316",
-            "#22c55e",
-            "#3b82f6",
-          ],
-        },
-      ],
-    }),
-    [debts]
-  );
-
-  // Bar: minimum payments
-  const barData = useMemo(
-    () => ({
-      labels: debts.map((d) => d.name),
-      datasets: [
-        {
-          label: "Minimum Payment",
-          data: debts.map((d) => d.monthly_min_payment || d.min_payment || 0),
-          backgroundColor: "#60a5fa",
-        },
-      ],
-    }),
-    [debts]
-  );
-
-  // Line: payments over time (by date_iso)
-  const paymentsOverTime = useMemo(() => {
-    const byDate: Record<string, number> = {};
-    payments.forEach((p) => {
-      if (!p.debt_id) return;
-      byDate[p.date_iso] = (byDate[p.date_iso] || 0) + Number(p.amount || 0);
+  const needs = useMemo(() => {
+    return incomeNeedsEngine({
+      totalMonthlyBills: totalMonthlyBills + totalDebtMinimums,
+      incomeEntries: income,
+      todayISO: new Date().toISOString().slice(0, 10),
     });
+  }, [income, totalMonthlyBills, totalDebtMinimums]);
 
-    const dates = Object.keys(byDate).sort();
-    return {
-      labels: dates,
-      datasets: [
-        {
-          label: "Debt Payments",
-          data: dates.map((d) => byDate[d]),
-          borderColor: "#22c55e",
-          backgroundColor: "rgba(34,197,94,0.2)",
-          tension: 0.2,
-        },
-      ],
-    };
-  }, [payments]);
+  const upcoming = useMemo(() => {
+    const billItems = bills.map((b) => ({
+      id: b.id,
+      name: b.name,
+      amount: getBillMonthlyAmount(b),
+      due_day: b.due_day,
+      due_date: b.due_date,
+      type: "bill" as const,
+    }));
 
-  /* -------------------- UI -------------------- */
+    const debtItems = debts.map((d) => ({
+      id: d.id,
+      name: d.name,
+      amount: getDebtMonthlyMin(d),
+      due_day: d.due_day,
+      due_date: d.due_date,
+      type: "debt" as const,
+    }));
 
-  if (loading) return <div className="p-6">Loading...</div>;
+    return [...billItems, ...debtItems].sort((a, b) => {
+      const ad = a.due_day ?? 999;
+      const bd = b.due_day ?? 999;
+      return ad - bd;
+    });
+  }, [bills, debts]);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-white">
+        <section className="mx-auto max-w-6xl px-6 py-10">
+          <p className="text-sm text-white/60">Loading dashboard…</p>
+        </section>
+      </main>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-zinc-50 p-6 space-y-8">
-      <header className="flex flex-col gap-2 md:flex-row md:items-baseline md:justify-between">
-        <div>
-          <h1 className="text-3xl font-black">Debt</h1>
-          <p className="text-sm text-zinc-500">
-            Snapshot of your balances, minimums, and payment momentum.
-          </p>
+    <main className="min-h-screen bg-zinc-950 text-white">
+      <section className="mx-auto max-w-6xl px-6 py-10 space-y-10">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
+              Dashboard
+            </h1>
+            <p className="mt-2 text-sm text-white/60">
+              Your financial command center — powered by Smart Mode and Ben.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-cyan-300/30 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100 max-w-xs">
+            <div className="text-xs uppercase tracking-[0.2em] text-cyan-200/80">
+              Ben says
+            </div>
+            <p className="mt-1">{needs.benMessage}</p>
+          </div>
+        </header>
+
+        {message && (
+          <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+            {message}
+          </div>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-4">
+          <Stat label="Total Income" value={totalIncome} />
+          <Stat label="Total Spend" value={totalSpend} />
+          <Stat label="Monthly Bills" value={totalMonthlyBills} />
+          <Stat label="Debt Minimums" value={totalDebtMinimums} />
         </div>
-      </header>
 
-      {message && (
-        <div className="mt-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-          {message}
-        </div>
-      )}
-
-      {/* Summary */}
-      <section className="grid gap-4 md:grid-cols-3">
-        <Card label="Total Debt" value={totals.balance} />
-        <Card label="Monthly Minimums" value={totals.min} />
-      </section>
-
-      {/* Analytics */}
-      <section className="grid gap-8 md:grid-cols-2">
-        <div className="bg-white p-4 rounded-xl shadow-sm">
-          <h2 className="font-semibold mb-2">Debt distribution</h2>
-          {debts.length ? (
-            <Doughnut data={doughnutData} />
-          ) : (
-            <p className="text-xs text-zinc-400">No debts to visualize yet.</p>
-          )}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Stat label="Today's Need" value={needs.dailyNeed} />
+          <Stat label="Weekly Need" value={needs.weeklyNeed} />
+          <Stat label="Remaining Need" value={needs.remainingNeed} />
+          <Stat label="Monthly Need" value={needs.monthlyNeed} />
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow-sm">
-          <h2 className="font-semibold mb-2">Minimum payments by account</h2>
-          {debts.length ? (
-            <Bar
-              data={barData}
-              options={{
-                plugins: { legend: { display: false } },
-                scales: {
-                  x: { ticks: { font: { size: 10 } } },
-                  y: { beginAtZero: true },
-                },
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+          <div className="text-xs uppercase tracking-[0.2em] text-white/50">
+            Monthly Progress
+          </div>
+
+          <div className="mt-2 h-3 w-full rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full bg-cyan-400"
+              style={{
+                width: `${Math.min(
+                  (totalIncome /
+                    (totalMonthlyBills + totalDebtMinimums)) *
+                    100,
+                  100
+                )}%`,
               }}
             />
-          ) : (
-            <p className="text-xs text-zinc-400">No minimums to show yet.</p>
-          )}
+          </div>
+
+          <div className="mt-2 text-xs text-white/60">
+            {needs.shortfall > 0
+              ? `Shortfall: $${needs.shortfall.toFixed(0)}`
+              : `Surplus: $${needs.surplus.toFixed(0)}`}
+          </div>
         </div>
-      </section>
 
-      <section className="bg-white p-4 rounded-xl shadow-sm">
-        <h2 className="font-semibold mb-2">Payments over time</h2>
-        {paymentsOverTime.labels.length ? (
-          <Line
-            data={paymentsOverTime}
-            options={{
-              plugins: { legend: { display: false } },
-              scales: {
-                x: {
-                  ticks: { font: { size: 10 } },
-                },
-                y: {
-                  beginAtZero: true,
-                },
-              },
-            }}
-          />
-        ) : (
-          <p className="text-xs text-zinc-400">
-            No debt payments recorded yet.
-          </p>
-        )}
-      </section>
-
-      {/* List */}
-      <section className="space-y-4">
-        {sortedDebts.map((d) => {
-          const debtPayments = payments.filter((p) => p.debt_id === d.id);
-
-          const lastPayment = debtPayments[0]?.date_iso || "—";
-
-          const paidThisMonth = debtPayments
-            .filter((p) => p.date_iso.startsWith(monthPrefix()))
-            .reduce((sum, p) => sum + Number(p.amount), 0);
-
-          const minPay = d.monthly_min_payment || d.min_payment || 0;
-          const pct = minPay ? Math.min((paidThisMonth / minPay) * 100, 100) : 0;
-
-          return (
-            <div key={d.id} className="rounded-xl bg-white p-4 shadow-sm">
-              <div className="flex justify-between gap-4">
-                <div>
-                  <div className="font-semibold">{d.name}</div>
-                  <div className="text-sm text-zinc-500">
-                    ${fmt(d.balance)} · {d.kind}
+        <div>
+          <h2 className="text-lg font-bold mb-3">Upcoming obligations</h2>
+          <div className="space-y-3">
+            {upcoming.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-2xl border border-white/10 bg-white/5 p-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold">{item.name}</div>
+                    <div className="text-xs text-white/60">
+                      {getDueLabel(item)}
+                    </div>
                   </div>
-
-                  <div className="text-xs text-zinc-400">
-                    Due day: {d.due_day ?? "Not set"}
+                  <div className="text-right">
+                    <div className="text-sm font-semibold">
+                      ${item.amount.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-white/60">
+                      {item.type === "bill" ? "Bill" : "Debt minimum"}
+                    </div>
                   </div>
-
-                  <div className="text-xs text-zinc-400">
-                    Last payment: {lastPayment}
-                  </div>
-                </div>
-
-                <div className="flex gap-2 items-start">
-                  {payingId === d.id ? (
-                    <>
-                      <input
-                        type="number"
-                        value={payAmount}
-                        onChange={(e) => setPayAmount(e.target.value)}
-                        className="border p-1 rounded w-24 text-xs"
-                      />
-                      <button
-                        onClick={() => payDebt(d)}
-                        className="text-xs bg-green-600 text-white px-3 py-1 rounded"
-                      >
-                        Confirm
-                      </button>
-                      <button
-                        onClick={() => {
-                          setPayingId(null);
-                          setPayAmount("");
-                        }}
-                        className="text-xs text-red-500"
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setPayingId(d.id);
-                        setPayAmount("");
-                      }}
-                      className="text-xs bg-black text-white px-3 py-1 rounded"
-                    >
-                      Pay
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => deleteDebt(d.id)}
-                    className="text-xs text-red-500"
-                  >
-                    Delete
-                  </button>
                 </div>
               </div>
+            ))}
+          </div>
+        </div>
 
-              {/* Progress Bar */}
-              <div className="mt-3">
-                <div className="text-xs text-zinc-500 mb-1">
-                  {fmt(paidThisMonth)} / {fmt(minPay)} paid this month
-                </div>
-                <div className="w-full h-3 bg-zinc-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-600"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          );
-        })}
-
-        {sortedDebts.length === 0 && (
-          <p className="text-xs text-zinc-500">
-            No debts added yet. Once you add some, this page will light up.
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+          <h2 className="text-lg font-bold mb-3">Cashflow snapshot</h2>
+          <div className="text-2xl font-bold">
+            ${cashflow.toFixed(2)}
+          </div>
+          <p className="text-sm text-white/60 mt-1">
+            Income minus spend, bills, and debt minimums.
           </p>
-        )}
+        </div>
       </section>
     </main>
   );
 }
 
-/* -------------------- Card -------------------- */
-
-function Card({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl bg-white p-4 shadow-sm">
-      <div className="text-sm text-zinc-500">{label}</div>
-      <div className="text-2xl font-bold">${fmt(value)}</div>
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="text-xs uppercase tracking-[0.2em] text-white/50">
+        {label}
+      </div>
+      <div className="mt-2 text-2xl font-bold">${value.toFixed(2)}</div>
     </div>
   );
 }
