@@ -12,6 +12,7 @@ import type {
 
 type BenMood = "encouraging" | "stern" | "witty" | "urgent" | "celebratory";
 type DateRangeKey = "7d" | "30d" | "90d" | "all";
+type SummaryTone = "positive" | "negative" | "neutral";
 
 const todayISO = new Date().toISOString().slice(0, 10);
 
@@ -27,6 +28,13 @@ function filterByDateRange<T extends { date_iso?: string }>(
     if (!item.date_iso) return true;
     return new Date(item.date_iso) >= cutoff;
   });
+}
+
+function formatMoney(value: number | null | undefined): string {
+  if (typeof value === "number" && !isNaN(value)) {
+    return value.toFixed(2);
+  }
+  return "0.00";
 }
 
 export default function DashboardPage() {
@@ -48,8 +56,12 @@ export default function DashboardPage() {
     async function load() {
       setLoading(true);
 
-      const user = (await supabase.auth.getUser()).data.user;
-      if (!user) return;
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
       const [spend, income, bills, debts] = await Promise.all([
         supabase.from("spend_entries").select("*").eq("user_id", user.id),
@@ -58,16 +70,16 @@ export default function DashboardPage() {
         supabase.from("debts").select("*").eq("user_id", user.id),
       ]);
 
-      setSpendEntries(spend.data ?? []);
-      setIncomeEntries(income.data ?? []);
-      setBillEntries(bills.data ?? []);
-      setDebtEntries(debts.data ?? []);
+      setSpendEntries((spend.data as SpendEntry[]) ?? []);
+      setIncomeEntries((income.data as IncomeEntry[]) ?? []);
+      setBillEntries((bills.data as BillEntry[]) ?? []);
+      setDebtEntries((debts.data as DebtEntry[]) ?? []);
 
       setLoading(false);
     }
 
     load();
-  }, []);
+  }, [supabase]);
 
   // -----------------------------
   // Date filtering
@@ -76,6 +88,7 @@ export default function DashboardPage() {
     () => filterByDateRange(spendEntries, dateRange),
     [spendEntries, dateRange]
   );
+
   const effectiveIncome = useMemo(
     () => filterByDateRange(incomeEntries, dateRange),
     [incomeEntries, dateRange]
@@ -85,23 +98,27 @@ export default function DashboardPage() {
   // Totals
   // -----------------------------
   const totalSpend = useMemo(
-    () => effectiveSpend.reduce((sum, s) => sum + s.amount, 0),
+    () => effectiveSpend.reduce((sum, s) => sum + (s.amount || 0), 0),
     [effectiveSpend]
   );
+
   const totalIncome = useMemo(
-    () => effectiveIncome.reduce((sum, i) => sum + i.amount, 0),
+    () => effectiveIncome.reduce((sum, i) => sum + (i.amount || 0), 0),
     [effectiveIncome]
   );
+
   const totalBills = useMemo(
-    () => billEntries.reduce((sum, b) => sum + b.amount, 0),
+    () => billEntries.reduce((sum, b) => sum + (b.amount || 0), 0),
     [billEntries]
   );
+
   const totalDebtPayments = useMemo(
-    () => debtEntries.reduce((sum, d) => sum + d.min_payment, 0),
+    () => debtEntries.reduce((sum, d) => sum + (d.min_payment || 0), 0),
     [debtEntries]
   );
 
-  const netCashFlow = totalIncome - totalBills - totalDebtPayments - totalSpend;
+  const netCashFlow =
+    totalIncome - totalBills - totalDebtPayments - totalSpend;
 
   // -----------------------------
   // Ben narrator
@@ -136,8 +153,39 @@ export default function DashboardPage() {
       : "All time";
 
   // -----------------------------
+  // Sorted obligations
+  // -----------------------------
+  const sortedBills = useMemo(
+    () =>
+      [...billEntries].sort((a, b) => {
+        const aDay = a.due_day ?? 32;
+        const bDay = b.due_day ?? 32;
+        return aDay - bDay;
+      }),
+    [billEntries]
+  );
+
+  const sortedDebts = useMemo(
+    () =>
+      [...debtEntries].sort((a, b) => {
+        const aDay = a.due_day ?? 32;
+        const bDay = b.due_day ?? 32;
+        return aDay - bDay;
+      }),
+    [debtEntries]
+  );
+
+  // -----------------------------
   // UI
   // -----------------------------
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center">
+        <p className="text-sm text-slate-400">Loading your dashboard…</p>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50">
       <header className="p-6 border-b border-white/10">
@@ -219,13 +267,17 @@ export default function DashboardPage() {
                   style={{
                     width: `${Math.min(
                       100,
-                      Math.max(5, Math.abs(netCashFlow) / 10)
+                      Math.max(
+                        5,
+                        (Math.abs(netCashFlow) / (totalIncome || 1)) * 100
+                      )
                     )}%`,
                   }}
                 />
               </div>
               <p className="text-[11px] text-slate-500 mt-2">
-                This bar is a rough visual of how intense this window feels.
+                This bar is a rough visual of how intense this window feels
+                relative to your income.
               </p>
             </div>
           </div>
@@ -241,7 +293,7 @@ export default function DashboardPage() {
           </p>
 
           <div className="space-y-2 max-h-64 overflow-y-auto text-xs">
-            {billEntries.map((bill) => (
+            {sortedBills.map((bill) => (
               <div
                 key={bill.id}
                 className="flex items-center justify-between rounded-lg bg-slate-900/40 px-2 py-1.5"
@@ -249,16 +301,18 @@ export default function DashboardPage() {
                 <div>
                   <p className="font-medium text-slate-100">{bill.name}</p>
                   <p className="text-[11px] text-slate-500">
-                    Due day {bill.due_day}
+                    {bill.due_day
+                      ? `Due day ${bill.due_day}`
+                      : `Due date not set`}
                   </p>
                 </div>
                 <p className="font-semibold text-slate-100">
-                  ${bill.amount.toFixed(2)}
+                  ${formatMoney(bill.amount)}
                 </p>
               </div>
             ))}
 
-            {debtEntries.map((debt) => (
+            {sortedDebts.map((debt) => (
               <div
                 key={debt.id}
                 className="flex items-center justify-between rounded-lg bg-slate-900/40 px-2 py-1.5"
@@ -266,23 +320,27 @@ export default function DashboardPage() {
                 <div>
                   <p className="font-medium text-slate-100">{debt.name}</p>
                   <p className="text-[11px] text-slate-500">
-                    Min ${debt.min_payment.toFixed(2)}
+                    Min ${formatMoney(debt.min_payment)}
                     {debt.due_day ? ` • Due day ${debt.due_day}` : ""}
                   </p>
                 </div>
                 <p className="font-semibold text-slate-100">
-                  ${debt.balance.toFixed(2)}
+                  ${formatMoney(debt.balance)}
                 </p>
               </div>
             ))}
+
+            {sortedBills.length === 0 && sortedDebts.length === 0 && (
+              <p className="text-[11px] text-slate-500">
+                No upcoming obligations found.
+              </p>
+            )}
           </div>
         </div>
       </section>
     </main>
   );
 }
-
-type SummaryTone = "positive" | "negative" | "neutral";
 
 function SummaryCard({
   label,
@@ -304,7 +362,7 @@ function SummaryCard({
     <div className="rounded-xl bg-slate-900/60 p-4 border border-white/10">
       <p className="text-xs text-slate-400">{label}</p>
       <p className={`mt-1 text-xl font-semibold ${color}`}>
-        ${value.toFixed(2)}
+        ${formatMoney(value)}
       </p>
     </div>
   );
