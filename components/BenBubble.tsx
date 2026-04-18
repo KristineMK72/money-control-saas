@@ -1,28 +1,19 @@
 "use client";
 
-type BenBubbleProps = {
-  message: string;
-  mood?: "encouraging" | "stern" | "witty" | "urgent" | "celebratory";
+import React from "react";
+
+export type BenBubbleProps = {
+  text: string;
+  mood?: "witty" | "neutral" | "serious" | "encouraging";
 };
 
-export default function BenBubble({ message, mood = "encouraging" }: BenBubbleProps) {
-  const moodStyles: Record<string, string> = {
-    encouraging: "border-emerald-400/20 bg-emerald-400/10 text-emerald-200",
-    stern: "border-burgundy-600/40 bg-red-700/40 text-white",
-    witty: "border-yellow-400/20 bg-yellow-400/10 text-yellow-200",
-    urgent: "border-orange-500/40 bg-orange-600/30 text-white",
-    celebratory: "border-blue-400/20 bg-blue-400/10 text-blue-200",
-  };
-
+export function BenBubble({ text, mood = "neutral" }: BenBubbleProps) {
   return (
-    <div
-      className={`rounded-2xl border p-4 text-sm font-medium ${moodStyles[mood]}`}
-      style={{ maxWidth: "600px" }}
-    >
-      <div className="text-xs uppercase tracking-wider opacity-70 mb-1">
-        Ben says:
-      </div>
-      <div className="text-base leading-relaxed">{message}</div>
+    <div className="rounded-xl bg-blue-600 text-white p-4 shadow-md max-w-md">
+      <p className="text-sm opacity-80 mb-1">Ben ({mood})</p>
+      <p className="text-lg font-medium">{text}</p>
     </div>
   );
 }
+
+export default BenBubble;
