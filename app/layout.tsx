@@ -9,6 +9,19 @@ export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
   description: "Stop financial chaos. See exactly what to pay first.",
   metadataBase: new URL("https://www.askben.buzz"),
+import { SupabaseProvider } from "@/lib/supabase/provider";
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <body>
+        <SupabaseProvider>
+          {children}
+        </SupabaseProvider>
+      </body>
+    </html>
+  );
+}
 
   manifest: "/manifest.json",
 
