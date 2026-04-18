@@ -1,8 +1,8 @@
 import type {
-  BillEntry,
   DebtEntry,
   IncomeEntry,
   SpendEntry,
+  BillEntry,
   PaymentEntry,
 } from "./types";
 
@@ -11,10 +11,10 @@ import type {
  * This is your single normalized “money state layer”.
  */
 export type HydratedStore = {
-  buckets: Bucket[];
   debts: DebtEntry[];
   income: IncomeEntry[];
   spend: SpendEntry[];
+  bills: BillEntry[];
   payments: PaymentEntry[];
 };
 
@@ -24,10 +24,10 @@ export type HydratedStore = {
  */
 export function hydrateStore(input: Partial<HydratedStore>): HydratedStore {
   return {
-    buckets: input.buckets ?? [],
     debts: input.debts ?? [],
     income: input.income ?? [],
     spend: input.spend ?? [],
+    bills: input.bills ?? [],
     payments: input.payments ?? [],
   };
 }
