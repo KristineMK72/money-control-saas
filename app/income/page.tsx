@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { incomeNeedsEngine } from "@/lib/engines/incomeNeedsEngine";
 
 type IncomeSourceRow = {
   id: string;
@@ -10,10 +11,12 @@ type IncomeSourceRow = {
 
 type IncomeEntryRow = {
   id: string;
+  user_id: string;
   source_name: string;
   amount: number;
   date_iso: string;
   note: string | null;
+  created_at: string;
 };
 
 function todayISO() {
@@ -63,7 +66,6 @@ export default function IncomePage() {
       setLoading(true);
 
       const { data, error } = await supabase.auth.getUser();
-
       if (error) {
         setMessage(error.message);
         setLoading(false);
@@ -162,35 +164,73 @@ export default function IncomePage() {
     setEntries((prev) => prev.filter((e) => e.id !== id));
   }
 
-  const totalIncome = useMemo(() => {
-    return entries.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  const totalIncome = useMemo(
+    () => entries.reduce((sum, e) => sum + Number(e.amount || 0), 0),
+    [entries]
+  );
+
+  const incomeThisMonth = useMemo(() => {
+    const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+    return entries
+      .filter((e) => e.date_iso.startsWith(month))
+      .reduce((s, e) => s + Number(e.amount || 0), 0);
+  }, [entries]);
+
+  const avgIncome = useMemo(() => {
+    if (entries.length === 0) return 0;
+    return totalIncome / entries.length;
+  }, [entries, totalIncome]);
+
+  const needs = useMemo(() => {
+    return incomeNeedsEngine({
+      totalMonthlyBills: 0, // Dashboard handles bills; Income page focuses on income pacing
+      incomeEntries: entries,
+      todayISO: new Date().toISOString().slice(0, 10),
+    });
   }, [entries]);
 
   return (
-    <main className="min-h-screen bg-zinc-50 text-zinc-900">
-      <div className="mx-auto max-w-4xl px-6 py-10">
-
-        <div>
-          <h1 className="text-3xl font-black">Income</h1>
-          <p className="mt-2 text-zinc-600">
-            Track all money coming in.
+    <main className="min-h-screen bg-zinc-950 text-white">
+      <section className="mx-auto max-w-4xl px-6 py-10 space-y-10">
+        <header>
+          <h1 className="text-3xl font-black tracking-tight">Income</h1>
+          <p className="mt-2 text-sm text-white/60">
+            Track all money coming in — and see what you need to stay on pace.
           </p>
-        </div>
+        </header>
 
-        {message ? (
-          <div className="mt-4 rounded-xl border bg-white p-4 text-sm text-zinc-600">
+        {message && (
+          <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
             {message}
           </div>
-        ) : null}
+        )}
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        {/* BEN BUBBLE */}
+        <div className="rounded-2xl border border-cyan-300/30 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100 max-w-md">
+          <div className="text-xs uppercase tracking-[0.2em] text-cyan-200/80">
+            Ben says
+          </div>
+          <p className="mt-1">{needs.benMessage}</p>
+        </div>
+
+        {/* STATS */}
+        <div className="grid gap-4 md:grid-cols-4">
           <Stat label="Total Income" value={totalIncome} />
-          <Stat label="Sources" value={sources.length} />
+          <Stat label="This Month" value={incomeThisMonth} />
+          <Stat label="Avg per Entry" value={avgIncome} />
           <Stat label="Entries" value={entries.length} />
         </div>
 
+        {/* NEEDS */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Stat label="Today's Need" value={needs.dailyNeed} />
+          <Stat label="Weekly Need" value={needs.weeklyNeed} />
+          <Stat label="Remaining Need" value={needs.remainingNeed} />
+          <Stat label="Monthly Need" value={needs.monthlyNeed} />
+        </div>
+
         {/* ADD INCOME */}
-        <div className="mt-8 rounded-3xl border bg-white p-6">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
           <h2 className="text-lg font-bold">Add Income</h2>
 
           <div className="mt-4 grid gap-3">
@@ -198,7 +238,7 @@ export default function IncomePage() {
               type="date"
               value={dateISO}
               onChange={(e) => setDateISO(e.target.value)}
-              className="rounded-xl border px-4 py-3"
+              className="rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-white"
             />
 
             <input
@@ -206,7 +246,7 @@ export default function IncomePage() {
               placeholder="Source (Job, Tips, Side hustle)"
               value={sourceName}
               onChange={(e) => setSourceName(e.target.value)}
-              className="rounded-xl border px-4 py-3"
+              className="rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-white"
             />
 
             <datalist id="sources">
@@ -220,20 +260,20 @@ export default function IncomePage() {
               placeholder="Amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="rounded-xl border px-4 py-3"
+              className="rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-white"
             />
 
             <input
               placeholder="Note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="rounded-xl border px-4 py-3"
+              className="rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-white"
             />
 
             <button
               onClick={handleAddIncome}
               disabled={saving || !userId}
-              className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white"
+              className="rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-zinc-900"
             >
               {saving ? "Saving..." : "Add Income"}
             </button>
@@ -241,24 +281,25 @@ export default function IncomePage() {
         </div>
 
         {/* ENTRIES */}
-        <div className="mt-8 rounded-3xl border bg-white p-6">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
           <h2 className="text-lg font-bold">Income Entries</h2>
 
           <div className="mt-4 grid gap-3">
             {loading ? (
-              <p className="text-sm text-zinc-500">Loading...</p>
+              <p className="text-sm text-white/60">Loading...</p>
             ) : entries.length === 0 ? (
-              <p className="text-sm text-zinc-500">No income yet.</p>
+              <p className="text-sm text-white/60">No income yet.</p>
             ) : (
               entries.map((e) => (
                 <div
                   key={e.id}
-                  className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
+                  className="flex items-center justify-between rounded-2xl border border-white/10 bg-zinc-900/40 p-4"
                 >
                   <div>
                     <div className="font-semibold">{e.source_name}</div>
-                    <div className="text-sm text-zinc-500">
-                      {e.date_iso}{e.note ? ` · ${e.note}` : ""}
+                    <div className="text-sm text-white/60">
+                      {e.date_iso}
+                      {e.note ? ` · ${e.note}` : ""}
                     </div>
                   </div>
 
@@ -268,7 +309,7 @@ export default function IncomePage() {
                     </div>
                     <button
                       onClick={() => handleDelete(e.id)}
-                      className="rounded-lg border px-3 py-2 text-xs"
+                      className="rounded-lg border border-white/20 px-3 py-2 text-xs text-white/70"
                     >
                       Delete
                     </button>
@@ -278,17 +319,19 @@ export default function IncomePage() {
             )}
           </div>
         </div>
-      </div>
+      </section>
     </main>
   );
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border bg-white p-5">
-      <div className="text-sm text-zinc-500">{label}</div>
-      <div className="mt-2 text-3xl font-black">
-        {typeof value === "number" ? value.toFixed(0) : value}
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="text-xs uppercase tracking-[0.2em] text-white/50">
+        {label}
+      </div>
+      <div className="mt-2 text-2xl font-bold">
+        {typeof value === "number" ? `$${value.toFixed(2)}` : value}
       </div>
     </div>
   );
