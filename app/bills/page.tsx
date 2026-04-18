@@ -128,13 +128,24 @@ export default function BillsPage() {
 
   useEffect(() => {
     async function init() {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) {
-        window.location.href = "/signup?mode=login";
+      setLoading(true);
+
+      const { data, error } = await supabase.auth.getUser();
+
+      if (error) {
+        setMessage(error.message);
+        setLoading(false);
         return;
       }
 
-      const uid = data.user.id;
+      const user = data?.user;
+      if (!user) {
+        setMessage("Please log in first.");
+        setLoading(false);
+        return;
+      }
+
+      const uid = user.id;
       setUserId(uid);
 
       const [billsRes, paymentsRes] = await Promise.all([
@@ -196,7 +207,7 @@ export default function BillsPage() {
     }
 
     const totalMonthlyBills = total;
-    const totalIncome = 1; // TODO: wire real income if you want pressure vs income
+    const totalIncome = 1; // placeholder until wired to real income
     const billPressure = totalMonthlyBills / totalIncome;
 
     return {
@@ -461,4 +472,178 @@ export default function BillsPage() {
           </div>
         </div>
 
-        
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-lg font-bold">Bill payments over time</h2>
+              <span className="text-xs text-white/50">
+                Based on payments linked to bills
+              </span>
+            </div>
+            <div className="mt-4">
+              <Line
+                data={paymentsLineData}
+                options={{
+                  responsive: true,
+                  plugins: {
+                    legend: {
+                      labels: { color: "#e5e7eb" },
+                    },
+                  },
+                  scales: {
+                    x: {
+                      type: "time",
+                      time: { unit: "day" },
+                      ticks: { color: "#9ca3af" },
+                      grid: { color: "rgba(148, 163, 184, 0.2)" },
+                    },
+                    y: {
+                      ticks: { color: "#9ca3af" },
+                      grid: { color: "rgba(148, 163, 184, 0.2)" },
+                    },
+                  },
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-lg font-bold">Due‑day timeline</h2>
+              <span className="text-xs text-white/50">
+                Bills sorted by due day
+              </span>
+            </div>
+            <div className="mt-4 space-y-2">
+              {dueTimeline.length === 0 && (
+                <p className="text-sm text-white/60">
+                  Add due days to your bills to see them on a timeline.
+                </p>
+              )}
+
+              {dueTimeline.map(({ bill, dueDay }) => {
+                const amount = getBillMonthlyAmount(bill);
+                const kind = classifyBill(bill);
+                const hasPayments = billsWithPayments.has(bill.id);
+                const paid = billsWithPayments.get(bill.id) || 0;
+                const progress = amount > 0 ? Math.min(paid / amount, 1) : 0;
+
+                let barColor = "bg-emerald-400";
+                if (dueDay != null) {
+                  if (dueDay <= 7) barColor = "bg-rose-400";
+                  else if (dueDay <= 15) barColor = "bg-amber-400";
+                  else barColor = "bg-emerald-400";
+                }
+
+                return (
+                  <div
+                    key={bill.id}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-semibold">{bill.name}</div>
+                        <div className="text-xs text-white/60">
+                          {getDueLabel(bill)} · {getBillBadge(kind)}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold">
+                          ${amount.toFixed(2)}
+                        </div>
+                        {hasPayments && (
+                          <div className="text-xs text-white/60">
+                            Paid ${paid.toFixed(2)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        className={`h-full ${barColor}`}
+                        style={{ width: `${progress * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-6">
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <h2 className="text-lg font-bold">All bills (Smart Mode)</h2>
+            <span className="text-xs text-white/50">
+              Using target → monthly_target → min_payment
+            </span>
+          </div>
+
+          {bills.length === 0 ? (
+            <p className="text-sm text-white/60">
+              No bills yet. Add a few and this page will light up.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {bills.map((bill) => {
+                const amount = getBillMonthlyAmount(bill);
+                const kind = classifyBill(bill);
+                const hasPayments = billsWithPayments.has(bill.id);
+                const paid = billsWithPayments.get(bill.id) || 0;
+                const progress = amount > 0 ? Math.min(paid / amount, 1) : 0;
+
+                return (
+                  <div
+                    key={bill.id}
+                    className="rounded-2xl border border-white/10 bg-zinc-950/40 p-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">{bill.name}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/60">
+                          <span className="rounded-full border border-white/15 px-2 py-0.5">
+                            {getBillBadge(kind)}
+                          </span>
+                          {bill.category && (
+                            <span className="rounded-full border border-white/15 px-2 py-0.5">
+                              {bill.category}
+                            </span>
+                          )}
+                          <span>{getDueLabel(bill)}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-sm font-semibold">
+                          ${amount.toFixed(2)}
+                        </div>
+                        {hasPayments ? (
+                          <div className="text-xs text-white/60">
+                            Paid ${paid.toFixed(2)} ·{" "}
+                            {(progress * 100).toFixed(0)}% this month
+                          </div>
+                        ) : (
+                          <div className="text-xs text-white/60">
+                            No payments recorded this month
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        className="h-full bg-cyan-400"
+                        style={{ width: `${progress * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
