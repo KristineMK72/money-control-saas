@@ -1,91 +1,119 @@
-export type BucketKind = "bill" | "credit" | "loan" | "savings";
+// Core Money Types for SaaS-Ready Financial Engine
 
-export type BucketCategory =
-  | "housing"
-  | "utilities"
-  | "transportation"
-  | "debt"
-  | "food"
+export type UUID = string;
+
+// -----------------------------
+// Payment Methods
+// -----------------------------
+export type PaymentMethod =
+  | "debit"
+  | "credit"
+  | "checking"
+  | "cash"
+  | "paypal"
+  | "venmo"
+  | "apple_pay"
   | "other";
 
-/* ───────────────── BUCKETS ───────────────── */
-export type Bucket = {
-  key: string;
-  name: string;
-  kind: BucketKind;
-  category?: BucketCategory | null;
-
-  // ✅ Supabase standard
-  due_date?: string | null;
-  focus?: boolean | null;
-};
-
-/* ───────────────── INCOME ───────────────── */
-export type IncomeSource = {
-  id: string;
-  name: string;
-};
-
-export type IncomeEntry = {
-  id: string;
-  user_id: string;
-  date_iso: string;
-  source_name: string;
-  amount: number;
-  note?: string | null;
-
-  allocations: Record<string, number>;
-};
-
-/* ───────────────── SPENDING ───────────────── */
+// -----------------------------
+// Spend Categories
+// -----------------------------
 export type SpendCategory =
-  | "groceries"
+  | "food"
   | "gas"
-  | "eating_out"
+  | "shopping"
   | "bills"
-  | "kids"
-  | "business"
-  | "self_care"
   | "subscriptions"
-  | "misc";
+  | "entertainment"
+  | "health"
+  | "travel"
+  | "kids"
+  | "pets"
+  | "car"
+  | "home"
+  | "other";
 
+// -----------------------------
+// Spend Entry
+// -----------------------------
 export type SpendEntry = {
-  id: string;
-  user_id: string;
+  id: UUID;
+  user_id: UUID;
   date_iso: string;
   merchant: string | null;
   amount: number;
   category: SpendCategory;
+  payment_method: PaymentMethod;
   note?: string | null;
 };
 
-/* ───────────────── PAYMENTS ───────────────── */
-export type PaymentEntry = {
-  id: string;
-  user_id: string;
-  date_iso: string;
-  merchant: string;
+// -----------------------------
+// Income Entry
+// -----------------------------
+export type IncomeEntry = {
+  id: UUID;
+  user_id: UUID;
+  source: string;
   amount: number;
-  note?: string | null;
+  date_iso: string;
+  is_recurring: boolean;
+  frequency?: "weekly" | "biweekly" | "monthly" | "custom";
 };
 
-/* ───────────────── DEBT ───────────────── */
-export type DebtEntry = {
-  id: string;
-  user_id: string;
+// -----------------------------
+// Bill Entry
+// -----------------------------
+export type BillEntry = {
+  id: UUID;
+  user_id: UUID;
   name: string;
+  amount: number;
+  due_day: number; // 1–31
+  is_fixed: boolean;
+  is_monthly: boolean;
+};
 
+// -----------------------------
+// Debt Entry
+// -----------------------------
+export type DebtEntry = {
+  id: UUID;
+  user_id: UUID;
+  name: string;
   balance: number;
+  apr: number | null;
+  min_payment: number;
+  due_day: number | null;
+  is_credit: boolean;
+};
 
-  // ✅ unified Supabase-style naming
-  min_payment?: number | null;
+// -----------------------------
+// Forecast Types
+// -----------------------------
+export type ForecastPoint = {
+  date_iso: string;
+  balance: number;
+  income: number;
+  bills: number;
+  spend: number;
+  credit_spend: number;
+  cash_spend: number;
+};
 
-  due_date?: string | null;
-  is_monthly?: boolean | null;
-  due_day?: number | null;
+export type ForecastResult = {
+  start_date: string;
+  end_date: string;
+  points: ForecastPoint[];
+};
 
-  apr?: number | null;
-  credit_limit?: number | null;
-
-  note?: string | null;
+// -----------------------------
+// User Settings
+// -----------------------------
+export type UserSettings = {
+  id: UUID;
+  user_id: UUID;
+  currency: string;
+  start_week_on: "sunday" | "monday";
+  enable_ben_mood: boolean;
+  enable_forecasting: boolean;
 };
