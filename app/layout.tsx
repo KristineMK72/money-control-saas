@@ -165,18 +165,14 @@ export default function RootLayout({
               >
                 <NavLink href="/">Home</NavLink>
                 <NavLink href="/dashboard">Dashboard</NavLink>
-
                 <NavLink href="/spend">Spend</NavLink>
                 <NavLink href="/income">Income</NavLink>
                 <NavLink href="/bills">Bills</NavLink>
                 <NavLink href="/debt">Debt</NavLink>
                 <NavLink href="/payments">Payments</NavLink>
-
                 <NavLink href="/forecast">Forecast</NavLink>
                 <NavLink href="/chat">Ask Ben</NavLink>
-
                 <NavLink href="/signup">Signup / Login</NavLink>
-
                 <LogoutButton />
               </div>
             </div>
