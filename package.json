@@ -15,7 +15,8 @@
 
     "tesseract.js": "^5.1.0",
     "openai": "^4.56.0",
-
+    "chart.js": "^4.4.1",
+    "react-chartjs-2": "^5.2.0",
     "@supabase/supabase-js": "^2.49.1",
     "@supabase/ssr": "^0.3.0",
 
