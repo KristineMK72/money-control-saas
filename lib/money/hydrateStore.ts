@@ -1,5 +1,5 @@
 import type {
-  Bucket,
+  BillEntry,
   DebtEntry,
   IncomeEntry,
   SpendEntry,
