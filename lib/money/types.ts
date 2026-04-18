@@ -19,19 +19,16 @@ export type PaymentMethod =
 // Spend Categories
 // -----------------------------
 export type SpendCategory =
-  | "food"
+  | "groceries"
   | "gas"
-  | "shopping"
+  | "eating_out"
   | "bills"
-  | "subscriptions"
-  | "entertainment"
-  | "health"
-  | "travel"
   | "kids"
-  | "pets"
-  | "car"
-  | "home"
-  | "other";
+  | "business"
+  | "self_care"
+  | "subscriptions"
+  | "misc";
+
 
 // -----------------------------
 // Spend Entry
