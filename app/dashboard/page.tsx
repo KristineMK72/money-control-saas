@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import BenBubble from "@/components/BenBubble";
+import { createClient } from "@/utils/supabase/client";
 import type {
   SpendEntry,
   IncomeEntry,
@@ -10,7 +11,6 @@ import type {
 } from "@/lib/money/types";
 
 type BenMood = "encouraging" | "stern" | "witty" | "urgent" | "celebratory";
-
 type DateRangeKey = "7d" | "30d" | "90d" | "all";
 
 const todayISO = new Date().toISOString().slice(0, 10);
@@ -25,22 +25,53 @@ function filterByDateRange<T extends { date_iso?: string }>(
   cutoff.setDate(cutoff.getDate() - days);
   return items.filter((item) => {
     if (!item.date_iso) return true;
-    const d = new Date(item.date_iso);
-    return d >= cutoff;
+    return new Date(item.date_iso) >= cutoff;
   });
 }
 
 export default function DashboardPage() {
-  // TODO: Replace these with real data from Supabase
-  const [spendEntries] = useState<SpendEntry[]>([]);
-  const [incomeEntries] = useState<IncomeEntry[]>([]);
-  const [billEntries] = useState<BillEntry[]>([]);
-  const [debtEntries] = useState<DebtEntry[]>([]);
+  const supabase = createClient();
+
+  const [loading, setLoading] = useState(true);
+
+  const [spendEntries, setSpendEntries] = useState<SpendEntry[]>([]);
+  const [incomeEntries, setIncomeEntries] = useState<IncomeEntry[]>([]);
+  const [billEntries, setBillEntries] = useState<BillEntry[]>([]);
+  const [debtEntries, setDebtEntries] = useState<DebtEntry[]>([]);
 
   const [dateRange, setDateRange] = useState<DateRangeKey>("30d");
-  const [customStart, setCustomStart] = useState<string>(todayISO);
-  const [customEnd, setCustomEnd] = useState<string>(todayISO);
 
+  // -----------------------------
+  // Load real Supabase data
+  // -----------------------------
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) return;
+
+      const [spend, income, bills, debts] = await Promise.all([
+        supabase.from("spend_entries").select("*").eq("user_id", user.id),
+        supabase.from("income_entries").select("*").eq("user_id", user.id),
+        supabase.from("bills").select("*").eq("user_id", user.id),
+        supabase.from("debts").select("*").eq("user_id", user.id),
+      ]);
+
+      setSpendEntries(spend.data ?? []);
+      setIncomeEntries(income.data ?? []);
+      setBillEntries(bills.data ?? []);
+      setDebtEntries(debts.data ?? []);
+
+      setLoading(false);
+    }
+
+    load();
+  }, []);
+
+  // -----------------------------
+  // Date filtering
+  // -----------------------------
   const effectiveSpend = useMemo(
     () => filterByDateRange(spendEntries, dateRange),
     [spendEntries, dateRange]
@@ -50,6 +81,9 @@ export default function DashboardPage() {
     [incomeEntries, dateRange]
   );
 
+  // -----------------------------
+  // Totals
+  // -----------------------------
   const totalSpend = useMemo(
     () => effectiveSpend.reduce((sum, s) => sum + s.amount, 0),
     [effectiveSpend]
@@ -69,6 +103,9 @@ export default function DashboardPage() {
 
   const netCashFlow = totalIncome - totalBills - totalDebtPayments - totalSpend;
 
+  // -----------------------------
+  // Ben narrator
+  // -----------------------------
   const benMood: BenMood =
     netCashFlow > 0
       ? "celebratory"
@@ -80,9 +117,9 @@ export default function DashboardPage() {
     netCashFlow > 0
       ? `You’re running a surplus of $${netCashFlow.toFixed(
           2
-        )} in this window. Nice breathing room.`
+        )}. Strong momentum.`
       : netCashFlow > -200
-      ? `You’re close to break-even. A few tweaks to spend could flip this positive.`
+      ? `You're close to break-even. A few adjustments could flip this positive.`
       : `This window is running negative by $${Math.abs(
           netCashFlow
         ).toFixed(
@@ -98,6 +135,9 @@ export default function DashboardPage() {
       ? "Last 90 days"
       : "All time";
 
+  // -----------------------------
+  // UI
+  // -----------------------------
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50">
       <header className="p-6 border-b border-white/10">
@@ -122,13 +162,7 @@ export default function DashboardPage() {
                       : "text-slate-300"
                   }`}
                 >
-                  {key === "7d"
-                    ? "7D"
-                    : key === "30d"
-                    ? "30D"
-                    : key === "90d"
-                    ? "90D"
-                    : "All"}
+                  {key.toUpperCase()}
                 </button>
               ))}
             </div>
@@ -143,11 +177,7 @@ export default function DashboardPage() {
 
         {/* Summary row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-          <SummaryCard
-            label="Total Income"
-            value={totalIncome}
-            tone="positive"
-          />
+          <SummaryCard label="Total Income" value={totalIncome} tone="positive" />
           <SummaryCard label="Total Spend" value={totalSpend} tone="negative" />
           <SummaryCard label="Monthly Bills" value={totalBills} tone="neutral" />
           <SummaryCard
@@ -167,6 +197,7 @@ export default function DashboardPage() {
           <p className="text-xs text-slate-400 mb-4">
             Income minus bills, debt minimums, and spend in the selected window.
           </p>
+
           <div className="flex items-end gap-6">
             <div>
               <p className="text-xs text-slate-400">Net cashflow</p>
@@ -178,6 +209,7 @@ export default function DashboardPage() {
                 ${netCashFlow.toFixed(2)}
               </p>
             </div>
+
             <div className="flex-1">
               <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
                 <div
@@ -205,15 +237,10 @@ export default function DashboardPage() {
             Upcoming obligations
           </h2>
           <p className="text-xs text-slate-400 mb-3">
-            Bills and debt minimums you&apos;ll need to cover soon.
+            Bills and debt minimums you’ll need to cover soon.
           </p>
-          <div className="space-y-2 max-h-64 overflow-y-auto text-xs">
-            {billEntries.length === 0 && debtEntries.length === 0 && (
-              <p className="text-slate-500">
-                No obligations loaded yet. Add bills and debts to see them here.
-              </p>
-            )}
 
+          <div className="space-y-2 max-h-64 overflow-y-auto text-xs">
             {billEntries.map((bill) => (
               <div
                 key={bill.id}
