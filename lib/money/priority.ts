@@ -1,36 +1,33 @@
-import type { Bucket } from "./types";
+import type { BillEntry, DebtEntry } from "./types";
 import { daysUntil } from "./utils";
 
-function getDueDate(bucket: Bucket): string | null {
-  return bucket.due_date ?? null;
+/**
+ * Prioritize bills by how soon they are due.
+ */
+export function prioritizeBills(bills: BillEntry[]) {
+  return bills
+    .map((b) => ({
+      ...b,
+      days_until_due: daysUntil(b.due_day),
+    }))
+    .sort((a, b) => a.days_until_due - b.days_until_due);
 }
 
-export function scoreBucket(bucket: Bucket) {
-  let score = 0;
-
-  const d = daysUntil(getDueDate(bucket));
-
-  if (d != null) {
-    if (d <= 0) score += 40;
-    else if (d <= 3) score += 30;
-    else if (d <= 7) score += 20;
-    else if (d <= 14) score += 10;
-  }
-
-  if (bucket.category === "housing") score += 30;
-  if (bucket.category === "utilities") score += 20;
-  if (bucket.category === "transportation") score += 20;
-
-  if (bucket.kind === "loan") score += 10;
-  if (bucket.kind === "credit") score += 5;
-
-  if (bucket.focus) score += 10;
-
-  return score;
-}
-
-export function getPriorityBuckets(buckets: Bucket[]) {
-  return buckets
-    .map((bucket) => ({ bucket, score: scoreBucket(bucket) }))
-    .sort((a, b) => b.score - a.score);
+/**
+ * Prioritize debts by APR first, then due date.
+ */
+export function prioritizeDebts(debts: DebtEntry[]) {
+  return debts
+    .map((d) => ({
+      ...d,
+      days_until_due: d.due_day ? daysUntil(d.due_day) : Infinity,
+    }))
+    .sort((a, b) => {
+      // Highest APR first
+      if ((b.apr || 0) !== (a.apr || 0)) {
+        return (b.apr || 0) - (a.apr || 0);
+      }
+      // Then earliest due date
+      return a.days_until_due - b.days_until_due;
+    });
 }
