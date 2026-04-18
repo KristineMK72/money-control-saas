@@ -44,7 +44,7 @@ export type SpendEntry = {
   note?: string | null;
 };
 //------------------------------
-PaymentEntry
+// PaymentEntry
 //------------------------------
 export type PaymentEntry = {
   id: UUID;
