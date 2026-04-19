@@ -1,369 +1,255 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import BenBubble from "@/components/BenBubble";
-import { createClient } from "@/utils/supabase/client";
-import type {
-  SpendEntry,
-  IncomeEntry,
-  BillEntry,
-  DebtEntry,
-} from "@/lib/money/types";
+import { useEffect, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-type BenMood = "encouraging" | "stern" | "witty" | "urgent" | "celebratory";
-type DateRangeKey = "7d" | "30d" | "90d" | "all";
-type SummaryTone = "positive" | "negative" | "neutral";
+type Bill = {
+  id: string;
+  name: string;
+  amount: number;
+  due_day: number | null; // 1–31
+};
 
-const todayISO = new Date().toISOString().slice(0, 10);
+type Debt = {
+  id: string;
+  name: string;
+  min_payment: number;
+  due_day: number | null; // 1–31
+};
 
-function filterByDateRange<T extends { date_iso?: string }>(
-  items: T[],
-  range: DateRangeKey
-): T[] {
-  if (range === "all") return items;
-  const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  return items.filter((item) => {
-    if (!item.date_iso) return true;
-    return new Date(item.date_iso) >= cutoff;
-  });
-}
+type UpcomingItem = {
+  id: string;
+  name: string;
+  kind: "bill" | "debt";
+  amount: number;
+  dueDate: Date;
+};
 
-function formatMoney(value: number | null | undefined): string {
-  if (typeof value === "number" && !isNaN(value)) {
-    return value.toFixed(2);
+function getNextDueDate(due_day: number) {
+  const today = new Date();
+  const currentDay = today.getDate();
+
+  const dueDate = new Date(today);
+  dueDate.setHours(0, 0, 0, 0);
+  dueDate.setDate(due_day);
+
+  if (due_day < currentDay) {
+    dueDate.setMonth(dueDate.getMonth() + 1);
   }
-  return "0.00";
+
+  return dueDate;
 }
 
 export default function DashboardPage() {
-  const supabase = createClient();
-
+  const supabase = createClientComponentClient();
+  const [bills, setBills] = useState<Bill[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showUpcomingModal, setShowUpcomingModal] = useState(false);
+  const [upcoming, setUpcoming] = useState<UpcomingItem[]>([]);
 
-  const [spendEntries, setSpendEntries] = useState<SpendEntry[]>([]);
-  const [incomeEntries, setIncomeEntries] = useState<IncomeEntry[]>([]);
-  const [billEntries, setBillEntries] = useState<BillEntry[]>([]);
-  const [debtEntries, setDebtEntries] = useState<DebtEntry[]>([]);
-
-  const [dateRange, setDateRange] = useState<DateRangeKey>("30d");
-
-  // -----------------------------
-  // Load real Supabase data
-  // -----------------------------
   useEffect(() => {
-    async function load() {
+    const loadData = async () => {
       setLoading(true);
 
-      const { data } = await supabase.auth.getUser();
-      const user = data.user;
-      if (!user) {
-        setLoading(false);
-        return;
-      }
+      const { data: billsData } = await supabase
+        .from("bills")
+        .select("id, name, amount, due_day");
 
-      const [spend, income, bills, debts] = await Promise.all([
-        supabase.from("spend_entries").select("*").eq("user_id", user.id),
-        supabase.from("income_entries").select("*").eq("user_id", user.id),
-        supabase.from("bills").select("*").eq("user_id", user.id),
-        supabase.from("debts").select("*").eq("user_id", user.id),
-      ]);
+      const { data: debtsData } = await supabase
+        .from("debts")
+        .select("id, name, min_payment, due_day");
 
-      setSpendEntries((spend.data as SpendEntry[]) ?? []);
-      setIncomeEntries((income.data as IncomeEntry[]) ?? []);
-      setBillEntries((bills.data as BillEntry[]) ?? []);
-      setDebtEntries((debts.data as DebtEntry[]) ?? []);
+      const billsSafe = (billsData ?? []) as Bill[];
+      const debtsSafe = (debtsData ?? []) as Debt[];
 
+      setBills(billsSafe);
+      setDebts(debtsSafe);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const upcomingBills: UpcomingItem[] = billsSafe
+        .filter((b) => b.due_day != null)
+        .map((b) => {
+          const dueDate = getNextDueDate(b.due_day!);
+          return {
+            id: b.id,
+            name: b.name,
+            kind: "bill",
+            amount: b.amount,
+            dueDate,
+          };
+        })
+        .filter((item) => {
+          const diffDays =
+            (item.dueDate.getTime() - today.getTime()) /
+            (1000 * 60 * 60 * 24);
+          return diffDays >= 0 && diffDays <= 7;
+        });
+
+      const upcomingDebts: UpcomingItem[] = debtsSafe
+        .filter((d) => d.due_day != null)
+        .map((d) => {
+          const dueDate = getNextDueDate(d.due_day!);
+          return {
+            id: d.id,
+            name: d.name,
+            kind: "debt",
+            amount: d.min_payment,
+            dueDate,
+          };
+        })
+        .filter((item) => {
+          const diffDays =
+            (item.dueDate.getTime() - today.getTime()) /
+            (1000 * 60 * 60 * 24);
+          return diffDays >= 0 && diffDays <= 7;
+        });
+
+      const merged = [...upcomingBills, ...upcomingDebts].sort(
+        (a, b) => a.dueDate.getTime() - b.dueDate.getTime()
+      );
+
+      setUpcoming(merged);
       setLoading(false);
-    }
+    };
 
-    load();
+    loadData();
   }, [supabase]);
 
-  // -----------------------------
-  // Date filtering
-  // -----------------------------
-  const effectiveSpend = useMemo(
-    () => filterByDateRange(spendEntries, dateRange),
-    [spendEntries, dateRange]
+  const totalBillAmount = bills.reduce((sum, b) => sum + (b.amount || 0), 0);
+  const totalDebtMin = debts.reduce(
+    (sum, d) => sum + (d.min_payment || 0),
+    0
   );
-
-  const effectiveIncome = useMemo(
-    () => filterByDateRange(incomeEntries, dateRange),
-    [incomeEntries, dateRange]
-  );
-
-  // -----------------------------
-  // Totals
-  // -----------------------------
-  const totalSpend = useMemo(
-    () => effectiveSpend.reduce((sum, s) => sum + (s.amount || 0), 0),
-    [effectiveSpend]
-  );
-
-  const totalIncome = useMemo(
-    () => effectiveIncome.reduce((sum, i) => sum + (i.amount || 0), 0),
-    [effectiveIncome]
-  );
-
-  const totalBills = useMemo(
-    () => billEntries.reduce((sum, b) => sum + (b.amount || 0), 0),
-    [billEntries]
-  );
-
-  const totalDebtPayments = useMemo(
-    () => debtEntries.reduce((sum, d) => sum + (d.min_payment || 0), 0),
-    [debtEntries]
-  );
-
-  const netCashFlow =
-    totalIncome - totalBills - totalDebtPayments - totalSpend;
-
-  // -----------------------------
-  // Ben narrator
-  // -----------------------------
-  const benMood: BenMood =
-    netCashFlow > 0
-      ? "celebratory"
-      : netCashFlow > -200
-      ? "encouraging"
-      : "urgent";
-
-  const benText =
-    netCashFlow > 0
-      ? `You’re running a surplus of $${netCashFlow.toFixed(
-          2
-        )}. Strong momentum.`
-      : netCashFlow > -200
-      ? `You're close to break-even. A few adjustments could flip this positive.`
-      : `This window is running negative by $${Math.abs(
-          netCashFlow
-        ).toFixed(
-          2
-        )}. Let’s tighten spend or adjust bills to avoid stress later.`;
-
-  const rangeLabel =
-    dateRange === "7d"
-      ? "Last 7 days"
-      : dateRange === "30d"
-      ? "Last 30 days"
-      : dateRange === "90d"
-      ? "Last 90 days"
-      : "All time";
-
-  // -----------------------------
-  // Sorted obligations
-  // -----------------------------
-  const sortedBills = useMemo(
-    () =>
-      [...billEntries].sort((a, b) => {
-        const aDay = a.due_day ?? 32;
-        const bDay = b.due_day ?? 32;
-        return aDay - bDay;
-      }),
-    [billEntries]
-  );
-
-  const sortedDebts = useMemo(
-    () =>
-      [...debtEntries].sort((a, b) => {
-        const aDay = a.due_day ?? 32;
-        const bDay = b.due_day ?? 32;
-        return aDay - bDay;
-      }),
-    [debtEntries]
-  );
-
-  // -----------------------------
-  // UI
-  // -----------------------------
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center">
-        <p className="text-sm text-slate-400">Loading your dashboard…</p>
-      </main>
-    );
-  }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50">
-      <header className="p-6 border-b border-white/10">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+    <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
+      <div className="mx-auto w-full max-w-5xl space-y-6">
+        <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Premium Dashboard</h1>
-            <p className="text-sm text-slate-400">
-              High-level view of your cash, obligations, and momentum.
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Dashboard
+            </h1>
+            <p className="text-xs text-zinc-400">
+              Ben’s overview of what’s coming up and where your money is going.
             </p>
           </div>
 
-          {/* Date range controls */}
-          <div className="flex flex-col items-end gap-2">
-            <div className="inline-flex rounded-full bg-white/5 p-1 text-xs">
-              {(["7d", "30d", "90d", "all"] as DateRangeKey[]).map((key) => (
-                <button
-                  key={key}
-                  onClick={() => setDateRange(key)}
-                  className={`px-3 py-1 rounded-full ${
-                    dateRange === key
-                      ? "bg-white text-slate-900"
-                      : "text-slate-300"
-                  }`}
-                >
-                  {key.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] text-slate-500">{rangeLabel}</p>
+          <button
+            onClick={() => setShowUpcomingModal(true)}
+            className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-emerald-400 hover:border-emerald-400"
+          >
+            View upcoming (7 days)
+          </button>
+        </header>
+
+        {loading ? (
+          <div className="text-sm text-zinc-500">Loading your data…</div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-3">
+            <section className="col-span-1 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-2">
+              <div className="text-xs font-semibold text-zinc-400">
+                Monthly bills
+              </div>
+              <div className="text-2xl font-semibold">
+                ${totalBillAmount.toFixed(0)}
+              </div>
+              <p className="text-xs text-zinc-500">
+                Fixed obligations like rent, utilities, subscriptions.
+              </p>
+            </section>
+
+            <section className="col-span-1 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-2">
+              <div className="text-xs font-semibold text-zinc-400">
+                Debt minimums
+              </div>
+              <div className="text-2xl font-semibold">
+                ${totalDebtMin.toFixed(0)}
+              </div>
+              <p className="text-xs text-zinc-500">
+                Minimum payments across cards and loans.
+              </p>
+            </section>
+
+            <section className="col-span-1 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-2">
+              <div className="text-xs font-semibold text-zinc-400">
+                Upcoming (7 days)
+              </div>
+              <div className="text-2xl font-semibold">
+                {upcoming.length} item{upcoming.length === 1 ? "" : "s"}
+              </div>
+              <p className="text-xs text-zinc-500">
+                Bills and debts due in the next week.
+              </p>
+            </section>
           </div>
-        </div>
+        )}
 
-        {/* Ben narrator */}
-        <div className="mt-4">
-          <BenBubble text={benText} mood={benMood} />
-        </div>
+        {/* You can add charts / more panels below here */}
+      </div>
 
-        {/* Summary row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-          <SummaryCard label="Total Income" value={totalIncome} tone="positive" />
-          <SummaryCard label="Total Spend" value={totalSpend} tone="negative" />
-          <SummaryCard label="Monthly Bills" value={totalBills} tone="neutral" />
-          <SummaryCard
-            label="Debt Minimums"
-            value={totalDebtPayments}
-            tone="neutral"
-          />
-        </div>
-      </header>
-
-      <section className="p-6 grid gap-6 md:grid-cols-3">
-        {/* Cashflow snapshot */}
-        <div className="md:col-span-2 rounded-2xl border border-white/10 bg-white/5 p-4">
-          <h2 className="text-sm font-semibold text-slate-200 mb-2">
-            Cashflow snapshot
-          </h2>
-          <p className="text-xs text-slate-400 mb-4">
-            Income minus bills, debt minimums, and spend in the selected window.
-          </p>
-
-          <div className="flex items-end gap-6">
-            <div>
-              <p className="text-xs text-slate-400">Net cashflow</p>
-              <p
-                className={`text-3xl font-bold ${
-                  netCashFlow >= 0 ? "text-emerald-300" : "text-red-300"
-                }`}
+      {showUpcomingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">
+                Upcoming obligations
+              </h2>
+              <button
+                onClick={() => setShowUpcomingModal(false)}
+                className="text-zinc-400 hover:text-zinc-200 text-sm"
               >
-                ${netCashFlow.toFixed(2)}
-              </p>
+                Close
+              </button>
             </div>
 
-            <div className="flex-1">
-              <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
-                <div
-                  className={`h-full ${
-                    netCashFlow >= 0 ? "bg-emerald-400" : "bg-red-500"
-                  }`}
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      Math.max(
-                        5,
-                        (Math.abs(netCashFlow) / (totalIncome || 1)) * 100
-                      )
-                    )}%`,
-                  }}
-                />
-              </div>
-              <p className="text-[11px] text-slate-500 mt-2">
-                This bar is a rough visual of how intense this window feels
-                relative to your income.
+            {upcoming.length === 0 ? (
+              <p className="text-sm text-zinc-500">
+                Nothing due in the next 7 days. Enjoy the breathing room.
               </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Upcoming obligations */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <h2 className="text-sm font-semibold text-slate-200 mb-2">
-            Upcoming obligations
-          </h2>
-          <p className="text-xs text-slate-400 mb-3">
-            Bills and debt minimums you’ll need to cover soon.
-          </p>
-
-          <div className="space-y-2 max-h-64 overflow-y-auto text-xs">
-            {sortedBills.map((bill) => (
-              <div
-                key={bill.id}
-                className="flex items-center justify-between rounded-lg bg-slate-900/40 px-2 py-1.5"
-              >
-                <div>
-                  <p className="font-medium text-slate-100">{bill.name}</p>
-                  <p className="text-[11px] text-slate-500">
-                    {bill.due_day
-                      ? `Due day ${bill.due_day}`
-                      : `Due date not set`}
-                  </p>
-                </div>
-                <p className="font-semibold text-slate-100">
-                  ${formatMoney(bill.amount)}
-                </p>
+            ) : (
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {upcoming.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-white">
+                        {item.name}
+                      </span>
+                      <span className="text-xs text-zinc-400">
+                        {item.dueDate.toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-xs text-zinc-400">
+                      <span>
+                        {item.kind === "debt" ? "Minimum" : "Amount"}:{" "}
+                        <span className="text-zinc-200">
+                          ${item.amount.toFixed(2)}
+                        </span>
+                      </span>
+                      <span className="uppercase tracking-wide text-[10px] text-zinc-500">
+                        {item.kind}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-
-            {sortedDebts.map((debt) => (
-              <div
-                key={debt.id}
-                className="flex items-center justify-between rounded-lg bg-slate-900/40 px-2 py-1.5"
-              >
-                <div>
-                  <p className="font-medium text-slate-100">{debt.name}</p>
-                  <p className="text-[11px] text-slate-500">
-                    Min ${formatMoney(debt.min_payment)}
-                    {debt.due_day ? ` • Due day ${debt.due_day}` : ""}
-                  </p>
-                </div>
-                <p className="font-semibold text-slate-100">
-                  ${formatMoney(debt.balance)}
-                </p>
-              </div>
-            ))}
-
-            {sortedBills.length === 0 && sortedDebts.length === 0 && (
-              <p className="text-[11px] text-slate-500">
-                No upcoming obligations found.
-              </p>
             )}
+
+            <div className="pt-2 text-xs text-zinc-500 border-t border-zinc-800">
+              Ben: I’ll keep an eye on these and warn you if anything clusters
+              too tightly.
+            </div>
           </div>
         </div>
-      </section>
+      )}
     </main>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone: SummaryTone;
-}) {
-  const color =
-    tone === "positive"
-      ? "text-emerald-300"
-      : tone === "negative"
-      ? "text-red-300"
-      : "text-slate-100";
-
-  return (
-    <div className="rounded-xl bg-slate-900/60 p-4 border border-white/10">
-      <p className="text-xs text-slate-400">{label}</p>
-      <p className={`mt-1 text-xl font-semibold ${color}`}>
-        ${formatMoney(value)}
-      </p>
-    </div>
   );
 }
