@@ -104,9 +104,20 @@ export default function ForecastPage() {
     );
   }
 
+  // Month Health Score (simple version)
+  const healthScore = (() => {
+    let score = 100;
+
+    if (!forecast.projectedOnTrack) score -= 25;
+    if (forecast.incomeGap > 0) score -= Math.min(25, forecast.incomeGap / 10);
+    if (forecast.dailyIncomeNeeded > 50) score -= 20;
+
+    return Math.max(0, Math.round(score));
+  })();
+
   return (
     <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
-      <div className="mx-auto w-full max-w-5xl space-y-8 pb-24">
+      <div className="mx-auto w-full max-w-5xl space-y-10 pb-24">
 
         {/* Header */}
         <header>
@@ -119,8 +130,8 @@ export default function ForecastPage() {
         {/* Ben Narration */}
         <BenBubble text={forecast.ben.text} mood={forecast.ben.mood} />
 
-        {/* Chart Placeholder */}
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-3">
+        {/* Chart */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
           <div className="text-xs font-semibold text-zinc-400">
             30‑day cash trajectory
           </div>
@@ -129,7 +140,7 @@ export default function ForecastPage() {
           </div>
         </section>
 
-        {/* Forecast Metrics */}
+        {/* Metrics */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 rounded-2xl bg-zinc-900/70 border border-zinc-800">
             <p className="text-xs text-zinc-400">Income Gap</p>
@@ -155,6 +166,45 @@ export default function ForecastPage() {
               {forecast.projectedOnTrack ? "On Track" : "Behind"}
             </p>
           </div>
+        </section>
+
+        {/* Month Health Score */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-2">
+          <p className="text-xs text-zinc-400">Month Health Score</p>
+          <p className="text-4xl font-bold text-white">{healthScore}</p>
+          <p className="text-xs text-zinc-500">
+            A quick read on how manageable this month looks.
+          </p>
+        </section>
+
+        {/* Ben Alerts */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
+          <p className="text-xs font-semibold text-zinc-400">Ben’s Alerts</p>
+          <ul className="space-y-2 text-sm text-zinc-300">
+            {forecast.incomeGap > 0 && (
+              <li>• You’re short ${forecast.incomeGap.toFixed(2)} this month.</li>
+            )}
+            {forecast.dailyIncomeNeeded > 50 && (
+              <li>• Daily needed income is unusually high — consider smoothing expenses.</li>
+            )}
+            {forecast.projectedOnTrack && (
+              <li>• You’re pacing well — keep your current rhythm.</li>
+            )}
+            <li>• Ben is monitoring bill clusters and cash dips.</li>
+          </ul>
+        </section>
+
+        {/* Scenario Testing */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-zinc-400">Scenario Testing</p>
+            <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+              Coming soon
+            </span>
+          </div>
+          <p className="text-xs text-zinc-500">
+            Ask Ben things like “What if I pay $200 extra on my card?” or “Can I afford a $150 subscription?” and see the impact instantly.
+          </p>
         </section>
 
         {/* Ben Persona */}
