@@ -9,41 +9,46 @@ export async function middleware(req: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession();
   const pathname = req.nextUrl.pathname;
 
-  // Public routes
+  // Fully public routes
   const publicRoutes = [
     "/",
     "/login",
     "/signup",
     "/auth/callback",
-    "/manifest.json",
   ];
 
+  // Allow public routes
   if (publicRoutes.includes(pathname)) {
-    return res;
-  }
-
-  // Allow all API routes
-  if (pathname.startsWith("/api")) {
     return res;
   }
 
   // Allow static assets
   if (
-    pathname.startsWith("/images") ||
-    pathname.startsWith("/public") ||
-    pathname.startsWith("/favicon") ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/static")
+    pathname.startsWith("/static") ||
+    pathname.startsWith("/public") ||
+    pathname.startsWith("/images") ||
+    pathname.startsWith("/favicon") ||
+    pathname.endsWith(".png") ||
+    pathname.endsWith(".jpg") ||
+    pathname.endsWith(".jpeg") ||
+    pathname.endsWith(".svg") ||
+    pathname.endsWith(".webp")
   ) {
     return res;
   }
 
-  // Require session
+  // Allow API routes
+  if (pathname.startsWith("/api")) {
+    return res;
+  }
+
+  // Require session for everything else
   if (!session) {
     return NextResponse.redirect(new URL("/signup", req.url));
   }
 
-  // Load profile
+  // Load profile for onboarding + premium gating
   const { data: profile } = await supabase
     .from("profiles")
     .select("onboarding_complete, is_premium")
@@ -66,8 +71,9 @@ export async function middleware(req: NextRequest) {
   return res;
 }
 
+// Matcher: run middleware ONLY on real app routes
 export const config = {
   matcher: [
-    "/((?!_next|static|public|favicon.ico|manifest.json|images|auth|login|signup|api).*)",
+    "/((?!_next|static|public|favicon.ico|manifest.json|images|api|auth|login|signup).*)",
   ],
 };
