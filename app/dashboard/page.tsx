@@ -7,14 +7,14 @@ type Bill = {
   id: string;
   name: string;
   amount: number;
-  due_day: number | null; // 1–31
+  due_day: number | null;
 };
 
 type Debt = {
   id: string;
   name: string;
   min_payment: number;
-  due_day: number | null; // 1–31
+  due_day: number | null;
 };
 
 type UpcomingItem = {
@@ -69,6 +69,7 @@ export default function DashboardPage() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
+      // --- FIXED: kind is now always a valid literal type ---
       const upcomingBills: UpcomingItem[] = billsSafe
         .filter((b) => b.due_day != null)
         .map((b) => {
@@ -186,8 +187,6 @@ export default function DashboardPage() {
             </section>
           </div>
         )}
-
-        {/* You can add charts / more panels below here */}
       </div>
 
       {showUpcomingModal && (
