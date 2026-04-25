@@ -29,7 +29,7 @@ export default function ForecastPage() {
 
       const userId = session.user.id;
 
-      // Load obligations
+      // Obligations
       const { data: obligations } = await supabase
         .from("obligations")
         .select("amount")
@@ -42,7 +42,7 @@ export default function ForecastPage() {
 
       setTotalNeeded(total || 0);
 
-      // Load income
+      // Income
       const { data: income } = await supabase
         .from("income")
         .select("amount")
@@ -82,59 +82,86 @@ export default function ForecastPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <BenBubble text="Crunching the numbers…" mood="witty" />
-        <p className="text-gray-400 mt-4">Loading your forecast…</p>
-      </div>
+      <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
+        <div className="mx-auto w-full max-w-5xl">
+          <BenBubble text="Crunching the numbers…" mood="witty" />
+          <p className="text-zinc-500 mt-4 text-sm">Loading your forecast…</p>
+        </div>
+      </main>
     );
   }
 
   if (!forecast) {
     return (
-      <div className="p-6">
-        <BenBubble
-          text="I could not gather enough data to forecast your month."
-          mood="stern"
-        />
-      </div>
+      <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
+        <div className="mx-auto w-full max-w-5xl">
+          <BenBubble
+            text="I couldn’t gather enough data to forecast your month."
+            mood="stern"
+          />
+        </div>
+      </main>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 pb-24">
-      {/* Ben Narrator */}
-      <BenBubble text={forecast.ben.text} mood={forecast.ben.mood} />
+    <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
+      <div className="mx-auto w-full max-w-5xl space-y-8 pb-24">
 
-      {/* Forecast Metrics */}
-      <div className="grid grid-cols-1 gap-4">
-        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-          <p className="text-gray-400 text-sm">Income Gap</p>
-          <p className="text-2xl font-semibold text-white">
-            ${forecast.incomeGap.toFixed(2)}
+        {/* Header */}
+        <header>
+          <h1 className="text-2xl font-semibold tracking-tight">Forecast</h1>
+          <p className="text-xs text-zinc-400">
+            Ben’s projection of your cashflow for the rest of the month.
           </p>
-        </div>
+        </header>
 
-        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-          <p className="text-gray-400 text-sm">Daily Income Needed</p>
-          <p className="text-2xl font-semibold text-white">
-            ${forecast.dailyIncomeNeeded.toFixed(2)}
-          </p>
-        </div>
+        {/* Ben Narration */}
+        <BenBubble text={forecast.ben.text} mood={forecast.ben.mood} />
 
-        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-          <p className="text-gray-400 text-sm">Status</p>
-          <p
-            className={`text-2xl font-semibold ${
-              forecast.projectedOnTrack ? "text-green-400" : "text-orange-400"
-            }`}
-          >
-            {forecast.projectedOnTrack ? "On Track" : "Behind"}
-          </p>
-        </div>
+        {/* Chart Placeholder */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-3">
+          <div className="text-xs font-semibold text-zinc-400">
+            30‑day cash trajectory
+          </div>
+          <div className="h-48 rounded-xl bg-zinc-950/60 border border-zinc-800 flex items-center justify-center text-xs text-zinc-500">
+            Chart coming soon
+          </div>
+        </section>
+
+        {/* Forecast Metrics */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 rounded-2xl bg-zinc-900/70 border border-zinc-800">
+            <p className="text-xs text-zinc-400">Income Gap</p>
+            <p className="text-2xl font-semibold text-white">
+              ${forecast.incomeGap.toFixed(2)}
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-zinc-900/70 border border-zinc-800">
+            <p className="text-xs text-zinc-400">Daily Income Needed</p>
+            <p className="text-2xl font-semibold text-white">
+              ${forecast.dailyIncomeNeeded.toFixed(2)}
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-zinc-900/70 border border-zinc-800">
+            <p className="text-xs text-zinc-400">Status</p>
+            <p
+              className={`text-2xl font-semibold ${
+                forecast.projectedOnTrack ? "text-emerald-400" : "text-orange-400"
+              }`}
+            >
+              {forecast.projectedOnTrack ? "On Track" : "Behind"}
+            </p>
+          </div>
+        </section>
+
+        {/* Ben Persona */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+          <BenPersona />
+        </section>
       </div>
-
-      {/* Floating AI Bubble */}
-      <BenPersona />
-    </div>
+    </main>
   );
 }
