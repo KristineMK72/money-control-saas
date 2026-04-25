@@ -69,7 +69,7 @@ export default function DashboardPage() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // --- FIXED: kind is now always a valid literal type ---
+      // ⭐ FIXED: kind is now a literal type, not a string
       const upcomingBills: UpcomingItem[] = billsSafe
         .filter((b) => b.due_day != null)
         .map((b) => {
@@ -77,7 +77,7 @@ export default function DashboardPage() {
           return {
             id: b.id,
             name: b.name,
-            kind: "bill",
+            kind: "bill" as const,
             amount: b.amount,
             dueDate,
           };
@@ -96,7 +96,7 @@ export default function DashboardPage() {
           return {
             id: d.id,
             name: d.name,
-            kind: "debt",
+            kind: "debt" as const,
             amount: d.min_payment,
             dueDate,
           };
