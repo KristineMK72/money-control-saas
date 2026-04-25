@@ -1,118 +1,66 @@
-import { createServerClient } from "@supabase/ssr";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import type { NextRequest } from "next/server";
 
 export async function middleware(req: NextRequest) {
-  // --- 1. INITIAL RESPONSE (required for Supabase SSR cookie hydration)
-  let response = NextResponse.next({
-    request: {
-      headers: req.headers,
-    },
-  });
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient({ req, res });
 
-  // --- 2. CREATE SUPABASE CLIENT (your original logic)
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return req.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => {
-            req.cookies.set(name, value);
-          });
+  const { data: { session } } = await supabase.auth.getSession();
 
-          response = NextResponse.next({
-            request: {
-              headers: req.headers,
-            },
-          });
+  const pathname = req.nextUrl.pathname;
 
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
-          });
-        },
-      },
-    }
-  );
-
-  // --- 3. HYDRATE SESSION
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const url = req.nextUrl.clone();
-  const path = url.pathname;
-
-  // --- 4. PUBLIC ROUTES (no auth required)
+  // Public routes that should NEVER be blocked
   const publicRoutes = [
     "/",
-    "/signup",
     "/login",
-    "/onboarding",
-    "/onboarding/guide",
-    "/upgrade",
-    "/api",
+    "/signup",
+    "/auth/callback",
+    "/manifest.json",
   ];
 
-  const isPublic = publicRoutes.some((p) => path.startsWith(p));
-
-  // --- 5. IF NOT LOGGED IN → ALLOW PUBLIC, REDIRECT PRIVATE
-  if (!user) {
-    if (!isPublic) {
-      url.pathname = "/signup";
-      return NextResponse.redirect(url);
-    }
-    return response;
+  // Allow public routes
+  if (publicRoutes.includes(pathname)) {
+    return res;
   }
 
-  // --- 6. ONBOARDING CHECK
+  // Allow all API routes (auth, webhooks, etc.)
+  if (pathname.startsWith("/api")) {
+    return res;
+  }
+
+  // If no session → redirect to signup
+  if (!session) {
+    return NextResponse.redirect(new URL("/signup", req.url));
+  }
+
+  // Load user profile for onboarding + premium gating
   const { data: profile } = await supabase
-    .from("user_profile")
-    .select("primary_stressor, primary_goal, ben_voice")
-    .eq("user_id", user.id)
-    .maybeSingle();
+    .from("profiles")
+    .select("onboarding_complete, is_premium")
+    .eq("id", session.user.id)
+    .single();
 
-  const onboardingComplete =
-    profile?.primary_stressor &&
-    profile?.primary_goal &&
-    profile?.ben_voice;
-
-  if (!onboardingComplete && !path.startsWith("/onboarding")) {
-    url.pathname = "/onboarding";
-    return NextResponse.redirect(url);
+  // If onboarding incomplete → force onboarding
+  if (!profile?.onboarding_complete && !pathname.startsWith("/onboarding")) {
+    return NextResponse.redirect(new URL("/onboarding/start", req.url));
   }
 
-  // --- 7. PREMIUM GATING
+  // Premium gating
   const premiumRoutes = ["/forecast", "/analytics", "/chat/premium"];
 
-  const isPremiumRoute = premiumRoutes.some((p) =>
-    path.startsWith(p)
-  );
-
-  if (isPremiumRoute) {
-    const { data: sub } = await supabase
-      .from("user_subscriptions")
-      .select("status")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const active = sub?.status === "active";
-
-    if (!active) {
-      url.pathname = "/upgrade";
-      return NextResponse.redirect(url);
+  if (premiumRoutes.some((route) => pathname.startsWith(route))) {
+    if (!profile?.is_premium) {
+      return NextResponse.redirect(new URL("/upgrade", req.url));
     }
   }
 
-  // --- 8. DEFAULT: ALLOW REQUEST
-  return response;
+  return res;
 }
 
-// --- 9. MATCHER (same as your original)
+// Matcher: run middleware on everything EXCEPT auth, login, signup, static files, and API
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next|static|favicon.ico|manifest.json|auth|login|signup|api).*)",
   ],
 };
