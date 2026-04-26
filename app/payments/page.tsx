@@ -11,9 +11,7 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
 
-  const [date, setDate] = useState(
-    new Date().toISOString().slice(0, 10)
-  );
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
@@ -25,7 +23,7 @@ export default function PaymentsPage() {
   const [selectedBillId, setSelectedBillId] = useState(null);
 
   /* ─────────────────────────────
-     LOAD DEBTS, BILLS, HISTORY
+     LOAD INITIAL DATA
   ───────────────────────────── */
   useEffect(() => {
     loadInitial();
@@ -87,10 +85,17 @@ export default function PaymentsPage() {
       return;
     }
 
+    // Auto-fill merchant if blank
+    const billName = bills.find((b) => b.id === selectedBillId)?.name;
+    const debtName = debts.find((d) => d.id === selectedDebtId)?.name;
+
+    const merchantToSave =
+      merchant.trim() !== "" ? merchant : billName || debtName || null;
+
     const { error } = await supabase.from("payments").insert({
       user_id: userId,
       date_iso: date,
-      merchant: merchant || null,
+      merchant: merchantToSave,
       amount: Number(amount),
       note: note || null,
       debt_id: selectedDebtId || null,
@@ -128,7 +133,7 @@ export default function PaymentsPage() {
         <header>
           <h1 className="text-2xl font-semibold tracking-tight">Add Payment</h1>
           <p className="text-xs text-zinc-400">
-            Track payments toward debts or bills.
+            Log payments toward debts or bills.
           </p>
         </header>
 
