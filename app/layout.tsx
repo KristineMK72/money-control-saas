@@ -1,7 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import LogoutButton from "@/components/LogoutButton";
-import BenPersona from "@/components/BenPersona";
 import UserGreeting from "@/components/UserGreeting";
 import InstallBanner from "@/components/InstallBanner";
 import { SupabaseProvider } from "@/lib/supabase/provider";
@@ -46,13 +45,7 @@ export const viewport: Viewport = {
   themeColor: "#0f172a",
 };
 
-function NavLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
+function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <a
       href={href}
@@ -73,11 +66,7 @@ function NavLink({
   );
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body
@@ -176,8 +165,6 @@ export default function RootLayout({
                 <LogoutButton />
               </div>
             </div>
-
-            <BenPersona />
           </header>
 
           <main>{children}</main>
