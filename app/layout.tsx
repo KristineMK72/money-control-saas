@@ -8,6 +8,7 @@ import LogoutButton from "@/components/LogoutButton";
 import UserGreeting from "@/components/UserGreeting";
 import InstallBanner from "@/components/InstallBanner";
 import { SupabaseProvider } from "@/lib/supabase/provider";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
@@ -49,15 +50,9 @@ export const viewport: Viewport = {
   themeColor: "#0f172a",
 };
 
-function NavLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
+function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <a
+    <Link
       href={href}
       style={{
         padding: "8px 14px",
@@ -72,15 +67,11 @@ function NavLink({
       }}
     >
       {children}
-    </a>
+    </Link>
   );
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body
@@ -114,6 +105,7 @@ export default function RootLayout({
                 flexWrap: "wrap",
               }}
             >
+              {/* LEFT SIDE — LOGO + GREETING */}
               <div
                 style={{
                   display: "flex",
@@ -157,6 +149,7 @@ export default function RootLayout({
                 <UserGreeting />
               </div>
 
+              {/* RIGHT SIDE — NAVIGATION */}
               <div
                 style={{
                   display: "flex",
@@ -175,7 +168,11 @@ export default function RootLayout({
                 <NavLink href="/payments">Payments</NavLink>
                 <NavLink href="/forecast">Forecast</NavLink>
                 <NavLink href="/chat">Ask Ben</NavLink>
-                <NavLink href="/signup">Signup / Login</NavLink>
+
+                {/* AUTH LINKS */}
+                <NavLink href="/signup">Signup</NavLink>
+                <NavLink href="/login">Login</NavLink>
+
                 <LogoutButton />
               </div>
             </div>
