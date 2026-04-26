@@ -6,13 +6,59 @@ import BenBubble from "@/components/BenBubble";
 import BenPersona from "@/components/BenPersona";
 import { getForecast } from "@/lib/ben/forecast";
 
+type ForecastResult = {
+  ben: { text: string; mood: string };
+  projectedOnTrack: boolean;
+  incomeGap: number;
+  dailyIncomeNeeded: number;
+};
+
+type Bill = {
+  id: string;
+  user_id: string;
+  amount: number | null;
+  target: number | null;
+  monthly_target: number | null;
+  min_payment: number | null;
+};
+
+type Debt = {
+  id: string;
+  user_id: string;
+  min_payment: number | null;
+};
+
+type IncomeEntry = {
+  id: string;
+  user_id: string;
+  amount: number;
+  date_iso: string | null;
+  received_on: string | null;
+  created_at: string;
+};
+
+function getMonthlyBillAmount(bill: Bill) {
+  if (bill.target && bill.target > 0) return bill.target;
+  if (bill.monthly_target && bill.monthly_target > 0) return bill.monthly_target;
+  if (bill.min_payment && bill.min_payment > 0) return bill.min_payment;
+  if (bill.amount && bill.amount > 0) return bill.amount;
+  return 0;
+}
+
+function isSameMonth(d: Date, ref: Date) {
+  return d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth();
+}
+
 export default function ForecastPage() {
   const supabase = createClientComponentClient();
 
   const [loading, setLoading] = useState(true);
   const [totalNeeded, setTotalNeeded] = useState(0);
   const [incomeSoFar, setIncomeSoFar] = useState(0);
-  const [forecast, setForecast] = useState(null);
+  const [forecast, setForecast] = useState<ForecastResult | null>(null);
+  const [timeframe, setTimeframe] = useState<"day" | "week" | "month" | "year">(
+    "month"
+  );
 
   useEffect(() => {
     async function loadData() {
@@ -28,35 +74,57 @@ export default function ForecastPage() {
       }
 
       const userId = session.user.id;
+      const today = new Date();
 
-      // Obligations
-      const { data: obligations } = await supabase
-        .from("obligations")
-        .select("amount")
+      // Bills
+      const { data: bills } = await supabase
+        .from("bills")
+        .select("amount,target,monthly_target,min_payment,user_id")
         .eq("user_id", userId);
 
-      const total = obligations?.reduce(
-        (sum, item) => sum + (item.amount || 0),
+      const billsSafe = (bills || []) as Bill[];
+      const billsTotal = billsSafe.reduce(
+        (sum, b) => sum + getMonthlyBillAmount(b),
         0
       );
 
-      setTotalNeeded(total || 0);
+      // Debts
+      const { data: debts } = await supabase
+        .from("debts")
+        .select("min_payment,user_id")
+        .eq("user_id", userId);
 
-      // Income
+      const debtsSafe = (debts || []) as Debt[];
+      const debtMinTotal = debtsSafe.reduce(
+        (sum, d) => sum + (d.min_payment || 0),
+        0
+      );
+
+      const totalObligations = billsTotal + debtMinTotal;
+      setTotalNeeded(totalObligations);
+
+      // Income (this month so far)
       const { data: income } = await supabase
-        .from("income")
-        .select("amount")
+        .from("income_entries")
+        .select("amount,date_iso,received_on,created_at,user_id")
         .eq("user_id", userId);
 
-      const incomeTotal = income?.reduce(
-        (sum, item) => sum + (item.amount || 0),
-        0
-      );
+      const incomeSafe = (income || []) as IncomeEntry[];
+      const incomeTotal = incomeSafe.reduce((sum, i) => {
+        const date =
+          (i.date_iso && new Date(i.date_iso)) ||
+          (i.received_on && new Date(i.received_on)) ||
+          new Date(i.created_at);
 
-      setIncomeSoFar(incomeTotal || 0);
+        if (!isNaN(date.getTime()) && isSameMonth(date, today)) {
+          return sum + (i.amount || 0);
+        }
+        return sum;
+      }, 0);
+
+      setIncomeSoFar(incomeTotal);
 
       // Forecast math
-      const today = new Date();
       const daysElapsed = today.getDate();
       const daysTotal = new Date(
         today.getFullYear(),
@@ -66,19 +134,27 @@ export default function ForecastPage() {
 
       const result = getForecast({
         name: null,
-        timeframeLabel: "Forecast",
-        totalNeeded: total || 0,
-        incomeSoFar: incomeTotal || 0,
+        timeframeLabel:
+          timeframe === "day"
+            ? "Daily Forecast"
+            : timeframe === "week"
+            ? "Weekly Forecast"
+            : timeframe === "year"
+            ? "Year Forecast"
+            : "Forecast",
+        totalNeeded: totalObligations,
+        incomeSoFar: incomeTotal,
         daysElapsed,
         daysTotal,
-      });
+      }) as ForecastResult;
 
       setForecast(result);
       setLoading(false);
     }
 
     loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeframe]);
 
   if (loading) {
     return (
@@ -104,7 +180,6 @@ export default function ForecastPage() {
     );
   }
 
-  // Month Health Score (simple version)
   const healthScore = (() => {
     let score = 100;
 
@@ -115,16 +190,70 @@ export default function ForecastPage() {
     return Math.max(0, Math.round(score));
   })();
 
+  const chartLabel =
+    timeframe === "day"
+      ? "Next 7 days cash trajectory"
+      : timeframe === "week"
+      ? "Next 12 weeks cash trajectory"
+      : timeframe === "year"
+      ? "12‑month cash trajectory"
+      : "30‑day cash trajectory";
+
   return (
     <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
       <div className="mx-auto w-full max-w-5xl space-y-10 pb-24">
-
         {/* Header */}
-        <header>
-          <h1 className="text-2xl font-semibold tracking-tight">Forecast</h1>
-          <p className="text-xs text-zinc-400">
-            Ben’s projection of your cashflow for the rest of the month.
-          </p>
+        <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Forecast</h1>
+            <p className="text-xs text-zinc-400">
+              Ben’s projection of your cashflow and obligations for the rest of
+              the month.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px]">
+            <button
+              onClick={() => setTimeframe("day")}
+              className={`rounded-full px-3 py-1 border ${
+                timeframe === "day"
+                  ? "border-emerald-400 bg-emerald-400/10 text-emerald-300"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-400"
+              }`}
+            >
+              Day
+            </button>
+            <button
+              onClick={() => setTimeframe("week")}
+              className={`rounded-full px-3 py-1 border ${
+                timeframe === "week"
+                  ? "border-emerald-400 bg-emerald-400/10 text-emerald-300"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-400"
+              }`}
+            >
+              Week
+            </button>
+            <button
+              onClick={() => setTimeframe("month")}
+              className={`rounded-full px-3 py-1 border ${
+                timeframe === "month"
+                  ? "border-emerald-400 bg-emerald-400/10 text-emerald-300"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-400"
+              }`}
+            >
+              Month
+            </button>
+            <button
+              onClick={() => setTimeframe("year")}
+              className={`rounded-full px-3 py-1 border ${
+                timeframe === "year"
+                  ? "border-emerald-400 bg-emerald-400/10 text-emerald-300"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-400"
+              }`}
+            >
+              Year
+            </button>
+          </div>
         </header>
 
         {/* Ben Narration */}
@@ -133,26 +262,27 @@ export default function ForecastPage() {
         {/* Chart */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
           <div className="text-xs font-semibold text-zinc-400">
-            30‑day cash trajectory
+            {chartLabel}
           </div>
           <div className="h-48 rounded-xl bg-zinc-950/60 border border-zinc-800 flex items-center justify-center text-xs text-zinc-500">
-            Chart coming soon
+            Chart coming soon — this is where we’ll plot your projected balance
+            over time for the selected timeframe.
           </div>
         </section>
 
         {/* Metrics */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 rounded-2xl bg-zinc-900/70 border border-zinc-800">
-            <p className="text-xs text-zinc-400">Income Gap</p>
+            <p className="text-xs text-zinc-400">Total Obligations (Bills + Min)</p>
             <p className="text-2xl font-semibold text-white">
-              ${forecast.incomeGap.toFixed(2)}
+              ${totalNeeded.toFixed(2)}
             </p>
           </div>
 
           <div className="p-4 rounded-2xl bg-zinc-900/70 border border-zinc-800">
-            <p className="text-xs text-zinc-400">Daily Income Needed</p>
+            <p className="text-xs text-zinc-400">Income So Far (This Month)</p>
             <p className="text-2xl font-semibold text-white">
-              ${forecast.dailyIncomeNeeded.toFixed(2)}
+              ${incomeSoFar.toFixed(2)}
             </p>
           </div>
 
@@ -173,7 +303,8 @@ export default function ForecastPage() {
           <p className="text-xs text-zinc-400">Month Health Score</p>
           <p className="text-4xl font-bold text-white">{healthScore}</p>
           <p className="text-xs text-zinc-500">
-            A quick read on how manageable this month looks.
+            A quick read on how manageable this month looks based on your
+            obligations and income pace.
           </p>
         </section>
 
@@ -185,7 +316,10 @@ export default function ForecastPage() {
               <li>• You’re short ${forecast.incomeGap.toFixed(2)} this month.</li>
             )}
             {forecast.dailyIncomeNeeded > 50 && (
-              <li>• Daily needed income is unusually high — consider smoothing expenses.</li>
+              <li>
+                • Daily needed income is unusually high — consider smoothing
+                expenses or pulling income forward.
+              </li>
             )}
             {forecast.projectedOnTrack && (
               <li>• You’re pacing well — keep your current rhythm.</li>
@@ -203,7 +337,9 @@ export default function ForecastPage() {
             </span>
           </div>
           <p className="text-xs text-zinc-500">
-            Ask Ben things like “What if I pay $200 extra on my card?” or “Can I afford a $150 subscription?” and see the impact instantly.
+            Ask Ben things like “What if I pay $200 extra on my card?” or “Can I
+            afford a $150 subscription?” and see the impact instantly. We’ll wire
+            this into the same forecast engine you’re seeing above.
           </p>
         </section>
 
