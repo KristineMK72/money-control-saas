@@ -9,7 +9,7 @@ export async function middleware(req: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession();
   const pathname = req.nextUrl.pathname;
 
-  // Public routes
+  // PUBLIC ROUTES (no auth required)
   const publicRoutes = [
     "/",
     "/login",
@@ -21,7 +21,7 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // Static assets
+  // STATIC ASSETS
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/static") ||
@@ -37,24 +37,24 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // API routes
+  // API ROUTES
   if (pathname.startsWith("/api")) {
     return res;
   }
 
-  // Require session
+  // REQUIRE SESSION FOR APP ROUTES
   if (!session) {
     return NextResponse.redirect(new URL("/signup", req.url));
   }
 
-  // Load profile
+  // LOAD PROFILE
   const { data: profile } = await supabase
     .from("profiles")
     .select("onboarding_complete, is_premium")
     .eq("id", session.user.id)
     .single();
 
-  // If no profile exists → send to onboarding
+  // NO PROFILE → SEND TO ONBOARDING
   if (!profile) {
     if (!pathname.startsWith("/onboarding")) {
       return NextResponse.redirect(new URL("/onboarding", req.url));
@@ -62,13 +62,18 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // Onboarding gating
+  // ONBOARDING GATING
   if (!profile.onboarding_complete && !pathname.startsWith("/onboarding")) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
-  // Premium gating
-  const premiumRoutes = ["/forecast", "/analytics", "/chat/premium"];
+  // PREMIUM ROUTES ONLY
+  const premiumRoutes = [
+    "/forecast",
+    "/analytics",
+    "/chat/premium",
+  ];
+
   if (premiumRoutes.some((route) => pathname.startsWith(route))) {
     if (!profile.is_premium) {
       return NextResponse.redirect(new URL("/upgrade", req.url));
@@ -80,6 +85,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next|static|public|favicon.ico|manifest.json|images|api|auth|login|signup).*)",
+    "/((?!_next|static|public|favicon.ico|manifest.json|images|api|auth|login|signup|$).*)",
   ],
 };
