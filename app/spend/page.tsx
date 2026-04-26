@@ -27,7 +27,7 @@ type SpendRow = {
 };
 
 /* ─────────────────────────────
-   SINGLE SOURCE OF TRUTH
+   CATEGORY CONSTANTS
 ──────────────────────────── */
 
 const categories: SpendCategory[] = [
@@ -91,7 +91,7 @@ function DonutChart({
         cy={size / 2}
         r={radius}
         fill="none"
-        stroke="rgba(0,0,0,0.08)"
+        stroke="rgba(255,255,255,0.06)"
         strokeWidth={stroke}
       />
 
@@ -124,7 +124,7 @@ function DonutChart({
         textAnchor="middle"
         fontSize="16"
         fontWeight="800"
-        fill="currentColor"
+        fill="white"
       >
         ${total.toFixed(2)}
       </text>
@@ -305,44 +305,159 @@ export default function SpendPage() {
   /* ───────── UI ───────── */
 
   return (
-    <main className="p-6 max-w-5xl mx-auto">
-      <h1 className="text-3xl font-bold">Spend</h1>
+    <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
+      <div className="mx-auto max-w-5xl space-y-8">
+        <h1 className="text-3xl font-bold tracking-tight">Spend</h1>
 
-      {message && <p className="text-red-500">{message}</p>}
+        {message && <p className="text-red-400">{message}</p>}
 
-      {/* FORM */}
-      <div className="grid gap-2 mt-6">
-        <input value={merchant} onChange={(e) => setMerchant(e.target.value)} placeholder="Merchant" />
-        <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" />
-        <select value={category} onChange={(e) => setCategory(e.target.value as SpendCategory)}>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {CATEGORY_LABEL[c]}
-            </option>
-          ))}
-        </select>
+        {/* FORM */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-3">
+          <h2 className="text-lg font-semibold">Add spending</h2>
 
-        <button onClick={handleAddSpend} disabled={saving}>
-          Add
-        </button>
-      </div>
+          <div className="grid gap-3 md:grid-cols-4">
+            <input
+              value={merchant}
+              onChange={(e) => setMerchant(e.target.value)}
+              placeholder="Merchant"
+              className="rounded-lg bg-zinc-800 px-3 py-2 text-sm"
+            />
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Amount"
+              className="rounded-lg bg-zinc-800 px-3 py-2 text-sm"
+            />
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as SpendCategory)}
+              className="rounded-lg bg-zinc-800 px-3 py-2 text-sm"
+            >
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {CATEGORY_LABEL[c]}
+                </option>
+              ))}
+            </select>
 
-      {/* CHART */}
-      <div className="mt-10">
-        <DonutChart values={chart} />
-      </div>
-
-      {/* LIST */}
-      <div className="mt-10">
-        {entries.map((e) => (
-          <div key={e.id} className="flex justify-between border p-2">
-            <div>
-              {e.merchant} — {CATEGORY_LABEL[e.category]}
-            </div>
-            <div>${e.amount}</div>
-            <button onClick={() => handleDelete(e.id)}>X</button>
+            <button
+              onClick={handleAddSpend}
+              disabled={saving}
+              className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold hover:bg-emerald-500"
+            >
+              Add
+            </button>
           </div>
-        ))}
+        </section>
+
+        {/* OCR IMPORT */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-4">
+          <h2 className="text-lg font-semibold">Import from screenshot</h2>
+
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+            className="text-sm"
+          />
+
+          <button
+            onClick={handleOCR}
+            disabled={!imageFile || ocrBusy}
+            className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500"
+          >
+            {ocrBusy ? "Processing…" : "Run OCR"}
+          </button>
+
+          {foundTxns.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-zinc-300">
+                Found transactions
+              </h3>
+
+              {foundTxns.map((t, i) => (
+                <label
+                  key={i}
+                  className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-sm"
+                >
+                  <div>
+                    <div className="font-medium">{t.merchant}</div>
+                    <div className="text-xs text-zinc-500">
+                      ${t.amount.toFixed(2)}
+                    </div>
+                  </div>
+
+                  <input
+                    type="checkbox"
+                    checked={selectedTxns[i]}
+                    onChange={(e) =>
+                      setSelectedTxns((prev) => ({
+                        ...prev,
+                        [i]: e.target.checked,
+                      }))
+                    }
+                  />
+                </label>
+              ))}
+
+              <button
+                onClick={importSelected}
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold hover:bg-emerald-500"
+              >
+                Import selected
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* CHART + CATEGORY TOTALS */}
+        <section className="grid gap-6 md:grid-cols-2">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 flex justify-center">
+            <DonutChart values={chart} />
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-2">
+            <h2 className="text-lg font-semibold">Totals by category</h2>
+            {chart.map((c) => (
+              <div
+                key={c.label}
+                className="flex items-center justify-between text-sm"
+              >
+                <span className="text-zinc-300">{c.label}</span>
+                <span className="text-zinc-100">${c.value.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* LIST */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-3">
+          <h2 className="text-lg font-semibold">Recent spend</h2>
+
+          {entries.map((e) => (
+            <div
+              key={e.id}
+              className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-sm"
+            >
+              <div>
+                <div className="font-medium">{e.merchant}</div>
+                <div className="text-xs text-zinc-500">
+                  {CATEGORY_LABEL[e.category]}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <span className="text-zinc-100">${e.amount.toFixed(2)}</span>
+                <button
+                  onClick={() => handleDelete(e.id)}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </section>
       </div>
     </main>
   );
