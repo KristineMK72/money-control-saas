@@ -9,25 +9,18 @@ export async function middleware(req: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession();
   const pathname = req.nextUrl.pathname;
 
-  // PUBLIC ROUTES (no auth required)
-  const publicRoutes = [
-    "/",
-    "/login",
-    "/signup",
-    "/auth/callback",
-  ];
+  // PUBLIC ROUTES
+  const publicRoutes = ["/", "/login", "/signup", "/auth/callback"];
+  if (publicRoutes.includes(pathname)) return res;
 
-  if (publicRoutes.includes(pathname)) {
-    return res;
-  }
-
-  // STATIC ASSETS
+  // STATIC + API
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/static") ||
     pathname.startsWith("/public") ||
     pathname.startsWith("/images") ||
     pathname.startsWith("/favicon") ||
+    pathname.startsWith("/api") ||
     pathname.endsWith(".png") ||
     pathname.endsWith(".jpg") ||
     pathname.endsWith(".jpeg") ||
@@ -37,24 +30,19 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // API ROUTES
-  if (pathname.startsWith("/api")) {
-    return res;
-  }
-
-  // REQUIRE SESSION FOR APP ROUTES
+  // REQUIRE LOGIN
   if (!session) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // LOAD PROFILE (supports both id and user_id columns)
+  // LOAD PROFILE (bulletproof)
   const { data: profile } = await supabase
     .from("profiles")
-    .select("onboarding_complete, is_premium")
+    .select("*")
     .or(`id.eq.${session.user.id},user_id.eq.${session.user.id}`)
-    .single();
+    .maybeSingle();
 
-  // NO PROFILE → SEND TO ONBOARDING
+  // NO PROFILE → ONBOARDING
   if (!profile) {
     if (!pathname.startsWith("/onboarding")) {
       return NextResponse.redirect(new URL("/onboarding", req.url));
