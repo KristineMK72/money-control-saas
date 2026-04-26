@@ -1,4 +1,3 @@
-// /app/signup/page.tsx
 "use client";
 
 import { useSearchParams } from "next/navigation";
@@ -7,11 +6,11 @@ export default function SignupPage() {
   const searchParams = useSearchParams();
   const plan = searchParams.get("plan") || "monthly";
 
+  const isMonthly = plan === "monthly";
+
   const handleCheckout = () => {
     window.open(`/api/create-checkout-session?plan=${plan}`, "_blank");
   };
-
-  const isMonthly = plan === "monthly";
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-10">
