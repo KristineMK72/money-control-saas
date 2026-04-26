@@ -1,3 +1,7 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import LogoutButton from "@/components/LogoutButton";
@@ -45,7 +49,13 @@ export const viewport: Viewport = {
   themeColor: "#0f172a",
 };
 
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+function NavLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
   return (
     <a
       href={href}
@@ -66,7 +76,11 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
   );
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body
