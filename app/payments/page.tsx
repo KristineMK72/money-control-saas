@@ -1,356 +1,274 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
-/* ---------------- TYPES ---------------- */
-
-type PaymentRow = {
-  id: string;
-  user_id: string;
-  date_iso: string;
-  merchant: string | null;
-  amount: number;
-  note: string | null;
-  created_at: string;
-  debt_id: string | null;
-  bill_id: string | null;
-};
-
-type DebtRow = {
-  id: string;
-  name: string;
-  remaining_balance: number | null;
-};
-
-type BillRow = {
-  id: string;
-  name: string;
-  target: number;
-};
-
-/* ---------------- HELPERS ---------------- */
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/* ---------------- PAGE ---------------- */
+import { useEffect, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import BenBubble from "@/components/BenBubble";
+import BenPersona from "@/components/BenPersona";
 
 export default function PaymentsPage() {
-  const supabase = createSupabaseBrowserClient();
-  const router = useRouter();
+  const supabase = createClientComponentClient();
 
-  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState([]);
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-
-  const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [debts, setDebts] = useState<DebtRow[]>([]);
-  const [bills, setBills] = useState<BillRow[]>([]);
-
-  const [dateISO, setDateISO] = useState(todayISO());
+  const [date, setDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
 
-  const [payType, setPayType] = useState<"debt" | "bill">("debt");
-  const [debtId, setDebtId] = useState("");
-  const [billId, setBillId] = useState("");
+  const [debts, setDebts] = useState([]);
+  const [bills, setBills] = useState([]);
 
-  /* ---------------- INIT ---------------- */
+  const [selectedDebtId, setSelectedDebtId] = useState(null);
+  const [selectedBillId, setSelectedBillId] = useState(null);
 
+  /* ─────────────────────────────
+     LOAD DEBTS, BILLS, HISTORY
+  ───────────────────────────── */
   useEffect(() => {
-    init();
+    loadInitial();
   }, []);
 
-  async function init() {
-    setLoading(true);
-    setMessage("");
+  async function loadInitial() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-    const { data, error } = await supabase.auth.getSession();
+    if (!session?.user) return;
+
+    const userId = session.user.id;
+
+    const [{ data: debtsData }, { data: billsData }, { data: paymentsData }] =
+      await Promise.all([
+        supabase.from("debts").select("*").eq("user_id", userId),
+        supabase.from("bills").select("*").eq("user_id", userId),
+        supabase
+          .from("payments")
+          .select("*")
+          .eq("user_id", userId)
+          .order("date_iso", { ascending: false }),
+      ]);
+
+    setDebts(debtsData || []);
+    setBills(billsData || []);
+    setHistory(paymentsData || []);
+  }
+
+  /* ─────────────────────────────
+     ADD PAYMENT
+  ───────────────────────────── */
+  async function handleAddPayment() {
+    setLoading(true);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.user) {
+      alert("You must be logged in.");
+      setLoading(false);
+      return;
+    }
+
+    const userId = session.user.id;
+
+    // Validate
+    if (!amount || Number(amount) <= 0) {
+      alert("Enter a valid amount.");
+      setLoading(false);
+      return;
+    }
+
+    if (!selectedDebtId && !selectedBillId) {
+      alert("Select a debt or bill.");
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.from("payments").insert({
+      user_id: userId,
+      date_iso: date,
+      merchant: merchant || null,
+      amount: Number(amount),
+      note: note || null,
+      debt_id: selectedDebtId || null,
+      bill_id: selectedBillId || null,
+    });
 
     if (error) {
-      setMessage(error.message);
+      console.error("Payment insert error:", error);
+      alert("Error saving payment: " + error.message);
       setLoading(false);
       return;
     }
 
-    const user = data.session?.user;
+    // Refresh history
+    await loadInitial();
 
-    if (!user) {
-      setMessage("Please log in.");
-      setLoading(false);
-      return;
-    }
-
-    setUserId(user.id);
-
-    await Promise.all([
-      loadPayments(user.id),
-      loadDebts(user.id),
-      loadBills(user.id),
-    ]);
+    // Reset form
+    setMerchant("");
+    setAmount("");
+    setNote("");
+    setSelectedDebtId(null);
+    setSelectedBillId(null);
 
     setLoading(false);
   }
 
-  /* ---------------- LOADERS ---------------- */
-
-  async function loadPayments(uid: string) {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("user_id", uid)
-      .order("date_iso", { ascending: false });
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setPayments((data as PaymentRow[]) || []);
-  }
-
-  async function loadDebts(uid: string) {
-    const { data, error } = await supabase
-      .from("debt_status")
-      .select("id, name, remaining_balance")
-      .eq("user_id", uid)
-      .order("name");
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setDebts((data as DebtRow[]) || []);
-  }
-
-  async function loadBills(uid: string) {
-    const { data, error } = await supabase
-      .from("bills")
-      .select("id, name, target")
-      .eq("user_id", uid)
-      .order("name");
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setBills((data as BillRow[]) || []);
-  }
-
-  async function refreshPayments() {
-    if (!userId) return;
-    await loadPayments(userId);
-  }
-
-  /* ---------------- ADD PAYMENT ---------------- */
-
-  async function handleAddPayment() {
-    setMessage("");
-
-    if (!userId) return;
-
-    const amt = Number(amount);
-
-    if (!merchant.trim() || !Number.isFinite(amt) || amt <= 0) {
-      setMessage("Enter valid name + amount.");
-      return;
-    }
-
-    if (payType === "debt" && !debtId) {
-      setMessage("Select a debt.");
-      return;
-    }
-
-    if (payType === "bill" && !billId) {
-      setMessage("Select a bill.");
-      return;
-    }
-
-    try {
-      setSaving(true);
-
-      const { error } = await supabase.from("payments").insert({
-        user_id: userId,
-        date_iso: dateISO,
-        amount: amt,
-        merchant: merchant.trim(),
-        note: note.trim() || null,
-        debt_id: payType === "debt" ? debtId : null,
-        bill_id: payType === "bill" ? billId : null,
-      });
-
-      if (error) throw error;
-
-      // reset form
-      setMerchant("");
-      setAmount("");
-      setNote("");
-      setDebtId("");
-      setBillId("");
-      setPayType("debt");
-      setDateISO(todayISO());
-
-      await refreshPayments();
-      setMessage("Payment added.");
-
-    } catch (err: any) {
-      setMessage(err.message || "Failed to add payment.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  /* ---------------- TOTAL ---------------- */
-
-  const total = useMemo(() => {
-    return payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  }, [payments]);
-
-  /* ---------------- UI ---------------- */
-
-  if (loading) {
-    return <div className="p-6 text-white">Loading...</div>;
-  }
-
+  /* ─────────────────────────────
+     UI
+  ───────────────────────────── */
   return (
-    <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto max-w-5xl px-6 py-10">
+    <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
+      <div className="mx-auto w-full max-w-4xl space-y-10 pb-24">
 
-        <h1 className="text-4xl font-black">Payments</h1>
+        {/* Header */}
+        <header>
+          <h1 className="text-2xl font-semibold tracking-tight">Add Payment</h1>
+          <p className="text-xs text-zinc-400">
+            Track payments toward debts or bills.
+          </p>
+        </header>
 
-        {message && (
-          <div className="mt-4 rounded-xl bg-emerald-500/10 p-3 text-emerald-300">
-            {message}
-          </div>
-        )}
+        {/* Ben */}
+        <BenBubble
+          text="Let’s log your payment and keep your month on track."
+          mood="encouraging"
+        />
 
-        <div className="mt-4 text-2xl font-bold">
-          Total: ${total.toFixed(2)}
-        </div>
+        {/* Form */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
 
-        <div className="mt-10 grid gap-6 md:grid-cols-2">
-
-          {/* FORM */}
-          <div className="rounded-2xl bg-white p-5 text-black">
-
-            <h2 className="text-xl font-bold">Add Payment</h2>
-
+          {/* Date */}
+          <div className="flex flex-col space-y-1">
+            <label className="text-xs text-zinc-400">Date</label>
             <input
               type="date"
-              value={dateISO}
-              onChange={(e) => setDateISO(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm"
             />
+          </div>
 
+          {/* Merchant */}
+          <div className="flex flex-col space-y-1">
+            <label className="text-xs text-zinc-400">What did you pay?</label>
             <input
-              placeholder="What did you pay?"
+              type="text"
               value={merchant}
               onChange={(e) => setMerchant(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
+              placeholder="e.g., Capital One"
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm"
             />
+          </div>
 
+          {/* Amount */}
+          <div className="flex flex-col space-y-1">
+            <label className="text-xs text-zinc-400">Amount</label>
             <input
               type="number"
-              placeholder="Amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
+              placeholder="0.00"
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm"
             />
+          </div>
 
-            {/* TYPE */}
+          {/* Debt */}
+          <div className="flex flex-col space-y-1">
+            <label className="text-xs text-zinc-400">Debt</label>
             <select
-              value={payType}
+              value={selectedDebtId || ""}
               onChange={(e) => {
-                setPayType(e.target.value as "debt" | "bill");
-                setDebtId("");
-                setBillId("");
+                setSelectedDebtId(e.target.value || null);
+                setSelectedBillId(null);
               }}
-              className="mt-3 w-full border p-2 rounded"
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm"
             >
-              <option value="debt">Debt</option>
-              <option value="bill">Bill</option>
+              <option value="">Select debt</option>
+              {debts.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
             </select>
+          </div>
 
-            {/* DEBT DROPDOWN */}
-            {payType === "debt" && (
-              <select
-                value={debtId}
-                onChange={(e) => setDebtId(e.target.value)}
-                className="mt-3 w-full border p-2 rounded"
-              >
-                <option value="">Select debt</option>
-                {debts.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            )}
+          {/* Bill */}
+          <div className="flex flex-col space-y-1">
+            <label className="text-xs text-zinc-400">Bill</label>
+            <select
+              value={selectedBillId || ""}
+              onChange={(e) => {
+                setSelectedBillId(e.target.value || null);
+                setSelectedDebtId(null);
+              }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Select bill</option>
+              {bills.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            {/* BILL DROPDOWN */}
-            {payType === "bill" && (
-              <select
-                value={billId}
-                onChange={(e) => setBillId(e.target.value)}
-                className="mt-3 w-full border p-2 rounded"
-              >
-                <option value="">Select bill</option>
-                {bills.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} — ${b.target}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <textarea
-              placeholder="Note"
+          {/* Note */}
+          <div className="flex flex-col space-y-1">
+            <label className="text-xs text-zinc-400">Note</label>
+            <input
+              type="text"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
+              placeholder="Optional"
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm"
             />
-
-            <button
-              onClick={handleAddPayment}
-              disabled={saving}
-              className="mt-4 w-full bg-black text-white p-3 rounded"
-            >
-              {saving ? "Saving..." : "Add Payment"}
-            </button>
-
           </div>
 
-          {/* HISTORY */}
-          <div className="rounded-2xl bg-white p-5 text-black">
+          {/* Button */}
+          <button
+            onClick={handleAddPayment}
+            disabled={loading}
+            className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-semibold py-2 text-sm"
+          >
+            {loading ? "Saving..." : "Add Payment"}
+          </button>
+        </section>
 
-            <h2 className="text-xl font-bold">History</h2>
+        {/* History */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-zinc-300">History</h2>
 
-            {payments.length === 0 ? (
-              <p className="mt-3">No payments yet.</p>
-            ) : (
-              payments.map((p) => (
-                <div key={p.id} className="border-b py-2">
-                  <div className="font-semibold">
-                    {p.merchant} — ${p.amount}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    {p.date_iso}
+          {history.length === 0 ? (
+            <p className="text-xs text-zinc-500">No payments yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {history.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2"
+                >
+                  <div>
+                    <div className="text-sm text-white">
+                      {p.merchant || "Payment"} — ${p.amount}
+                    </div>
+                    <div className="text-[11px] text-zinc-500">
+                      {p.date_iso}
+                    </div>
                   </div>
                 </div>
-              ))
-            )}
+              ))}
+            </div>
+          )}
+        </section>
 
-          </div>
-
-        </div>
+        {/* Ben Persona */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+          <BenPersona />
+        </section>
       </div>
     </main>
   );
