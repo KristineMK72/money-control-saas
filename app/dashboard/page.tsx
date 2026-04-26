@@ -1,10 +1,36 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+
+/* ─────────────────────────────
+   TYPES
+──────────────────────────── */
+
+type SpendEntry = {
+  id: string;
+  user_id: string;
+  date_iso: string | null;
+  merchant: string | null;
+  amount: number;
+  category: string | null;
+  note: string | null;
+  created_at: string;
+};
+
+type IncomeEntry = {
+  id: string;
+  user_id: string;
+  amount: number;
+  source: string | null;
+  date_iso: string | null;
+  received_on: string | null;
+  created_at: string;
+};
 
 type Bill = {
   id: string;
+  user_id?: string;
   name: string;
   amount: number | null;
   target: number | null;
@@ -17,25 +43,24 @@ type Bill = {
 
 type Debt = {
   id: string;
+  user_id?: string;
   name: string;
-  min_payment: number;
+  min_payment: number | null;
   balance: number | null;
   due_day: number | null;
   category: string | null;
 };
 
-type Spend = {
+type Payment = {
   id: string;
+  user_id: string;
+  date_iso: string | null;
+  merchant: string | null;
   amount: number;
-  category: string | null;
-  occurred_on: string;
-};
-
-type Income = {
-  id: string;
-  amount: number;
-  source: string | null;
-  received_on: string;
+  note: string | null;
+  created_at: string;
+  debt_id: string | null;
+  bill_id: string | null;
 };
 
 type UpcomingItem = {
@@ -45,6 +70,10 @@ type UpcomingItem = {
   amount: number;
   dueDate: Date;
 };
+
+/* ─────────────────────────────
+   HELPERS
+──────────────────────────── */
 
 function getNextDueDate(due_day: number) {
   const today = new Date();
@@ -69,13 +98,25 @@ function getMonthlyBillAmount(bill: Bill) {
   return 0;
 }
 
+function getMonthKeyFromDateString(value: string | null): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${d.getMonth() + 1}`;
+}
+
+/* ─────────────────────────────
+   PAGE
+──────────────────────────── */
+
 export default function DashboardPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createSupabaseBrowserClient();
 
   const [bills, setBills] = useState<Bill[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
-  const [spend, setSpend] = useState<Spend[]>([]);
-  const [income, setIncome] = useState<Income[]>([]);
+  const [spend, setSpend] = useState<SpendEntry[]>([]);
+  const [income, setIncome] = useState<IncomeEntry[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [showUpcomingModal, setShowUpcomingModal] = useState(false);
@@ -85,37 +126,43 @@ export default function DashboardPage() {
     const loadData = async () => {
       setLoading(true);
 
-      const [{ data: billsData }, { data: debtsData }, { data: spendData }, { data: incomeData }] =
-        await Promise.all([
-          supabase
-            .from("bills")
-            .select(
-              "id, name, amount, target, monthly_target, min_payment, bill_type, category, due_day"
-            ),
-          supabase
-            .from("debts")
-            .select("id, name, min_payment, balance, due_day, category"),
-          supabase
-            .from("spend")
-            .select("id, amount, category, occurred_on")
-            .order("occurred_on", { ascending: false })
-            .limit(50),
-          supabase
-            .from("income")
-            .select("id, amount, source, received_on")
-            .order("received_on", { ascending: false })
-            .limit(50),
-        ]);
+      const [
+        { data: billsData },
+        { data: debtsData },
+        { data: spendData },
+        { data: incomeData },
+        { data: paymentsData },
+      ] = await Promise.all([
+        supabase.from("bills").select("*"),
+        supabase.from("debts").select("*"),
+        supabase
+          .from("spend_entries")
+          .select("*")
+          .order("date_iso", { ascending: false })
+          .limit(100),
+        supabase
+          .from("income_entries")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(100),
+        supabase
+          .from("payments")
+          .select("*")
+          .order("date_iso", { ascending: false })
+          .limit(200),
+      ]);
 
       const billsSafe = (billsData ?? []) as Bill[];
       const debtsSafe = (debtsData ?? []) as Debt[];
-      const spendSafe = (spendData ?? []) as Spend[];
-      const incomeSafe = (incomeData ?? []) as Income[];
+      const spendSafe = (spendData ?? []) as SpendEntry[];
+      const incomeSafe = (incomeData ?? []) as IncomeEntry[];
+      const paymentsSafe = (paymentsData ?? []) as Payment[];
 
       setBills(billsSafe);
       setDebts(debtsSafe);
       setSpend(spendSafe);
       setIncome(incomeSafe);
+      setPayments(paymentsSafe);
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -147,7 +194,7 @@ export default function DashboardPage() {
             id: d.id,
             name: d.name,
             kind: "debt" as const,
-            amount: d.min_payment,
+            amount: d.min_payment || 0,
             dueDate,
           };
         })
@@ -169,6 +216,13 @@ export default function DashboardPage() {
     loadData();
   }, [supabase]);
 
+  const thisMonthKey = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${now.getMonth() + 1}`;
+  }, []);
+
+  /* ───────── AGGREGATES ───────── */
+
   const totalMonthlyBills = useMemo(
     () => bills.reduce((sum, b) => sum + getMonthlyBillAmount(b), 0),
     [bills]
@@ -179,16 +233,12 @@ export default function DashboardPage() {
     [debts]
   );
 
-  const thisMonthKey = useMemo(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${now.getMonth() + 1}`;
-  }, []);
-
   const monthlySpend = useMemo(() => {
     return spend
       .filter((s) => {
-        const d = new Date(s.occurred_on);
-        const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+        const key =
+          getMonthKeyFromDateString(s.date_iso) ??
+          getMonthKeyFromDateString(s.created_at);
         return key === thisMonthKey;
       })
       .reduce((sum, s) => sum + (s.amount || 0), 0);
@@ -197,14 +247,40 @@ export default function DashboardPage() {
   const monthlyIncome = useMemo(() => {
     return income
       .filter((i) => {
-        const d = new Date(i.received_on);
-        const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+        const key =
+          getMonthKeyFromDateString(i.date_iso) ??
+          getMonthKeyFromDateString(i.received_on) ??
+          getMonthKeyFromDateString(i.created_at);
         return key === thisMonthKey;
       })
       .reduce((sum, i) => sum + (i.amount || 0), 0);
   }, [income, thisMonthKey]);
 
-  const netPosition = monthlyIncome - monthlySpend - totalMonthlyBills - totalDebtMin;
+  // HYBRID: cashflow = income - spend (payments separate)
+  const netCashflow = monthlyIncome - monthlySpend;
+
+  const { billPaymentsThisMonth, debtPaymentsThisMonth } = useMemo(() => {
+    let billTotal = 0;
+    let debtTotal = 0;
+
+    payments.forEach((p) => {
+      const key =
+        getMonthKeyFromDateString(p.date_iso) ??
+        getMonthKeyFromDateString(p.created_at);
+      if (key !== thisMonthKey) return;
+
+      if (p.debt_id) {
+        debtTotal += p.amount || 0;
+      } else if (p.bill_id) {
+        billTotal += p.amount || 0;
+      }
+    });
+
+    return {
+      billPaymentsThisMonth: billTotal,
+      debtPaymentsThisMonth: debtTotal,
+    };
+  }, [payments, thisMonthKey]);
 
   const spendByCategory = useMemo(() => {
     const map = new Map<string, number>();
@@ -249,11 +325,13 @@ export default function DashboardPage() {
   }, [totalMonthlyBills, totalDebtMin, monthlyIncome]);
 
   const benMood =
-    netPosition > 0
+    netCashflow > 0
       ? "relieved"
-      : netPosition > -200
+      : netCashflow > -200
       ? "concerned"
       : "alarmed";
+
+  /* ───────── UI ───────── */
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
@@ -319,11 +397,11 @@ export default function DashboardPage() {
                 </div>
                 <div
                   className={`text-xs font-semibold ${
-                    netPosition >= 0 ? "text-emerald-400" : "text-rose-400"
+                    netCashflow >= 0 ? "text-emerald-400" : "text-rose-400"
                   }`}
                 >
-                  Net: {netPosition >= 0 ? "+" : "-"}$
-                  {Math.abs(netPosition).toFixed(0)}
+                  Net: {netCashflow >= 0 ? "+" : "-"}$
+                  {Math.abs(netCashflow).toFixed(0)}
                 </div>
               </section>
 
@@ -340,7 +418,7 @@ export default function DashboardPage() {
               </section>
             </div>
 
-            {/* BenPersona + upcoming pressure */}
+            {/* BenPersona + upcoming */}
             <div className="grid gap-4 md:grid-cols-3">
               <section className="md:col-span-2 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 space-y-3">
                 <div className="flex items-center justify-between">
@@ -352,13 +430,13 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <div className="text-sm text-zinc-100">
-                  {netPosition >= 0 ? (
+                  {netCashflow >= 0 ? (
                     <>
                       This month is net positive so far. You’ve got some room to
                       breathe — I’d still keep an eye on clusters of bills and
                       avoid letting variable spend creep up.
                     </>
-                  ) : netPosition > -200 ? (
+                  ) : netCashflow > -200 ? (
                     <>
                       You’re running a little tight. I’d triage upcoming bills,
                       look for one or two flexible spends to trim, and make sure
@@ -373,8 +451,8 @@ export default function DashboardPage() {
                   )}
                 </div>
                 <div className="text-xs text-zinc-500">
-                  I’m watching your bills, debts, and spend together — not in
-                  isolation.
+                  I’m watching your bills, debts, spend, and payments together —
+                  not in isolation.
                 </div>
               </section>
 
@@ -428,6 +506,35 @@ export default function DashboardPage() {
                     ))}
                   </div>
                 )}
+              </section>
+            </div>
+
+            {/* Payments cards */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 space-y-2">
+                <div className="text-xs font-semibold text-zinc-400">
+                  Debt payments this month
+                </div>
+                <div className="text-2xl font-semibold">
+                  ${debtPaymentsThisMonth.toFixed(0)}
+                </div>
+                <p className="text-xs text-zinc-500">
+                  Total paid toward debts this month. This reduces balances but
+                  isn’t counted as “spend” in cashflow.
+                </p>
+              </section>
+
+              <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 space-y-2">
+                <div className="text-xs font-semibold text-zinc-400">
+                  Bill payments this month
+                </div>
+                <div className="text-2xl font-semibold">
+                  ${billPaymentsThisMonth.toFixed(0)}
+                </div>
+                <p className="text-xs text-zinc-500">
+                  Total paid toward bills this month. Helps track progress
+                  against your monthly obligations.
+                </p>
               </section>
             </div>
 
@@ -531,14 +638,17 @@ export default function DashboardPage() {
                             ${s.amount.toFixed(2)}
                           </div>
                           <div className="text-[11px] text-zinc-500">
+                            {s.merchant || "Merchant"} •{" "}
                             {s.category || "Uncategorized"}
                           </div>
                         </div>
                         <div className="text-[11px] text-zinc-500">
-                          {new Date(s.occurred_on).toLocaleDateString(
-                            undefined,
-                            { month: "short", day: "numeric" }
-                          )}
+                          {new Date(
+                            s.date_iso || s.created_at
+                          ).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                          })}
                         </div>
                       </div>
                     ))}
@@ -570,10 +680,12 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         <div className="text-[11px] text-zinc-500">
-                          {new Date(i.received_on).toLocaleDateString(
-                            undefined,
-                            { month: "short", day: "numeric" }
-                          )}
+                          {new Date(
+                            i.date_iso || i.received_on || i.created_at
+                          ).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                          })}
                         </div>
                       </div>
                     ))}
