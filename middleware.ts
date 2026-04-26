@@ -44,14 +44,14 @@ export async function middleware(req: NextRequest) {
 
   // REQUIRE SESSION FOR APP ROUTES
   if (!session) {
-    return NextResponse.redirect(new URL("/signup", req.url));
+    return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // LOAD PROFILE
+  // LOAD PROFILE (supports both id and user_id columns)
   const { data: profile } = await supabase
     .from("profiles")
     .select("onboarding_complete, is_premium")
-    .eq("id", session.user.id)
+    .or(`id.eq.${session.user.id},user_id.eq.${session.user.id}`)
     .single();
 
   // NO PROFILE → SEND TO ONBOARDING
@@ -67,11 +67,15 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
-  // PREMIUM ROUTES ONLY
+  // PREMIUM ROUTES
   const premiumRoutes = [
     "/forecast",
     "/analytics",
     "/chat/premium",
+    "/credit",
+    "/credit/disputes",
+    "/credit/templates",
+    "/credit/builder",
   ];
 
   if (premiumRoutes.some((route) => pathname.startsWith(route))) {
