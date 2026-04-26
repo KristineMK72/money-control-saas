@@ -9,7 +9,7 @@ export async function middleware(req: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession();
   const pathname = req.nextUrl.pathname;
 
-  // Fully public routes
+  // Public routes
   const publicRoutes = [
     "/",
     "/login",
@@ -17,12 +17,11 @@ export async function middleware(req: NextRequest) {
     "/auth/callback",
   ];
 
-  // Allow public routes
   if (publicRoutes.includes(pathname)) {
     return res;
   }
 
-  // Allow static assets
+  // Static assets
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/static") ||
@@ -38,32 +37,40 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // Allow API routes
+  // API routes
   if (pathname.startsWith("/api")) {
     return res;
   }
 
-  // Require session for everything else
+  // Require session
   if (!session) {
     return NextResponse.redirect(new URL("/signup", req.url));
   }
 
-  // Load profile for onboarding + premium gating
+  // Load profile
   const { data: profile } = await supabase
     .from("profiles")
     .select("onboarding_complete, is_premium")
     .eq("id", session.user.id)
     .single();
 
+  // If no profile exists → send to onboarding
+  if (!profile) {
+    if (!pathname.startsWith("/onboarding")) {
+      return NextResponse.redirect(new URL("/onboarding", req.url));
+    }
+    return res;
+  }
+
   // Onboarding gating
-  if (!profile?.onboarding_complete && !pathname.startsWith("/onboarding")) {
-    return NextResponse.redirect(new URL("/onboarding/start", req.url));
+  if (!profile.onboarding_complete && !pathname.startsWith("/onboarding")) {
+    return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
   // Premium gating
   const premiumRoutes = ["/forecast", "/analytics", "/chat/premium"];
   if (premiumRoutes.some((route) => pathname.startsWith(route))) {
-    if (!profile?.is_premium) {
+    if (!profile.is_premium) {
       return NextResponse.redirect(new URL("/upgrade", req.url));
     }
   }
@@ -71,7 +78,6 @@ export async function middleware(req: NextRequest) {
   return res;
 }
 
-// Matcher: run middleware ONLY on real app routes
 export const config = {
   matcher: [
     "/((?!_next|static|public|favicon.ico|manifest.json|images|api|auth|login|signup).*)",
