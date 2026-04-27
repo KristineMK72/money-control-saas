@@ -6,7 +6,10 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient({ req, res });
 
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
   const pathname = req.nextUrl.pathname;
 
   // PUBLIC ROUTES
@@ -35,7 +38,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // LOAD PROFILE (bulletproof)
+  // LOAD PROFILE
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
@@ -77,6 +80,7 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next|static|public|favicon.ico|manifest.json|images|api|auth|login|signup|$).*)",
+    // ❗ FIXED: removed "auth" so /auth/callback is allowed
+    "/((?!_next|static|public|favicon.ico|manifest.json|images|api|login|signup|$).*)",
   ],
 };
