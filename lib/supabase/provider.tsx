@@ -1,20 +1,24 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { createSupabaseBrowserClient } from "./client";
+import { createBrowserClient } from "@supabase/ssr";
 
 const SupabaseContext = createContext<any>(null);
 
 export function SupabaseProvider({ children }: { children: React.ReactNode }) {
-  const [supabase] = useState(() => createSupabaseBrowserClient());
-  const [session, setSession] = useState<any>(null);
+  const [supabase] = useState(() =>
+    createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+  );
+
+  const [session, setSession] = useState(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
-  // ⭐ Helper to safely extract user ID from any Supabase version
   function extractUserId(user: any): string | null {
     if (!user) return null;
-
     return (
       user.id ||
       user.user_id ||
@@ -42,18 +46,17 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     loadSession();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, s) => {
-        setSession(s);
-
-        const uid = extractUserId(s?.user);
-        setUserId(uid);
-      }
-    );
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      const uid = extractUserId(s?.user);
+      setUserId(uid);
+    });
 
     return () => {
       mounted = false;
-      listener.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
   }, [supabase]);
 
