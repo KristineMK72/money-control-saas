@@ -23,7 +23,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
       const user = s?.user;
 
-      // ⭐ Unified, future‑proof user ID extraction
+      // Unified, future‑proof user ID extraction
       const uid =
         user?.id ||
         user?.user_id ||
@@ -63,7 +63,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   return (
     <SupabaseContext.Provider value={{ supabase, session, userId, hydrated }}>
       {children}
-    </SupabaseContext.Provider I'm>
+    </SupabaseContext.Provider>
   );
 }
 
