@@ -7,9 +7,22 @@ const SupabaseContext = createContext<any>(null);
 
 export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const [supabase] = useState(() => createSupabaseBrowserClient());
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState<any>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+
+  // ⭐ Helper to safely extract user ID from any Supabase version
+  function extractUserId(user: any): string | null {
+    if (!user) return null;
+
+    return (
+      user.id ||
+      user.user_id ||
+      user.sub ||
+      user?.identities?.[0]?.user_id ||
+      null
+    );
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -21,17 +34,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       const s = data.session;
       setSession(s);
 
-      const user = s?.user;
-
-      // Unified, future‑proof user ID extraction
-      const uid =
-        user?.id ||
-        user?.user_id ||
-        user?.sub ||
-        user?.identities?.[0]?.user_id ||
-        null;
-
+      const uid = extractUserId(s?.user);
       setUserId(uid);
+
       setHydrated(true);
     }
 
@@ -41,15 +46,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       (_event, s) => {
         setSession(s);
 
-        const user = s?.user;
-
-        const uid =
-          user?.id ||
-          user?.user_id ||
-          user?.sub ||
-          user?.identities?.[0]?.user_id ||
-          null;
-
+        const uid = extractUserId(s?.user);
         setUserId(uid);
       }
     );
