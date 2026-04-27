@@ -3,7 +3,13 @@ import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import type { NextRequest } from "next/server";
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
+  // IMPORTANT: clone the request URL
+  const res = NextResponse.next({
+    request: {
+      headers: req.headers,
+    },
+  });
+
   const supabase = createMiddlewareClient({ req, res });
 
   const {
@@ -45,7 +51,6 @@ export async function middleware(req: NextRequest) {
     .or(`id.eq.${session.user.id},user_id.eq.${session.user.id}`)
     .maybeSingle();
 
-  // NO PROFILE → ONBOARDING
   if (!profile) {
     if (!pathname.startsWith("/onboarding")) {
       return NextResponse.redirect(new URL("/onboarding", req.url));
@@ -53,12 +58,10 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // ONBOARDING GATING
   if (!profile.onboarding_complete && !pathname.startsWith("/onboarding")) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
-  // PREMIUM ROUTES
   const premiumRoutes = [
     "/forecast",
     "/analytics",
@@ -80,7 +83,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // ❗ FIXED: removed "auth" so /auth/callback is allowed
     "/((?!_next|static|public|favicon.ico|manifest.json|images|api|login|signup|$).*)",
   ],
 };
