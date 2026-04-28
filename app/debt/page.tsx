@@ -1,4 +1,3 @@
-// FILE: app/debt/page.tsx
 import DebtClient from "./DebtClient";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
