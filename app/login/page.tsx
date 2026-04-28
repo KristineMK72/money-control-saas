@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";   // ← Modern client
+import { createBrowserClient } from "@supabase/ssr";   // ← Use this
 
 export default function LoginPage() {
   const supabase = createBrowserClient(
@@ -23,10 +23,6 @@ export default function LoginPage() {
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
-      options: {
-        // This is crucial — tells Supabase where to redirect after login
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
     });
 
     if (signInError) {
@@ -35,8 +31,7 @@ export default function LoginPage() {
       return;
     }
 
-    // We no longer need manual redirect here.
-    // The middleware + callback route will handle it.
+    // No manual redirect needed — middleware + callback will handle it
   };
 
   return (
