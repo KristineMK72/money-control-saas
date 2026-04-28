@@ -1,10 +1,12 @@
-// app/login/page.tsx
 "use client";
 
 import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const router = useRouter();
+
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -19,8 +21,8 @@ export default function LoginPage() {
     setError("");
 
     const form = e.currentTarget as HTMLFormElement;
-    const email = (form.elements.namedItem('email') as HTMLInputElement).value;
-    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
+    const email = (form.elements.namedItem("email") as HTMLInputElement).value;
+    const password = (form.elements.namedItem("password") as HTMLInputElement).value;
 
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
@@ -33,8 +35,11 @@ export default function LoginPage() {
       return;
     }
 
-    // Force reload to let middleware pick up the new session
-    window.location.href = "/dashboard";
+    // 🔥 CRITICAL FIX: wait for session to fully persist
+    await supabase.auth.getSession();
+
+    // ✅ Use router instead of hard reload
+    router.replace("/dashboard");
   };
 
   return (
