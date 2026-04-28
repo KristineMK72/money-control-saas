@@ -2,46 +2,23 @@
 "use client";
 
 import { useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { loginAction } from "../actions/auth";
 
 export default function LoginPage() {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (formData: FormData) => {
     setLoading(true);
     setError("");
 
-    try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    const result = await loginAction(formData);
 
-      if (signInError) {
-        setError(signInError.message);
-        setLoading(false);
-        return;
-      }
-
-      // If successful, let middleware handle the redirect
-      // We can add a small delay to let session settle
-      setTimeout(() => {
-        window.location.href = "/dashboard";
-      }, 800);
-
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
+    if (result?.error) {
+      setError(result.error);
       setLoading(false);
     }
+    // If no error, the server action redirects automatically
   };
 
   return (
@@ -52,28 +29,22 @@ export default function LoginPage() {
           <p className="mt-2 text-zinc-400">Sign in to your account</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
-          <div>
-            <input
-              type="email"
-              placeholder="Email address"
-              className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
+        <form action={handleSubmit} className="space-y-6">
+          <input
+            type="email"
+            name="email"
+            placeholder="Email address"
+            className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+            required
+          />
 
-          <div>
-            <input
-              type="password"
-              placeholder="Password"
-              className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
+          <input
+            type="password"
+            name="password"
+            placeholder="Password"
+            className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+            required
+          />
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
