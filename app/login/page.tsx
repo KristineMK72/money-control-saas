@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";   // ← Use this
+import { createBrowserClient } from "@supabase/ssr";
 
 export default function LoginPage() {
   const supabase = createBrowserClient(
@@ -20,18 +20,28 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (signInError) {
-      setError(signInError.message);
+      if (signInError) {
+        setError(signInError.message);
+        setLoading(false);
+        return;
+      }
+
+      // If successful, let middleware handle the redirect
+      // We can add a small delay to let session settle
+      setTimeout(() => {
+        window.location.href = "/dashboard";
+      }, 800);
+
+    } catch (err: any) {
+      setError(err.message || "Something went wrong");
       setLoading(false);
-      return;
     }
-
-    // No manual redirect needed — middleware + callback will handle it
   };
 
   return (
