@@ -1,91 +1,21 @@
-"use client";
+'use server'
 
-import { useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
-import { useRouter } from "next/navigation";
+import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
 
-export default function LoginPage() {
-  const router = useRouter();
+export async function login(formData: FormData) {
+  const supabase = await createClient()
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
+  if (error) {
+    redirect('/login?error=' + encodeURIComponent(error.message))
+  }
 
-    const form = e.currentTarget as HTMLFormElement;
-    const email = (form.elements.namedItem("email") as HTMLInputElement).value;
-    const password = (form.elements.namedItem("password") as HTMLInputElement).value;
-
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (signInError) {
-      setError(signInError.message);
-      setLoading(false);
-      return;
-    }
-
-    // 🔥 CRITICAL FIX: wait for session to fully persist
-    await supabase.auth.getSession();
-
-    // ✅ Use router instead of hard reload
-    router.replace("/dashboard");
-  };
-
-  return (
-    <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
-      <div className="w-full max-w-md space-y-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight">Welcome back</h1>
-          <p className="mt-2 text-zinc-400">Sign in to your account</p>
-        </div>
-
-        <form onSubmit={handleLogin} className="space-y-6">
-          <input
-            type="email"
-            name="email"
-            defaultValue="kakr0901@icloud.com"
-            placeholder="Email address"
-            className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
-            required
-          />
-
-          <input
-            type="password"
-            name="password"
-            placeholder="Password"
-            className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
-            required
-          />
-
-          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-cyan-400 py-3.5 font-semibold text-black hover:bg-cyan-300 transition disabled:opacity-70"
-          >
-            {loading ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-zinc-400">
-          Don't have an account?{" "}
-          <a href="/signup" className="text-cyan-300 hover:underline">
-            Sign up free
-          </a>
-        </p>
-      </div>
-    </div>
-  );
+  revalidatePath('/', 'layout')
+  redirect('/dashboard')
 }
