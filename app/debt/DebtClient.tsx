@@ -468,3 +468,45 @@ export default function DebtClient({ initialDebts, initialError }: Props) {
                   <button
                     onClick={() => handleDeleteDebt(d.id)}
                     className="text-xs rounded
+                  <button
+  onClick={() => handleDeleteDebt(d.id)}
+  className="text-xs rounded-full border border-zinc-700 px-3 py-1 text-zinc-300 hover:bg-zinc-800"
+>
+  Remove
+</button>
+</div>
+
+{/* Debt details */}
+<div className="text-sm text-neutral-400 space-y-1">
+  <div>Balance: {formatCurrency(d.balanceNum)}</div>
+  <div>Minimum: {formatCurrency(d.minPaymentNum)}</div>
+  <div>APR: {formatPercent(d.aprNum)}</div>
+
+  {d.due_day && (
+    <div>Due day: {d.due_day}</div>
+  )}
+
+  {d.credit_limit && (
+    <div>
+      Limit: {formatCurrency(parseFloat(d.credit_limit || "0") || 0)}
+    </div>
+  )}
+
+  {d.note && (
+    <div className="italic text-neutral-500">"{d.note}"</div>
+  )}
+</div>
+
+{/* Ranks */}
+<div className="text-xs text-neutral-500">
+  Snowball rank: {d.snowballRank}  
+  <br />
+  Avalanche rank: {d.avalancheRank}
+</div>
+</div>
+))}
+</div>
+</div>
+);
+}
+
