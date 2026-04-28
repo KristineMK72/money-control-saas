@@ -7,32 +7,31 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
   const supabase = createMiddlewareClient({ req, res })
 
-  // Refresh session if needed
   const {
     data: { session },
   } = await supabase.auth.getSession()
 
   const pathname = req.nextUrl.pathname
 
-  // Public routes that don't require auth
+  // Public routes
   const publicRoutes = ['/', '/login', '/signup', '/auth/callback']
 
   if (publicRoutes.includes(pathname)) {
-    // If user is already logged in and tries to go to login/signup, send them to dashboard
+    // If already logged in, redirect away from login/signup
     if (session && (pathname === '/login' || pathname === '/signup')) {
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }
     return res
   }
 
-  // Protected routes - require login
+  // Protected routes - require authentication
   if (!session) {
     const redirectUrl = new URL('/login', req.url)
     redirectUrl.searchParams.set('redirectedFrom', pathname)
     return NextResponse.redirect(redirectUrl)
   }
 
-  // Optional: Onboarding + Premium checks
+  // Optional: Profile / Onboarding / Premium checks
   const { data: profile } = await supabase
     .from('profiles')
     .select('onboarding_complete, is_premium')
@@ -71,4 +70,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+}
