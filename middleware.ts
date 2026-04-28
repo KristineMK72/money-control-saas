@@ -1,22 +1,44 @@
-// middleware.ts - Minimal version
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
 
-export async function middleware(req: NextRequest) {
-  const pathname = req.nextUrl.pathname
+export async function middleware(request: NextRequest) {
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  })
 
-  // Allow public routes
-  if (pathname === '/login' || pathname === '/signup' || pathname.startsWith('/auth')) {
-    return NextResponse.next()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return request.cookies.getAll() },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          response = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+        },
+      },
+    }
+  )
+
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const protectedRoutes = ['/dashboard', '/spend', '/income', '/bills', '/debt', '/forecast', '/payments', '/chat']
+  const isProtected = protectedRoutes.some(path => request.nextUrl.pathname.startsWith(path))
+
+  // Redirect to login if accessing protected route without session
+  if (!user && isProtected) {
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // For all other routes, redirect to login if not authenticated
-  // (We'll let the page itself check the session)
-  return NextResponse.next()
+  // Redirect to dashboard if already logged in and trying to access login/signup
+  if (user && (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup')) {
+    return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
+
+  return response
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 }
