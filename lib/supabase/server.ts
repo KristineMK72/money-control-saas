@@ -1,8 +1,4 @@
 // lib/supabase/server.ts
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-
-// Rename 'createClient' to 'createSupabaseServerClient'
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies()
 
@@ -11,17 +7,14 @@ export async function createSupabaseServerClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
+        getAll() { return cookieStore.getAll() },
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              // Add domain: '.askben.buzz' to share between www and root
+              cookieStore.set(name, value, { ...options, domain: '.askben.buzz' })
             )
-          } catch {
-            // Ignore
-          }
+          } catch { /* ignore */ }
         },
       },
     }
