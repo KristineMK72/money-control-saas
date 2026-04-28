@@ -1,11 +1,31 @@
 // middleware.ts
-import { createMiddlewareClient } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
+  
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              res.cookies.set(name, value, options)
+            })
+          } catch {
+            // Ignore
+          }
+        },
+      },
+    }
+  )
 
   const {
     data: { session },
@@ -13,25 +33,22 @@ export async function middleware(req: NextRequest) {
 
   const pathname = req.nextUrl.pathname
 
-  // Public routes
   const publicRoutes = ['/', '/login', '/signup', '/auth/callback']
 
   if (publicRoutes.includes(pathname)) {
-    // If already logged in, redirect away from login/signup
     if (session && (pathname === '/login' || pathname === '/signup')) {
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }
     return res
   }
 
-  // Protected routes - require authentication
   if (!session) {
     const redirectUrl = new URL('/login', req.url)
     redirectUrl.searchParams.set('redirectedFrom', pathname)
     return NextResponse.redirect(redirectUrl)
   }
 
-  // Optional: Profile / Onboarding / Premium checks
+  // Profile / Onboarding check
   const { data: profile } = await supabase
     .from('profiles')
     .select('onboarding_complete, is_premium')
@@ -47,22 +64,6 @@ export async function middleware(req: NextRequest) {
 
   if (!profile.onboarding_complete && !pathname.startsWith('/onboarding')) {
     return NextResponse.redirect(new URL('/onboarding', req.url))
-  }
-
-  const premiumRoutes = [
-    '/forecast',
-    '/analytics',
-    '/chat/premium',
-    '/credit',
-    '/credit/disputes',
-    '/credit/templates',
-    '/credit/builder',
-  ]
-
-  if (premiumRoutes.some((route) => pathname.startsWith(route))) {
-    if (!profile.is_premium) {
-      return NextResponse.redirect(new URL('/upgrade', req.url))
-    }
   }
 
   return res
