@@ -1,4 +1,4 @@
-// middleware.ts
+// middleware.ts  (Simple version for debugging)
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
@@ -25,14 +25,13 @@ export async function middleware(req: NextRequest) {
 
   const { data: { session } } = await supabase.auth.getSession()
 
-  // If user is logged in and tries to access login page, redirect to dashboard
-  if (session && req.nextUrl.pathname === '/login') {
-    return NextResponse.redirect(new URL('/dashboard', req.url))
-  }
+  // Only protect these routes for now
+  const protectedPaths = ['/dashboard', '/debt', '/spend', '/bills', '/income', '/payments']
 
-  // If user is NOT logged in and tries to access protected pages, redirect to login
-  if (!session && req.nextUrl.pathname !== '/login' && req.nextUrl.pathname !== '/signup' && !req.nextUrl.pathname.startsWith('/auth')) {
-    return NextResponse.redirect(new URL('/login', req.url))
+  if (protectedPaths.some(path => req.nextUrl.pathname.startsWith(path))) {
+    if (!session) {
+      return NextResponse.redirect(new URL('/login', req.url))
+    }
   }
 
   return res
