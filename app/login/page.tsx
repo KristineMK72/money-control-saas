@@ -1,25 +1,11 @@
 // app/login/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useActionState } from "react";
 import { loginAction } from "../actions/auth";
 
 export default function LoginPage() {
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (formData: FormData) => {
-    setLoading(true);
-    setError("");
-
-    const result = await loginAction(formData);
-
-    if (result?.error) {
-      setError(result.error);
-      setLoading(false);
-    }
-    // If no error, the server action redirects automatically
-  };
+  const [state, formAction, isPending] = useActionState(loginAction, null);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
@@ -29,10 +15,11 @@ export default function LoginPage() {
           <p className="mt-2 text-zinc-400">Sign in to your account</p>
         </div>
 
-        <form action={handleSubmit} className="space-y-6">
+        <form action={formAction} className="space-y-6">
           <input
             type="email"
             name="email"
+            defaultValue="kakr0901@icloud.com"
             placeholder="Email address"
             className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
             required
@@ -46,14 +33,16 @@ export default function LoginPage() {
             required
           />
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {state?.error && (
+            <p className="text-red-400 text-sm text-center">{state.error}</p>
+          )}
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-cyan-400 py-3 font-semibold text-black hover:bg-cyan-300 transition disabled:opacity-70"
+            disabled={isPending}
+            className="w-full rounded-xl bg-cyan-400 py-3.5 font-semibold text-black hover:bg-cyan-300 transition disabled:opacity-70"
           >
-            {loading ? "Signing in..." : "Sign In"}
+            {isPending ? "Signing in..." : "Sign In"}
           </button>
         </form>
 
