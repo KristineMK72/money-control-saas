@@ -1,9 +1,9 @@
-// lib/supabase/server.ts  
+// lib/supabase/server.ts
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 export async function createSupabaseServerClient() {
-  const cookieStore = await cookies();   // ← await it (important in some Next.js versions)
+  const cookieStore = await cookies();   // ← Important: await it
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,7 +19,7 @@ export async function createSupabaseServerClient() {
               cookieStore.set(name, value, options);
             });
           } catch {
-            // Ignore errors in Server Components (middleware handles refresh)
+            // Ignore in Server Components
           }
         },
       },
