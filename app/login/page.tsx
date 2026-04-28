@@ -1,11 +1,11 @@
 // app/login/page.tsx
 "use client";
 
-import { useActionState } from "react";
+import { useFormState } from "react-dom";
 import { loginAction } from "../actions/auth";
 
 export default function LoginPage() {
-  const [state, formAction, isPending] = useActionState(loginAction, null);
+  const [state, formAction] = useFormState(loginAction, null);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
@@ -39,10 +39,9 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={isPending}
-            className="w-full rounded-xl bg-cyan-400 py-3.5 font-semibold text-black hover:bg-cyan-300 transition disabled:opacity-70"
+            className="w-full rounded-xl bg-cyan-400 py-3.5 font-semibold text-black hover:bg-cyan-300 transition"
           >
-            {isPending ? "Signing in..." : "Sign In"}
+            Sign In
           </button>
         </form>
 
