@@ -42,8 +42,7 @@ function formatPercent(value: number | null) {
 }
 
 function getEstimatedApr(kind: string): number {
-  if (kind === "loan") return 12;
-  return 29.99;
+  return kind === "loan" ? 12 : 29.99;
 }
 
 function getDebtPressureScore(totalDebt: number, totalMin: number): number {
@@ -462,4 +461,10 @@ export default function DebtClient({ initialDebts, initialError }: Props) {
             .map((d) => (
               <div
                 key={d.id}
-                className="p-
+                className="p-4 rounded-lg bg-neutral-900 border border-neutral-800 space-y-2"
+              >
+                <div className="flex justify-between items-center">
+                  <div className="text-lg font-semibold">{d.name}</div>
+                  <button
+                    onClick={() => handleDeleteDebt(d.id)}
+                    className="text-xs rounded
