@@ -1,63 +1,93 @@
+// app/login/page.tsx
 "use client";
 
 import { useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";   // ← Modern client
 
 export default function LoginPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = async () => {
-    const { error } = await supabase.auth.signInWithPassword({
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
+      options: {
+        // This is crucial — tells Supabase where to redirect after login
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
 
-    if (error) {
-      setError(error.message);
+    if (signInError) {
+      setError(signInError.message);
+      setLoading(false);
       return;
     }
 
-    window.location.href = "/dashboard";
+    // We no longer need manual redirect here.
+    // The middleware + callback route will handle it.
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white p-10">
-      <h1 className="text-3xl font-bold">Login</h1>
+    <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
+      <div className="w-full max-w-md space-y-8">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold tracking-tight">Welcome back</h1>
+          <p className="mt-2 text-zinc-400">Sign in to your account</p>
+        </div>
 
-      <input
-        type="email"
-        placeholder="Email"
-        className="mt-6 w-full rounded-lg bg-white/10 p-3"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
+        <form onSubmit={handleLogin} className="space-y-6">
+          <div>
+            <input
+              type="email"
+              placeholder="Email address"
+              className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
 
-      <input
-        type="password"
-        placeholder="Password"
-        className="mt-3 w-full rounded-lg bg-white/10 p-3"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
+          <div>
+            <input
+              type="password"
+              placeholder="Password"
+              className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
 
-      {error && <p className="mt-3 text-red-400">{error}</p>}
+          {error && <p className="text-red-400 text-sm">{error}</p>}
 
-      <button
-        onClick={handleLogin}
-        className="mt-6 rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black transition hover:opacity-90"
-      >
-        Login
-      </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-xl bg-cyan-400 py-3 font-semibold text-black hover:bg-cyan-300 transition disabled:opacity-70"
+          >
+            {loading ? "Signing in..." : "Sign In"}
+          </button>
+        </form>
 
-      <p className="mt-4 text-sm text-white/50">
-        Need an account?{" "}
-        <a href="/signup" className="text-cyan-300 underline">
-          Create one free
-        </a>
-      </p>
+        <p className="text-center text-sm text-zinc-400">
+          Don't have an account?{" "}
+          <a href="/signup" className="text-cyan-300 hover:underline">
+            Sign up free
+          </a>
+        </p>
+      </div>
     </div>
   );
 }
