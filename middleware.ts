@@ -5,7 +5,7 @@ import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
-  
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -15,55 +15,28 @@ export async function middleware(req: NextRequest) {
           return req.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              res.cookies.set(name, value, options)
-            })
-          } catch {
-            // Ignore
-          }
+          cookiesToSet.forEach(({ name, value, options }) => {
+            res.cookies.set(name, value, options)
+          })
         },
       },
     }
   )
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  const { data: { session } } = await supabase.auth.getSession()
 
   const pathname = req.nextUrl.pathname
 
-  const publicRoutes = ['/', '/login', '/signup', '/auth/callback']
-
-  if (publicRoutes.includes(pathname)) {
-    if (session && (pathname === '/login' || pathname === '/signup')) {
+  if (pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname === '/auth/callback') {
+    if (session) {
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }
     return res
   }
 
+  // All other routes require login
   if (!session) {
-    const redirectUrl = new URL('/login', req.url)
-    redirectUrl.searchParams.set('redirectedFrom', pathname)
-    return NextResponse.redirect(redirectUrl)
-  }
-
-  // Profile / Onboarding check
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('onboarding_complete, is_premium')
-    .eq('user_id', session.user.id)
-    .maybeSingle()
-
-  if (!profile) {
-    if (!pathname.startsWith('/onboarding')) {
-      return NextResponse.redirect(new URL('/onboarding', req.url))
-    }
-    return res
-  }
-
-  if (!profile.onboarding_complete && !pathname.startsWith('/onboarding')) {
-    return NextResponse.redirect(new URL('/onboarding', req.url))
+    return NextResponse.redirect(new URL('/login', req.url))
   }
 
   return res
