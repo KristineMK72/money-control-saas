@@ -2,10 +2,12 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+// Change 'createClient' to 'createSupabaseServerClient'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 export async function login(formData: FormData) {
-  const supabase = await createClient()
+  // Use the new name here too
+  const supabase = await createSupabaseServerClient()
 
   const email = formData.get('email') as string
   const password = formData.get('password') as string
