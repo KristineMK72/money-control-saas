@@ -1,33 +1,33 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { useRouter } from 'next/navigation'
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 export default function LoginPage() {
-  const supabase = createClientComponentClient()
-  const router = useRouter()
+  const [supabase] = useState(() => createSupabaseBrowserClient());
+  const router = useRouter();
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
-    })
+    });
 
     if (error) {
-      setError(error.message)
-      return
+      setError(error.message);
+      return;
     }
 
-    // Manual redirect (your version requires this)
-    router.push('/dashboard')
-  }
+    // Force a full reload so the server picks up the new cookie
+    window.location.href = "/dashboard";
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
@@ -69,5 +69,5 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
-  )
+  );
 }
