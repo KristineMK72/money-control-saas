@@ -117,8 +117,6 @@ export default function DashboardClient({
   initialPayments,
   user,
 }: Props) {
-
-  // Debug log
   console.log("DashboardClient mounted", {
     bills: initialBills.length,
     debts: initialDebts.length,
@@ -219,18 +217,105 @@ export default function DashboardClient({
     netCashflow > 0 ? "relieved" : netCashflow > -200 ? "concerned" : "alarmed";
 
   /* ─────────────────────────────
+      HEALTH SCORE + PRESSURE
+  ───────────────────────────── */
+  const totalObligations = billPaymentsThisMonth + debtPaymentsThisMonth;
+  const obligationRatio = monthlyIncome > 0 ? totalObligations / monthlyIncome : 1;
+
+  const healthScore = useMemo(() => {
+    if (monthlyIncome === 0 && monthlySpend === 0) return 50;
+    let score = 80;
+
+    const spendRatio = monthlyIncome > 0 ? monthlySpend / monthlyIncome : 1;
+    score -= Math.max(0, (spendRatio - 0.7) * 60);
+    score -= Math.max(0, (obligationRatio - 0.4) * 80);
+
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }, [monthlyIncome, monthlySpend, obligationRatio]);
+
+  const pressureLevel =
+    healthScore >= 75 ? "low" : healthScore >= 50 ? "moderate" : "high";
+
+  /* ─────────────────────────────
       UI
   ───────────────────────────── */
   return (
     <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
       <div className="mx-auto w-full max-w-6xl space-y-6">
 
-        {/* ⭐ FULL DASHBOARD UI INSERTED HERE ⭐ */}
-        {/* (This is the block you pasted earlier — now in the correct place) */}
+        {/* BEN + HEALTH SUMMARY */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4 flex gap-3 items-center">
+            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-300 flex items-center justify-center text-xl">
+              B
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">
+                Ben’s mood
+              </p>
+              <p className="text-sm font-medium">
+                {benMood === "relieved" && "Relieved — you’re in a decent spot."}
+                {benMood === "concerned" && "Concerned — you’re on the edge."}
+                {benMood === "alarmed" && "Alarmed — pressure is building fast."}
+              </p>
+            </div>
+          </div>
 
-        {/* ─────────────────────────────
-            TOP SUMMARY ROW
-        ───────────────────────────── */}
+          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-zinc-400">Financial health score</p>
+              <p className="text-xs text-zinc-500">
+                {pressureLevel === "low" && "Low pressure"}
+                {pressureLevel === "moderate" && "Moderate pressure"}
+                {pressureLevel === "high" && "High pressure"}
+              </p>
+            </div>
+            <div className="mt-2 flex items-end gap-3">
+              <p className="text-3xl font-semibold text-emerald-400">
+                {healthScore}
+              </p>
+              <p className="text-xs text-zinc-500 mb-1">/ 100</p>
+            </div>
+            <div className="mt-3 h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
+              <div
+                className={`h-full transition-all duration-700 ${
+                  healthScore >= 75
+                    ? "bg-emerald-400"
+                    : healthScore >= 50
+                    ? "bg-amber-400"
+                    : "bg-red-500"
+                }`}
+                style={{ width: `${healthScore}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4 flex flex-col justify-between">
+            <p className="text-xs text-zinc-400 mb-2">Monthly pressure</p>
+            <p className="text-sm text-zinc-400">
+              Obligations (bills + debts) vs income.
+            </p>
+            <div className="mt-3 h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
+              <div
+                className="h-full transition-all duration-700"
+                style={{
+                  width: `${Math.min(100, Math.round(obligationRatio * 100))}%`,
+                  backgroundColor:
+                    obligationRatio <= 0.4
+                      ? "#22c55e"
+                      : obligationRatio <= 0.7
+                      ? "#facc15"
+                      : "#ef4444",
+                }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-zinc-500">
+              {Math.round(obligationRatio * 100)}% of income committed.
+            </p>
+          </div>
+        </section>
+
+        {/* TOP SUMMARY ROW */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
             <p className="text-xs text-zinc-400">Monthly Income</p>
@@ -258,9 +343,84 @@ export default function DashboardClient({
           </div>
         </section>
 
-        {/* ─────────────────────────────
-            BEN'S TAKE
-        ───────────────────────────── */}
+        {/* INCOME VS SPEND + BILLS VS DEBT */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+            <p className="text-xs text-zinc-400">Income vs Spend</p>
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs text-zinc-500">
+                <span>Income</span>
+                <span>${monthlyIncome.toLocaleString()}</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
+                <div className="h-full bg-emerald-400 transition-all duration-700" style={{ width: "100%" }} />
+              </div>
+
+              <div className="flex justify-between text-xs text-zinc-500 mt-3">
+                <span>Spend</span>
+                <span>${monthlySpend.toLocaleString()}</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
+                <div
+                  className="h-full bg-red-400 transition-all duration-700"
+                  style={{
+                    width:
+                      monthlyIncome > 0
+                        ? `${Math.min(100, Math.round((monthlySpend / monthlyIncome) * 100))}%`
+                        : "100%",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4 space-y-3">
+            <p className="text-xs text-zinc-400">Bills vs Debt Payments</p>
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs text-zinc-500">
+                <span>Bills</span>
+                <span>${billPaymentsThisMonth.toLocaleString()}</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
+                <div
+                  className="h-full bg-sky-400 transition-all duration-700"
+                  style={{
+                    width:
+                      billPaymentsThisMonth + debtPaymentsThisMonth > 0
+                        ? `${Math.round(
+                            (billPaymentsThisMonth /
+                              (billPaymentsThisMonth + debtPaymentsThisMonth)) *
+                              100
+                          )}%`
+                        : "0%",
+                  }}
+                />
+              </div>
+
+              <div className="flex justify-between text-xs text-zinc-500 mt-3">
+                <span>Debt</span>
+                <span>${debtPaymentsThisMonth.toLocaleString()}</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
+                <div
+                  className="h-full bg-purple-400 transition-all duration-700"
+                  style={{
+                    width:
+                      billPaymentsThisMonth + debtPaymentsThisMonth > 0
+                        ? `${Math.round(
+                            (debtPaymentsThisMonth /
+                              (billPaymentsThisMonth + debtPaymentsThisMonth)) *
+                              100
+                          )}%`
+                        : "0%",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* BEN'S TAKE */}
         <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 space-y-2">
           <h2 className="text-lg font-semibold">Ben’s Take</h2>
           <p className="text-sm text-zinc-400">
@@ -273,9 +433,7 @@ export default function DashboardClient({
           </p>
         </section>
 
-        {/* ─────────────────────────────
-            UPCOMING (7 DAYS)
-        ───────────────────────────── */}
+        {/* UPCOMING */}
         <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Upcoming (7 days)</h2>
@@ -284,137 +442,4 @@ export default function DashboardClient({
               className="text-xs text-emerald-400 hover:text-emerald-300"
             >
               View all
-            </button>
-          </div>
-
-          {upcoming.length === 0 ? (
-            <p className="text-sm text-zinc-500">Nothing due in the next week.</p>
-          ) : (
-            <ul className="space-y-2">
-              {upcoming.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-center justify-between rounded-lg bg-zinc-800 p-3"
-                >
-                  <div>
-                    <p className="font-medium">{item.name}</p>
-                    <p className="text-xs text-zinc-400">
-                      Due {item.dueDate.toLocaleDateString()}
-                    </p>
-                  </div>
-                  <p className="font-semibold text-emerald-400">
-                    ${item.amount.toLocaleString()}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {/* ─────────────────────────────
-            PAYMENTS THIS MONTH
-        ───────────────────────────── */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-            <p className="text-xs text-zinc-400">Bill Payments (This Month)</p>
-            <p className="text-xl font-semibold text-emerald-400">
-              ${billPaymentsThisMonth.toLocaleString()}
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-            <p className="text-xs text-zinc-400">Debt Payments (This Month)</p>
-            <p className="text-xl font-semibold text-emerald-400">
-              ${debtPaymentsThisMonth.toLocaleString()}
-            </p>
-          </div>
-        </section>
-
-        {/* ─────────────────────────────
-            RECENT ACTIVITY
-        ───────────────────────────── */}
-        <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 space-y-3">
-          <h2 className="text-lg font-semibold">Recent Activity</h2>
-
-          {spend.length === 0 && payments.length === 0 ? (
-            <p className="text-sm text-zinc-500">No recent activity yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {[...spend.slice(0, 5), ...payments.slice(0, 5)]
-                .sort(
-                  (a, b) =>
-                    new Date(b.created_at).getTime() -
-                    new Date(a.created_at).getTime()
-                )
-                .slice(0, 5)
-                .map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-center justify-between rounded-lg bg-zinc-800 p-3"
-                  >
-                    <div>
-                      <p className="font-medium">
-                        {"merchant" in item
-                          ? item.merchant
-                          : item.note || "Payment"}
-                      </p>
-                      <p className="text-xs text-zinc-400">
-                        {new Date(item.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <p className="font-semibold text-emerald-400">
-                      ${item.amount.toLocaleString()}
-                    </p>
-                  </li>
-                ))}
-            </ul>
-          )}
-        </section>
-      </div>
-
-      {/* ─────────────────────────────
-          UPCOMING MODAL
-      ───────────────────────────── */}
-      {showUpcomingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">
-                Upcoming obligations
-              </h2>
-              <button
-                onClick={() => setShowUpcomingModal(false)}
-                className="text-zinc-400 hover:text-zinc-200 text-sm"
-              >
-                Close
-              </button>
-            </div>
-
-            {upcoming.length === 0 ? (
-              <p className="text-sm text-zinc-500">Nothing due soon.</p>
-            ) : (
-              <ul className="space-y-2">
-                {upcoming.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-center justify-between rounded-lg bg-zinc-800 p-3"
-                  >
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      <p className="text-xs text-zinc-400">
-                        Due {item.dueDate.toLocaleDateString()}
-                      </p>
-                    </div>
-                    <p className="font-semibold text-emerald-400">
-                      ${item.amount.toLocaleString()}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
-    </main>
-  );
-}
+            </button
