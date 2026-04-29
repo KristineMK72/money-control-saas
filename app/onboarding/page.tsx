@@ -29,7 +29,7 @@ const voiceOptions = [
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { supabase, session } = useSupabase();
+  const supabase = useSupabase(); // ✔ FIXED
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [primaryStressor, setPrimaryStressor] = useState<string | null>(null);
@@ -42,7 +42,13 @@ export default function OnboardingPage() {
   const back = () => setStep((s) => (s === 1 ? 1 : ((s - 1) as any)));
 
   const handleFinish = async () => {
-    if (!supabase || !session?.user) return;
+    // ✔ FIXED: fetch session from supabase client
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.user) return;
+
     setSaving(true);
     setError(null);
 
