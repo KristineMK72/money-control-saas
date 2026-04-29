@@ -66,3 +66,4 @@ export const config = {
     "/((?!_next|static|public|favicon.ico|manifest.json|images|api|auth|login|signup).*)",
   ],
 };
+
