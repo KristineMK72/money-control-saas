@@ -13,21 +13,21 @@ const steps = [
 export default function OnboardingGuidePage() {
   return (
     <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center px-4">
-      <div className="w-full max-w-xl space-y-6">
-        <header className="space-y-1">
+      <div className="w-full max-w-xl space-y-8">
+        <header className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight">
             Let’s get your numbers in.
           </h1>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-zinc-400 leading-relaxed">
             These five steps give Ben enough signal to start making real recommendations.
           </p>
         </header>
 
-        <ol className="space-y-2 text-sm">
+        <ol className="space-y-3 text-sm">
           {steps.map((step, idx) => (
             <li
               key={step.href}
-              className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2"
+              className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3"
             >
               <div className="flex items-center gap-3">
                 <span className="text-xs text-zinc-500">{idx + 1}.</span>
@@ -35,7 +35,7 @@ export default function OnboardingGuidePage() {
               </div>
               <Link
                 href={step.href}
-                className="text-xs rounded-full border border-zinc-700 px-3 py-1 text-zinc-200 hover:bg-zinc-800"
+                className="text-xs rounded-full border border-zinc-700 px-3 py-1 text-zinc-200 hover:bg-zinc-800 transition"
               >
                 Go
               </Link>
@@ -43,9 +43,9 @@ export default function OnboardingGuidePage() {
           ))}
         </ol>
 
-        <div className="text-xs text-zinc-500">
+        <p className="text-xs text-zinc-500 leading-relaxed">
           You don’t have to be perfect. Rough numbers are enough for Ben to start coaching.
-        </div>
+        </p>
       </div>
     </main>
   );
