@@ -1,6 +1,30 @@
-import { login } from './actions'
+'use client'
 
-export default function LoginPage({ searchParams }: { searchParams: { error?: string } }) {
+import { useState } from 'react'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+
+export default function LoginPage() {
+  const supabase = createClientComponentClient()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+
+    if (error) {
+      setError(error.message)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
       <div className="w-full max-w-md space-y-8">
@@ -9,26 +33,26 @@ export default function LoginPage({ searchParams }: { searchParams: { error?: st
           <p className="mt-2 text-zinc-400">Sign in to your account</p>
         </div>
 
-        <form action={login} className="space-y-6">
+        <form onSubmit={handleLogin} className="space-y-6">
           <input
-            name="email"
             type="email"
-            defaultValue="kakr0901@icloud.com"
             placeholder="Email address"
             className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white focus:border-cyan-400 outline-none"
-            required
-          />
-          <input
-            name="password"
-            type="password"
-            placeholder="Password"
-            className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white focus:border-cyan-400 outline-none"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
           />
 
-          {searchParams.error && (
-            <p className="text-red-400 text-sm text-center">{searchParams.error}</p>
-          )}
+          <input
+            type="password"
+            placeholder="Password"
+            className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-white focus:border-cyan-400 outline-none"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+
+          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
           <button
             type="submit"
