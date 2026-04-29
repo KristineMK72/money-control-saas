@@ -1,6 +1,5 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseProvider } from "@/lib/supabase/provider";
 import LogoutButton from "@/components/LogoutButton";
 import UserGreeting from "@/components/UserGreeting";
@@ -13,8 +12,11 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://www.askben.buzz"),
 };
 
-export const viewport: Viewport = { themeColor: "#0f172a" };
+export const viewport: Viewport = {
+  themeColor: "#0f172a",
+};
 
+/* ───────── NAV LINK ───────── */
 function NavLink({
   href,
   children,
@@ -32,26 +34,24 @@ function NavLink({
   );
 }
 
-export default async function RootLayout({
+/* ───────── ROOT LAYOUT ───────── */
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createSupabaseServerClient();
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  const user = session?.user;
-
   return (
     <html lang="en" className="h-full">
       <body className="min-h-screen bg-zinc-950 text-white antialiased">
-        <SupabaseProvider initialSession={session}>
+        
+        {/* ⚡ Supabase now ONLY handles client-side auth safely */}
+        <SupabaseProvider>
+          
           {/* HEADER */}
           <header className="sticky top-0 z-50 bg-white border-b border-zinc-200 text-zinc-900">
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+              
+              {/* BRAND */}
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-900">
                   <img
@@ -63,41 +63,33 @@ export default async function RootLayout({
 
                 <div className="text-xl font-black">AskBen</div>
 
-                {user && (
-                  <div className="hidden md:block">
-                    <UserGreeting />
-                  </div>
-                )}
+                {/* NOTE: UserGreeting should handle loading state internally */}
+                <div className="hidden md:block">
+                  <UserGreeting />
+                </div>
               </div>
 
+              {/* NAV */}
               <nav className="flex items-center gap-2">
                 <NavLink href="/">Home</NavLink>
-
-                {user ? (
-                  <>
-                    <NavLink href="/dashboard">Dashboard</NavLink>
-                    <NavLink href="/chat">Ask Ben</NavLink>
-                    <LogoutButton />
-                  </>
-                ) : (
-                  <>
-                    <NavLink href="/signup">Signup</NavLink>
-                    <NavLink href="/login">Login</NavLink>
-                  </>
-                )}
+                <NavLink href="/dashboard">Dashboard</NavLink>
+                <NavLink href="/chat">Ask Ben</NavLink>
+                <LogoutButton />
               </nav>
             </div>
           </header>
 
-          {/* PAGE CONTENT */}
+          {/* PAGE */}
           <main className="min-h-screen">{children}</main>
 
+          {/* INSTALL BANNER */}
           <InstallBanner />
 
           {/* FOOTER */}
           <footer className="mt-20 text-center text-xs text-zinc-500 py-6">
             © 2026 Spatialytics — Built with ❤️ in Minnesota
           </footer>
+
         </SupabaseProvider>
       </body>
     </html>
