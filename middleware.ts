@@ -1,74 +1,70 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createMiddlewareClient({ req, res });
+  let res = NextResponse.next({ request: req });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            req.cookies.set(name, value)
+          );
+          res = NextResponse.next({ request: req });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            res.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
 
   const { pathname } = req.nextUrl;
 
-  /* ─────────────────────────────
-     1. PUBLIC ROUTES (skip auth)
-  ───────────────────────────── */
-  const publicRoutes = [
-    "/",
-    "/login",
-    "/signup",
-    "/auth/callback",
-  ];
-
+  /* 1. PUBLIC ROUTES (skip auth) */
+  const publicRoutes = ["/", "/login", "/signup", "/auth/callback"];
   if (publicRoutes.includes(pathname)) {
+    // Still call getUser() so the cookie is refreshed even on public pages
+    await supabase.auth.getUser();
     return res;
   }
 
-  /* ─────────────────────────────
-     2. GET USER SESSION
-  ───────────────────────────── */
+  /* 2. GET USER */
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!user) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  const userId = session.user.id;
-
-  /* ─────────────────────────────
-     3. FETCH PROFILE (SAFE)
-     IMPORTANT: use ONE table only
-  ───────────────────────────── */
+  /* 3. FETCH PROFILE */
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, onboarding_complete, is_premium")
-    .eq("id", userId)
+    .eq("id", user.id)
     .maybeSingle();
 
-  /* ─────────────────────────────
-     4. ONBOARDING GUARD
-  ───────────────────────────── */
-
+  /* 4. ONBOARDING GUARD */
   const isOnboardingRoute = pathname.startsWith("/onboarding");
 
-  // If no profile → force onboarding
   if (!profile && !isOnboardingRoute) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
-
-  // If profile exists but onboarding incomplete → force onboarding
   if (profile && !profile.onboarding_complete && !isOnboardingRoute) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
-
-  // Prevent onboarding loop
   if (isOnboardingRoute) {
     return res;
   }
 
-  /* ─────────────────────────────
-     5. PREMIUM ROUTES
-  ───────────────────────────── */
+  /* 5. PREMIUM ROUTES */
   const premiumRoutes = [
     "/forecast",
     "/analytics",
@@ -78,18 +74,12 @@ export async function middleware(req: NextRequest) {
     "/credit/templates",
     "/credit/builder",
   ];
-
-  const isPremiumRoute = premiumRoutes.some((r) =>
-    pathname.startsWith(r)
-  );
-
+  const isPremiumRoute = premiumRoutes.some((r) => pathname.startsWith(r));
   if (isPremiumRoute && !profile?.is_premium) {
     return NextResponse.redirect(new URL("/upgrade", req.url));
   }
 
-  /* ─────────────────────────────
-     6. DEFAULT ALLOW
-  ───────────────────────────── */
+  /* 6. DEFAULT ALLOW */
   return res;
 }
 
