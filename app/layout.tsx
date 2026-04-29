@@ -15,30 +15,30 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: "#0f172a" };
 
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+function NavLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
   return (
     <Link
       href={href}
-      style={{
-        padding: "8px 14px",
-        borderRadius: 999,
-        textDecoration: "none",
-        fontWeight: 600,
-        color: "#1c1917",
-        fontSize: 14,
-        border: "1px solid #e7e5e4",
-        background: "#fff",
-      }}
+      className="px-3 py-1.5 rounded-full text-sm font-semibold border border-zinc-300 bg-white text-zinc-800 hover:border-zinc-500 transition"
     >
       {children}
     </Link>
   );
 }
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const supabase = await createSupabaseServerClient();
 
-  // ⭐ Correct session retrieval
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -46,57 +46,31 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const user = session?.user;
 
   return (
-    <html lang="en">
-      <body
-        style={{
-          margin: 0,
-          background: "#f5f5f4",
-          color: "#18181b",
-          fontFamily: "system-ui, sans-serif",
-        }}
-      >
-        {/* ⭐ FIX: Pass session into provider so the client hydrates */}
+    <html lang="en" className="h-full">
+      <body className="min-h-screen bg-zinc-950 text-white antialiased">
         <SupabaseProvider initialSession={session}>
-          <header
-            style={{
-              position: "sticky",
-              top: 0,
-              zIndex: 100,
-              background: "#fff",
-              borderBottom: "1px solid #e7e5e4",
-            }}
-          >
-            <div
-              style={{
-                maxWidth: 1100,
-                margin: "0 auto",
-                padding: "14px 20px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 14,
-                    overflow: "hidden",
-                    background: "#0f172a",
-                  }}
-                >
+          {/* HEADER */}
+          <header className="sticky top-0 z-50 bg-white border-b border-zinc-200 text-zinc-900">
+            <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-900">
                   <img
                     src="/ben.png"
                     alt="AskBen"
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    className="w-full h-full object-cover"
                   />
                 </div>
-                <div style={{ fontWeight: 900, fontSize: 24 }}>AskBen</div>
-                {user && <UserGreeting />}
+
+                <div className="text-xl font-black">AskBen</div>
+
+                {user && (
+                  <div className="hidden md:block">
+                    <UserGreeting />
+                  </div>
+                )}
               </div>
 
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <nav className="flex items-center gap-2">
                 <NavLink href="/">Home</NavLink>
 
                 {user ? (
@@ -111,20 +85,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <NavLink href="/login">Login</NavLink>
                   </>
                 )}
-              </div>
+              </nav>
             </div>
           </header>
 
-          <main>{children}</main>
+          {/* PAGE CONTENT */}
+          <main className="min-h-screen">{children}</main>
+
           <InstallBanner />
-          <footer
-            style={{
-              marginTop: 60,
-              textAlign: "center",
-              fontSize: 12,
-              color: "#71717a",
-            }}
-          >
+
+          {/* FOOTER */}
+          <footer className="mt-20 text-center text-xs text-zinc-500 py-6">
             © 2026 Spatialytics — Built with ❤️ in Minnesota
           </footer>
         </SupabaseProvider>
