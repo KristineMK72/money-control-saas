@@ -1,72 +1,20 @@
-"use client";
+'use client'
 
-import { createContext, useContext, useEffect, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { Session } from '@supabase/supabase-js'
+import { useState } from 'react'
 
-const SupabaseContext = createContext<any>(null);
-
-export function SupabaseProvider({ children }: { children: React.ReactNode }) {
+export function SupabaseProvider({
+  children,
+  initialSession,
+}: {
+  children: React.ReactNode
+  initialSession: Session | null
+}) {
+  // Hydrate the client with the server session
   const [supabase] = useState(() =>
-    createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-  );
+    createClientComponentClient({ initialSession })
+  )
 
-  const [session, setSession] = useState(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
-
-  function extractUserId(user: any): string | null {
-    if (!user) return null;
-    return (
-      user.id ||
-      user.user_id ||
-      user.sub ||
-      user?.identities?.[0]?.user_id ||
-      null
-    );
-  }
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadSession() {
-      const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
-
-      const s = data.session;
-      setSession(s);
-
-      const uid = extractUserId(s?.user);
-      setUserId(uid);
-
-      setHydrated(true);
-    }
-
-    loadSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-      const uid = extractUserId(s?.user);
-      setUserId(uid);
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, [supabase]);
-
-  return (
-    <SupabaseContext.Provider value={{ supabase, session, userId, hydrated }}>
-      {children}
-    </SupabaseContext.Provider>
-  );
-}
-
-export function useSupabase() {
-  return useContext(SupabaseContext);
+  return <>{children}</>
 }
