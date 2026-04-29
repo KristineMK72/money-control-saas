@@ -12,13 +12,15 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+    const { error } = await supabase.auth.signInWithPassword(
+      {
+        email,
+        password,
       },
-    })
+      {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      }
+    )
 
     if (error) {
       setError(error.message)
@@ -52,7 +54,9 @@ export default function LoginPage() {
             required
           />
 
-          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          {error && (
+            <p className="text-red-400 text-sm text-center">{error}</p>
+          )}
 
           <button
             type="submit"
