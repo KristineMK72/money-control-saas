@@ -1,49 +1,29 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
 });
 
-const PRICE_IDS = {
+const PRICE_IDS: Record<string, string> = {
   monthly: "price_1TQW5ZCIlql4ybeVyTKXr9oO",
   yearly: "price_1TQWGmCIlql4ybeVMxu6eWtkw",
 };
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const plan = searchParams.get("plan");
+  const plan = searchParams.get("plan") ?? "";
 
   if (!plan || !PRICE_IDS[plan]) {
     return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
   }
 
-  // Get the logged-in user
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
-        },
-      },
-    }
-  );
-
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Create Stripe session
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer_email: user?.email ?? undefined,
