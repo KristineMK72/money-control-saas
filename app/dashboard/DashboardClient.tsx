@@ -69,6 +69,8 @@ type UpcomingItem = {
   dueDate: Date;
 };
 
+type ActivityItem = SpendEntry | Payment;
+
 type Props = {
   profile: {
     display_name: string | null;
@@ -162,7 +164,9 @@ export default function DashboardClient({
   const monthlySpend = useMemo(() => {
     return spend
       .filter((s) => {
-        const key = getMonthKeyFromDateString(s.date_iso) ?? getMonthKeyFromDateString(s.created_at);
+        const key =
+          getMonthKeyFromDateString(s.date_iso) ??
+          getMonthKeyFromDateString(s.created_at);
         return key === thisMonthKey;
       })
       .reduce((sum, s) => sum + (s.amount || 0), 0);
@@ -186,7 +190,9 @@ export default function DashboardClient({
     let billTotal = 0;
     let debtTotal = 0;
     payments.forEach((p) => {
-      const key = getMonthKeyFromDateString(p.date_iso) ?? getMonthKeyFromDateString(p.created_at);
+      const key =
+        getMonthKeyFromDateString(p.date_iso) ??
+        getMonthKeyFromDateString(p.created_at);
       if (key !== thisMonthKey) return;
       if (p.debt_id) debtTotal += p.amount || 0;
       else if (p.bill_id) billTotal += p.amount || 0;
@@ -208,7 +214,9 @@ export default function DashboardClient({
         dueDate: getNextDueDate(b.due_day!),
       }))
       .filter((item) => {
-        const diffDays = (item.dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+        const diffDays =
+          (item.dueDate.getTime() - today.getTime()) /
+          (1000 * 60 * 60 * 24);
         return diffDays >= 0 && diffDays <= 7;
       });
 
@@ -222,7 +230,9 @@ export default function DashboardClient({
         dueDate: getNextDueDate(d.due_day!),
       }))
       .filter((item) => {
-        const diffDays = (item.dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+        const diffDays =
+          (item.dueDate.getTime() - today.getTime()) /
+          (1000 * 60 * 60 * 24);
         return diffDays >= 0 && diffDays <= 7;
       });
 
@@ -232,6 +242,16 @@ export default function DashboardClient({
   }, [bills, debts]);
 
   const benMood = netCashflow > 0 ? "relieved" : netCashflow > -200 ? "concerned" : "alarmed";
+
+  const recentActivity: ActivityItem[] = useMemo(() => {
+    return ([...spend.slice(0, 5), ...payments.slice(0, 5)] as ActivityItem[])
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() -
+          new Date(a.created_at).getTime()
+      )
+      .slice(0, 5);
+  }, [spend, payments]);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
@@ -358,33 +378,26 @@ export default function DashboardClient({
             <p className="text-sm text-zinc-500">No recent activity yet.</p>
           ) : (
             <ul className="space-y-2">
-              {[...spend.slice(0, 5), ...payments.slice(0, 5)]
-                .sort(
-                  (a, b) =>
-                    new Date(b.created_at).getTime() -
-                    new Date(a.created_at).getTime()
-                )
-                .slice(0, 5)
-                .map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-center justify-between rounded-lg bg-zinc-800 p-3"
-                  >
-                    <div>
-                      <p className="font-medium">
-                        {"merchant" in item
-                          ? item.merchant
-                          : item.note || "Payment"}
-                      </p>
-                      <p className="text-xs text-zinc-400">
-                        {new Date(item.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <p className="font-semibold text-emerald-400">
-                      ${item.amount.toLocaleString()}
+              {recentActivity.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between rounded-lg bg-zinc-800 p-3"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {"merchant" in item
+                        ? item.merchant
+                        : item.note || "Payment"}
                     </p>
-                  </li>
-                ))}
+                    <p className="text-xs text-zinc-400">
+                      {new Date(item.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <p className="font-semibold text-emerald-400">
+                    ${item.amount.toLocaleString()}
+                  </p>
+                </li>
+              ))}
             </ul>
           )}
         </section>
