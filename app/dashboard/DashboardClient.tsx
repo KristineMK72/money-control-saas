@@ -1,3 +1,15 @@
+console.log("DashboardClient mounted", {
+  bills: initialBills.length,
+  debts: initialDebts.length,
+  spend: initialSpend.length,
+  income: initialIncome.length,
+  payments: initialPayments.length,
+  user,
+  profile,
+});
+
+
+
 // app/dashboard/DashboardClient.tsx
 "use client";
 
