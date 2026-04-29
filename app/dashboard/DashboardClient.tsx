@@ -1,17 +1,12 @@
-console.log("DashboardClient mounted", {
-  bills: initialBills.length,
-  debts: initialDebts.length,
-  spend: initialSpend.length,
-  income: initialIncome.length,
-  payments: initialPayments.length,
-  user,
-  profile,
-});
-
-
-
-// app/dashboard/DashboardClient.tsx
 "use client";
+
+console.log("DashboardClient mounted");
+
+/* 
+  NOTE:
+  If you want the detailed log you wrote earlier, 
+  we must place it *inside* the component, not at the top-level.
+*/
 
 import { useState, useMemo } from "react";
 
@@ -138,6 +133,18 @@ export default function DashboardClient({
   initialPayments,
   user,
 }: Props) {
+
+  // Your detailed console log MUST be inside the component:
+  console.log("DashboardClient mounted", {
+    bills: initialBills.length,
+    debts: initialDebts.length,
+    spend: initialSpend.length,
+    income: initialIncome.length,
+    payments: initialPayments.length,
+    user,
+    profile,
+  });
+
   const [bills] = useState(initialBills);
   const [debts] = useState(initialDebts);
   const [spend] = useState(initialSpend);
@@ -241,7 +248,6 @@ export default function DashboardClient({
   return (
     <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
       <div className="mx-auto w-full max-w-6xl space-y-6">
-        {/* Header */}
         <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
@@ -261,16 +267,11 @@ export default function DashboardClient({
           </div>
         </header>
 
-        {/* All the rest of your sections go here - copy from your original file */}
-        {/* Top summary row, Ben’s take, Upcoming, Payments, Category overviews, Recent activity, etc. */}
-
-        {/* For now, to make it build, you can temporarily put a simple version and then paste the rest */}
         <div className="text-center py-12 text-zinc-400">
           Dashboard loaded successfully with {bills.length} bills, {debts.length} debts, and {spend.length} spend entries.
         </div>
       </div>
 
-      {/* Upcoming Modal - paste your modal code here if you want */}
       {showUpcomingModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4">
