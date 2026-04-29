@@ -1,42 +1,40 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import BenBubble from "@/components/BenBubble";
 import BenPersona from "@/components/BenPersona";
 
 export default function PaymentsPage() {
-  const supabase = createClientComponentClient();
+  const [supabase] = useState(() => createSupabaseBrowserClient());
 
   const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState<any[]>([]);
 
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
 
-  const [debts, setDebts] = useState([]);
-  const [bills, setBills] = useState([]);
+  const [debts, setDebts] = useState<any[]>([]);
+  const [bills, setBills] = useState<any[]>([]);
 
-  const [selectedDebtId, setSelectedDebtId] = useState(null);
-  const [selectedBillId, setSelectedBillId] = useState(null);
+  const [selectedDebtId, setSelectedDebtId] = useState<string | null>(null);
+  const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
 
-  /* ─────────────────────────────
-     LOAD INITIAL DATA
-  ───────────────────────────── */
   useEffect(() => {
     loadInitial();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadInitial() {
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (!session?.user) return;
+    if (!user) return;
 
-    const userId = session.user.id;
+    const userId = user.id;
 
     const [{ data: debtsData }, { data: billsData }, { data: paymentsData }] =
       await Promise.all([
@@ -54,25 +52,21 @@ export default function PaymentsPage() {
     setHistory(paymentsData || []);
   }
 
-  /* ─────────────────────────────
-     ADD PAYMENT
-  ───────────────────────────── */
   async function handleAddPayment() {
     setLoading(true);
 
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (!session?.user) {
+    if (!user) {
       alert("You must be logged in.");
       setLoading(false);
       return;
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
 
-    // Validate
     if (!amount || Number(amount) <= 0) {
       alert("Enter a valid amount.");
       setLoading(false);
@@ -85,7 +79,6 @@ export default function PaymentsPage() {
       return;
     }
 
-    // Auto-fill merchant if blank
     const billName = bills.find((b) => b.id === selectedBillId)?.name;
     const debtName = debts.find((d) => d.id === selectedDebtId)?.name;
 
@@ -109,10 +102,8 @@ export default function PaymentsPage() {
       return;
     }
 
-    // Refresh history
     await loadInitial();
 
-    // Reset form
     setMerchant("");
     setAmount("");
     setNote("");
@@ -122,14 +113,9 @@ export default function PaymentsPage() {
     setLoading(false);
   }
 
-  /* ─────────────────────────────
-     UI
-  ───────────────────────────── */
   return (
     <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
       <div className="mx-auto w-full max-w-4xl space-y-10 pb-24">
-
-        {/* Header */}
         <header>
           <h1 className="text-2xl font-semibold tracking-tight">Add Payment</h1>
           <p className="text-xs text-zinc-400">
@@ -137,16 +123,12 @@ export default function PaymentsPage() {
           </p>
         </header>
 
-        {/* Ben */}
         <BenBubble
-          text="Let’s log your payment and keep your month on track."
+          text="Let's log your payment and keep your month on track."
           mood="encouraging"
         />
 
-        {/* Form */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-
-          {/* Date */}
           <div className="flex flex-col space-y-1">
             <label className="text-xs text-zinc-400">Date</label>
             <input
@@ -157,7 +139,6 @@ export default function PaymentsPage() {
             />
           </div>
 
-          {/* Merchant */}
           <div className="flex flex-col space-y-1">
             <label className="text-xs text-zinc-400">What did you pay?</label>
             <input
@@ -169,7 +150,6 @@ export default function PaymentsPage() {
             />
           </div>
 
-          {/* Amount */}
           <div className="flex flex-col space-y-1">
             <label className="text-xs text-zinc-400">Amount</label>
             <input
@@ -181,7 +161,6 @@ export default function PaymentsPage() {
             />
           </div>
 
-          {/* Debt */}
           <div className="flex flex-col space-y-1">
             <label className="text-xs text-zinc-400">Debt</label>
             <select
@@ -201,7 +180,6 @@ export default function PaymentsPage() {
             </select>
           </div>
 
-          {/* Bill */}
           <div className="flex flex-col space-y-1">
             <label className="text-xs text-zinc-400">Bill</label>
             <select
@@ -221,7 +199,6 @@ export default function PaymentsPage() {
             </select>
           </div>
 
-          {/* Note */}
           <div className="flex flex-col space-y-1">
             <label className="text-xs text-zinc-400">Note</label>
             <input
@@ -233,7 +210,6 @@ export default function PaymentsPage() {
             />
           </div>
 
-          {/* Button */}
           <button
             onClick={handleAddPayment}
             disabled={loading}
@@ -243,7 +219,6 @@ export default function PaymentsPage() {
           </button>
         </section>
 
-        {/* History */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
           <h2 className="text-sm font-semibold text-zinc-300">History</h2>
 
@@ -260,9 +235,7 @@ export default function PaymentsPage() {
                     <div className="text-sm text-white">
                       {p.merchant || "Payment"} — ${p.amount}
                     </div>
-                    <div className="text-[11px] text-zinc-500">
-                      {p.date_iso}
-                    </div>
+                    <div className="text-[11px] text-zinc-500">{p.date_iso}</div>
                   </div>
                 </div>
               ))}
@@ -270,7 +243,6 @@ export default function PaymentsPage() {
           )}
         </section>
 
-        {/* Ben Persona */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
           <BenPersona />
         </section>
