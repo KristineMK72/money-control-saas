@@ -27,10 +27,13 @@ export async function middleware(req: NextRequest) {
 
   const { pathname } = req.nextUrl;
 
-  /* 1. PUBLIC ROUTES (skip auth) */
+  // 🔍 LOG every request the middleware sees
+  const sbCookies = req.cookies.getAll().filter(c => c.name.startsWith("sb-")).map(c => c.name);
+  console.log(`[mw] ${pathname} | sb-cookies: ${sbCookies.length ? sbCookies.join(",") : "NONE"}`);
+
+  /* 1. PUBLIC ROUTES */
   const publicRoutes = ["/", "/login", "/signup", "/auth/callback"];
   if (publicRoutes.includes(pathname)) {
-    // Still call getUser() so the cookie is refreshed even on public pages
     await supabase.auth.getUser();
     return res;
   }
@@ -38,48 +41,52 @@ export async function middleware(req: NextRequest) {
   /* 2. GET USER */
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
+  console.log(`[mw] ${pathname} | user: ${user?.id ?? "NULL"} | err: ${userError?.message ?? "none"}`);
+
   if (!user) {
+    console.log(`[mw] ${pathname} | REDIRECT → /login (no user)`);
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  /* 3. FETCH PROFILE */
-  const { data: profile } = await supabase
+  /* 3. PROFILE */
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, onboarding_complete, is_premium")
     .eq("id", user.id)
     .maybeSingle();
 
+  console.log(`[mw] ${pathname} | profile: ${profile ? JSON.stringify(profile) : "NULL"} | err: ${profileError?.message ?? "none"}`);
+
   /* 4. ONBOARDING GUARD */
   const isOnboardingRoute = pathname.startsWith("/onboarding");
 
   if (!profile && !isOnboardingRoute) {
+    console.log(`[mw] ${pathname} | REDIRECT → /onboarding (no profile)`);
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
   if (profile && !profile.onboarding_complete && !isOnboardingRoute) {
+    console.log(`[mw] ${pathname} | REDIRECT → /onboarding (incomplete)`);
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
   if (isOnboardingRoute) {
     return res;
   }
 
-  /* 5. PREMIUM ROUTES */
+  /* 5. PREMIUM */
   const premiumRoutes = [
-    "/forecast",
-    "/analytics",
-    "/chat/premium",
-    "/credit",
-    "/credit/disputes",
-    "/credit/templates",
-    "/credit/builder",
+    "/forecast", "/analytics", "/chat/premium",
+    "/credit", "/credit/disputes", "/credit/templates", "/credit/builder",
   ];
   const isPremiumRoute = premiumRoutes.some((r) => pathname.startsWith(r));
   if (isPremiumRoute && !profile?.is_premium) {
+    console.log(`[mw] ${pathname} | REDIRECT → /upgrade (not premium)`);
     return NextResponse.redirect(new URL("/upgrade", req.url));
   }
 
-  /* 6. DEFAULT ALLOW */
+  console.log(`[mw] ${pathname} | ALLOW`);
   return res;
 }
 
