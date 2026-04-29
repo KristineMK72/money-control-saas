@@ -86,6 +86,13 @@ type Props = {
 };
 
 /* ─────────────────────────────
+   TYPE GUARD (FIX)
+──────────────────────────── */
+function isPayment(item: ActivityItem): item is Payment {
+  return "debt_id" in item || "bill_id" in item;
+}
+
+/* ─────────────────────────────
    HELPERS
 ──────────────────────────── */
 function getNextDueDate(due_day: number) {
@@ -116,7 +123,7 @@ function getMonthKeyFromDateString(value: string | null): string | null {
 }
 
 /* ─────────────────────────────
-   CLIENT COMPONENT
+   COMPONENT
 ──────────────────────────── */
 export default function DashboardClient({
   profile,
@@ -127,16 +134,6 @@ export default function DashboardClient({
   initialPayments,
   user,
 }: Props) {
-  console.log("DashboardClient mounted", {
-    bills: initialBills.length,
-    debts: initialDebts.length,
-    spend: initialSpend.length,
-    income: initialIncome.length,
-    payments: initialPayments.length,
-    user,
-    profile,
-  });
-
   const [bills] = useState(initialBills);
   const [debts] = useState(initialDebts);
   const [spend] = useState(initialSpend);
@@ -144,7 +141,8 @@ export default function DashboardClient({
   const [payments] = useState(initialPayments);
   const [showUpcomingModal, setShowUpcomingModal] = useState(false);
 
-  const displayName = profile.display_name || user?.email?.split("@")[0] || "there";
+  const displayName =
+    profile.display_name || user?.email?.split("@")[0] || "there";
 
   const thisMonthKey = useMemo(() => {
     const now = new Date();
@@ -189,14 +187,18 @@ export default function DashboardClient({
   const { billPaymentsThisMonth, debtPaymentsThisMonth } = useMemo(() => {
     let billTotal = 0;
     let debtTotal = 0;
+
     payments.forEach((p) => {
       const key =
         getMonthKeyFromDateString(p.date_iso) ??
         getMonthKeyFromDateString(p.created_at);
+
       if (key !== thisMonthKey) return;
-      if (p.debt_id) debtTotal += p.amount || 0;
-      else if (p.bill_id) billTotal += p.amount || 0;
+
+      if (p.debt_id) debtTotal += p.amount;
+      else if (p.bill_id) billTotal += p.amount;
     });
+
     return { billPaymentsThisMonth: billTotal, debtPaymentsThisMonth: debtTotal };
   }, [payments, thisMonthKey]);
 
@@ -204,47 +206,46 @@ export default function DashboardClient({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const upcomingBills = bills
-      .filter((b) => b.due_day != null)
-      .map((b) => ({
-        id: b.id,
-        name: b.name,
-        kind: "bill" as const,
-        amount: getMonthlyBillAmount(b),
-        dueDate: getNextDueDate(b.due_day!),
-      }))
+    const items = [
+      ...bills
+        .filter((b) => b.due_day != null)
+        .map((b) => ({
+          id: b.id,
+          name: b.name,
+          kind: "bill" as const,
+          amount: getMonthlyBillAmount(b),
+          dueDate: getNextDueDate(b.due_day!),
+        })),
+      ...debts
+        .filter((d) => d.due_day != null)
+        .map((d) => ({
+          id: d.id,
+          name: d.name,
+          kind: "debt" as const,
+          amount: d.min_payment || 0,
+          dueDate: getNextDueDate(d.due_day!),
+        })),
+    ];
+
+    return items
       .filter((item) => {
-        const diffDays =
+        const diff =
           (item.dueDate.getTime() - today.getTime()) /
           (1000 * 60 * 60 * 24);
-        return diffDays >= 0 && diffDays <= 7;
-      });
-
-    const upcomingDebts = debts
-      .filter((d) => d.due_day != null)
-      .map((d) => ({
-        id: d.id,
-        name: d.name,
-        kind: "debt" as const,
-        amount: d.min_payment || 0,
-        dueDate: getNextDueDate(d.due_day!),
-      }))
-      .filter((item) => {
-        const diffDays =
-          (item.dueDate.getTime() - today.getTime()) /
-          (1000 * 60 * 60 * 24);
-        return diffDays >= 0 && diffDays <= 7;
-      });
-
-    return [...upcomingBills, ...upcomingDebts].sort(
-      (a, b) => a.dueDate.getTime() - b.dueDate.getTime()
-    );
+        return diff >= 0 && diff <= 7;
+      })
+      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
   }, [bills, debts]);
 
-  const benMood = netCashflow > 0 ? "relieved" : netCashflow > -200 ? "concerned" : "alarmed";
+  const benMood =
+    netCashflow > 0
+      ? "relieved"
+      : netCashflow > -200
+      ? "concerned"
+      : "alarmed";
 
   const recentActivity: ActivityItem[] = useMemo(() => {
-    return ([...spend.slice(0, 5), ...payments.slice(0, 5)] as ActivityItem[])
+    return [...spend.slice(0, 5), ...payments.slice(0, 5)]
       .sort(
         (a, b) =>
           new Date(b.created_at).getTime() -
@@ -256,194 +257,71 @@ export default function DashboardClient({
   return (
     <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
       <div className="mx-auto w-full max-w-6xl space-y-6">
-        {/* Header */}
-        <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Welcome back, {displayName}
-            </h1>
-            <p className="text-xs text-zinc-400">
-              Ben’s overview of your month, pressure, and what’s coming next.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowUpcomingModal(true)}
-              className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-emerald-400 hover:border-emerald-400"
-            >
-              View upcoming (7 days)
-            </button>
-          </div>
+
+        {/* HEADER */}
+        <header className="flex justify-between">
+          <h1 className="text-2xl font-semibold">
+            Welcome back, {displayName}
+          </h1>
         </header>
 
-        {/* TOP SUMMARY ROW */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-            <p className="text-xs text-zinc-400">Monthly Income</p>
-            <p className="text-2xl font-semibold text-emerald-400">
-              ${monthlyIncome.toLocaleString()}
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-            <p className="text-xs text-zinc-400">Monthly Spend</p>
-            <p className="text-2xl font-semibold text-red-400">
-              ${monthlySpend.toLocaleString()}
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-            <p className="text-xs text-zinc-400">Net Cashflow</p>
-            <p
-              className={`text-2xl font-semibold ${
-                netCashflow >= 0 ? "text-emerald-400" : "text-red-400"
-              }`}
-            >
-              ${netCashflow.toLocaleString()}
-            </p>
-          </div>
-        </section>
-
-        {/* BEN'S TAKE */}
-        <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 space-y-2">
-          <h2 className="text-lg font-semibold">Ben’s Take</h2>
-          <p className="text-sm text-zinc-400">
-            {benMood === "relieved" &&
-              "Good news — your month is looking stable. Keep this momentum going."}
-            {benMood === "concerned" &&
-              "You’re close to breaking even. A few adjustments could stabilize things."}
-            {benMood === "alarmed" &&
-              "Your spending is outpacing income. Let’s focus on the biggest pressure points."}
-          </p>
-        </section>
-
-        {/* UPCOMING (7 DAYS) */}
-        <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Upcoming (7 days)</h2>
-            <button
-              onClick={() => setShowUpcomingModal(true)}
-              className="text-xs text-emerald-400 hover:text-emerald-300"
-            >
-              View all
-            </button>
-          </div>
-
-          {upcoming.length === 0 ? (
-            <p className="text-sm text-zinc-500">Nothing due in the next week.</p>
-          ) : (
-            <ul className="space-y-2">
-              {upcoming.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-center justify-between rounded-lg bg-zinc-800 p-3"
-                >
-                  <div>
-                    <p className="font-medium">{item.name}</p>
-                    <p className="text-xs text-zinc-400">
-                      Due {item.dueDate.toLocaleDateString()}
-                    </p>
-                  </div>
-                  <p className="font-semibold text-emerald-400">
-                    ${item.amount.toLocaleString()}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {/* PAYMENTS THIS MONTH */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-            <p className="text-xs text-zinc-400">Bill Payments (This Month)</p>
-            <p className="text-xl font-semibold text-emerald-400">
-              ${billPaymentsThisMonth.toLocaleString()}
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-            <p className="text-xs text-zinc-400">Debt Payments (This Month)</p>
-            <p className="text-xl font-semibold text-emerald-400">
-              ${debtPaymentsThisMonth.toLocaleString()}
-            </p>
-          </div>
+        {/* SUMMARY */}
+        <section className="grid md:grid-cols-3 gap-4">
+          <Card label="Income" value={monthlyIncome} color="text-emerald-400" />
+          <Card label="Spend" value={monthlySpend} color="text-red-400" />
+          <Card label="Net" value={netCashflow} color={netCashflow >= 0 ? "text-emerald-400" : "text-red-400"} />
         </section>
 
         {/* RECENT ACTIVITY */}
-        <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 space-y-3">
-          <h2 className="text-lg font-semibold">Recent Activity</h2>
+        <section className="bg-zinc-900 p-5 rounded-xl border border-zinc-800">
+          <h2 className="text-lg font-semibold mb-3">Recent Activity</h2>
 
-          {spend.length === 0 && payments.length === 0 ? (
-            <p className="text-sm text-zinc-500">No recent activity yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {recentActivity.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-center justify-between rounded-lg bg-zinc-800 p-3"
-                >
-                  <div>
-                    <p className="font-medium">
-                      {"merchant" in item
-                        ? item.merchant
-                        : item.note || "Payment"}
-                    </p>
-                    <p className="text-xs text-zinc-400">
-                      {new Date(item.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <p className="font-semibold text-emerald-400">
-                    ${item.amount.toLocaleString()}
+          <ul className="space-y-2">
+            {recentActivity.map((item) => (
+              <li
+                key={item.id}
+                className="flex justify-between bg-zinc-800 p-3 rounded-lg"
+              >
+                <div>
+                  <p className="font-medium">
+                    {isPayment(item)
+                      ? item.note || "Payment"
+                      : item.merchant || "Expense"}
                   </p>
-                </li>
-              ))}
-            </ul>
-          )}
+                  <p className="text-xs text-zinc-400">
+                    {new Date(item.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <p className="text-emerald-400 font-semibold">
+                  ${item.amount.toLocaleString()}
+                </p>
+              </li>
+            ))}
+          </ul>
         </section>
       </div>
-
-      {showUpcomingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">
-                Upcoming obligations
-              </h2>
-              <button
-                onClick={() => setShowUpcomingModal(false)}
-                className="text-zinc-400 hover:text-zinc-200 text-sm"
-              >
-                Close
-              </button>
-            </div>
-            {upcoming.length === 0 ? (
-              <p className="text-sm text-zinc-500">
-                Nothing due in the next 7 days.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {upcoming.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-center justify-between rounded-lg bg-zinc-800 p-3"
-                  >
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      <p className="text-xs text-zinc-400">
-                        Due {item.dueDate.toLocaleDateString()}
-                      </p>
-                    </div>
-                    <p className="font-semibold text-emerald-400">
-                      ${item.amount.toLocaleString()}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
     </main>
+  );
+}
+
+/* ─────────────────────────────
+   SMALL UI COMPONENT
+──────────────────────────── */
+function Card({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl">
+      <p className="text-xs text-zinc-400">{label}</p>
+      <p className={`text-2xl font-semibold ${color}`}>
+        ${value.toLocaleString()}
+      </p>
+    </div>
   );
 }
