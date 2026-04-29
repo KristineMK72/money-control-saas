@@ -44,10 +44,16 @@ export default function OnboardingPage() {
   const handleFinish = async () => {
     if (!session?.user) return;
 
+    // Require all fields
+    if (!primaryStressor || !primaryGoal || !benVoice) {
+      setError("Please complete all steps before finishing.");
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("user_profile")
       .upsert(
         {
@@ -55,9 +61,12 @@ export default function OnboardingPage() {
           primary_stressor: primaryStressor,
           primary_goal: primaryGoal,
           ben_voice: benVoice,
+          onboarding_complete: true, // ⭐ REQUIRED
         },
         { onConflict: "user_id" }
       );
+
+    console.log("UPSERT RESULT:", { data, error });
 
     setSaving(false);
 
@@ -67,7 +76,8 @@ export default function OnboardingPage() {
       return;
     }
 
-    router.push("/onboarding/guide");
+    // ⭐ Now that onboarding is complete, go to dashboard
+    router.push("/dashboard");
   };
 
   return (
