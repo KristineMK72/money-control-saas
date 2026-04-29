@@ -71,7 +71,7 @@ export default function RootLayout({
                 <NavLink href="/income">Income</NavLink>
                 <NavLink href="/payments">Payments</NavLink>
                 <NavLink href="/bills">Bills</NavLink>
-                <NavLink href="/"debt">Debt</NavLink>
+                <NavLink href="/debt">Debt</NavLink>
                 <NavLink href="/forecast">Forecast</NavLink>
                 <NavLink href="/calendar">Calendar</NavLink>
                 <NavLink href="/chat">Ask Ben</NavLink>
@@ -83,7 +83,7 @@ export default function RootLayout({
             </div>
           </header>
 
-          {/* PAGE */}
+          {/* PAGE CONTENT */}
           <main className="min-h-screen">{children}</main>
 
           {/* INSTALL BANNER */}
