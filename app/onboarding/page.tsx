@@ -169,4 +169,56 @@ export default function OnboardingPage() {
                 Same data, different tone. You’re in control.
               </p>
             </div>
-           
+            <div className="grid grid-cols-1 gap-2">
+              {voiceOptions.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setBenVoice(opt.id)}
+                  className={`w-full text-left rounded-lg border px-3 py-2 text-sm ${
+                    benVoice === opt.id
+                      ? "border-emerald-400 bg-emerald-500/10 text-emerald-100"
+                      : "border-zinc-700 bg-zinc-900/60 text-zinc-200 hover:border-zinc-500"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center justify-between pt-2">
+          <button
+            type="button"
+            onClick={back}
+            disabled={step === 1}
+            className="text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-40"
+          >
+            Back
+          </button>
+
+          {step < 3 ? (
+            <button
+              type="button"
+              onClick={next}
+              className="rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-black hover:bg-emerald-400"
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleFinish}
+              disabled={saving}
+              className="rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-black hover:bg-emerald-400 disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Finish setup"}
+            </button>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
