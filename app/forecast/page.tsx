@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import BenBubble from "@/components/BenBubble";
 import BenPersona from "@/components/BenPersona";
 import { getForecast } from "@/lib/ben/forecast";
@@ -55,7 +55,7 @@ function isSameMonth(d: Date, ref: Date) {
 ──────────────────────────── */
 
 export default function ForecastPage() {
-  const supabase = createClientComponentClient();
+  const [supabase] = useState(() => createSupabaseBrowserClient());
 
   const [loading, setLoading] = useState(true);
   const [totalNeeded, setTotalNeeded] = useState(0);
@@ -71,15 +71,15 @@ export default function ForecastPage() {
       setLoading(true);
 
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (!session?.user) {
+      if (!user) {
         setLoading(false);
         return;
       }
 
-      const userId = session.user.id;
+      const userId = user.id;
       const today = new Date();
 
       /* ───────── Bills ───────── */
@@ -179,7 +179,7 @@ export default function ForecastPage() {
       <main className="min-h-screen bg-zinc-950 text-white px-4 py-6">
         <div className="mx-auto w-full max-w-5xl">
           <BenBubble
-            text="I couldn’t gather enough data to forecast your month."
+            text="I couldn't gather enough data to forecast your month."
             mood="stern"
           />
         </div>
@@ -198,7 +198,7 @@ export default function ForecastPage() {
     return Math.max(0, Math.round(score));
   })();
 
-  /* ───────── Mood Sanitizer (Fixes Vercel Build) ───────── */
+  /* ───────── Mood Sanitizer ───────── */
   const safeMood = ["encouraging", "urgent", "stern", "witty", "celebratory"].includes(
     forecast.ben.mood
   )
@@ -224,7 +224,7 @@ export default function ForecastPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Forecast</h1>
             <p className="text-xs text-zinc-400">
-              Ben’s projection of your cashflow and obligations.
+              Ben's projection of your cashflow and obligations.
             </p>
           </div>
 
@@ -296,15 +296,15 @@ export default function ForecastPage() {
 
         {/* Alerts */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
-          <p className="text-xs font-semibold text-zinc-400">Ben’s Alerts</p>
+          <p className="text-xs font-semibold text-zinc-400">Ben's Alerts</p>
           <ul className="space-y-2 text-sm text-zinc-300">
             {forecast.incomeGap > 0 && (
-              <li>• You’re short ${forecast.incomeGap.toFixed(2)} this month.</li>
+              <li>• You're short ${forecast.incomeGap.toFixed(2)} this month.</li>
             )}
             {forecast.dailyIncomeNeeded > 50 && (
               <li>• Daily needed income is unusually high.</li>
             )}
-            {forecast.projectedOnTrack && <li>• You’re pacing well.</li>}
+            {forecast.projectedOnTrack && <li>• You're pacing well.</li>}
             <li>• Ben is monitoring bill clusters and cash dips.</li>
           </ul>
         </section>
@@ -318,8 +318,8 @@ export default function ForecastPage() {
             </span>
           </div>
           <p className="text-xs text-zinc-500">
-            Ask Ben things like “What if I pay $200 extra on my card?” or “Can I
-            afford a $150 subscription?” and see the impact instantly.
+            Ask Ben things like "What if I pay $200 extra on my card?" or "Can I
+            afford a $150 subscription?" and see the impact instantly.
           </p>
         </section>
 
