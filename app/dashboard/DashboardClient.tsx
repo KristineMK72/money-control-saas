@@ -443,3 +443,127 @@ export default function DashboardClient({
             >
               View all
             </button
+                   </div>
+
+          {upcoming.length === 0 ? (
+            <p className="text-sm text-zinc-500">Nothing due in the next week.</p>
+          ) : (
+            <ul className="space-y-2">
+              {upcoming.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between rounded-lg bg-zinc-800 p-3"
+                >
+                  <div>
+                    <p className="font-medium">{item.name}</p>
+                    <p className="text-xs text-zinc-400">
+                      Due {item.dueDate.toLocaleDateString()}
+                    </p>
+                  </div>
+                  <p className="font-semibold text-emerald-400">
+                    ${item.amount.toLocaleString()}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* RECENT ACTIVITY */}
+        <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 space-y-3">
+          <h2 className="text-lg font-semibold">Recent Activity</h2>
+
+          {spend.length === 0 && payments.length === 0 ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between rounded-lg bg-zinc-800 p-3 animate-pulse"
+                >
+                  <div className="space-y-2">
+                    <div className="h-3 w-32 rounded bg-zinc-700" />
+                    <div className="h-2 w-20 rounded bg-zinc-800" />
+                  </div>
+                  <div className="h-4 w-16 rounded bg-zinc-700" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {([...spend.slice(0, 5), ...payments.slice(0, 5)] as (SpendEntry | Payment)[])
+                .sort(
+                  (a, b) =>
+                    new Date(b.created_at).getTime() -
+                    new Date(a.created_at).getTime()
+                )
+                .slice(0, 5)
+                .map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between rounded-lg bg-zinc-800 p-3"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {"merchant" in item
+                          ? item.merchant
+                          : item.note || "Payment"}
+                      </p>
+                      <p className="text-xs text-zinc-400">
+                        {new Date(item.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <p className="font-semibold text-emerald-400">
+                      ${item.amount.toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      {/* UPCOMING MODAL */}
+      {showUpcomingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-800 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">
+                Upcoming obligations
+              </h2>
+              <button
+                onClick={() => setShowUpcomingModal(false)}
+                className="text-zinc-400 hover:text-zinc-200 text-sm"
+              >
+                Close
+              </button>
+            </div>
+
+            {upcoming.length === 0 ? (
+              <p className="text-sm text-zinc-500">Nothing due soon.</p>
+            ) : (
+              <ul className="space-y-2">
+                {upcoming.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between rounded-lg bg-zinc-800 p-3"
+                  >
+                    <div>
+                      <p className="font-medium">{item.name}</p>
+                      <p className="text-xs text-zinc-400">
+                        Due {item.dueDate.toLocaleDateString()}
+                      </p>
+                    </div>
+                    <p className="font-semibold text-emerald-400">
+                      ${item.amount.toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
