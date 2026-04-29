@@ -1,20 +1,23 @@
 // app/dashboard/page.tsx
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import DashboardClient from "./DashboardClient";
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient();
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  // DO NOT CHECK AUTH HERE — middleware already did it
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (authError || !user) {
-    redirect("/login");
+  // If user somehow missing, just render nothing — middleware will catch it on next nav
+  if (!user) {
+    return null;
   }
 
   // Fetch profile + all financial data in parallel
   const [
-    { data: profileData, error: profileError },
+    { data: profileData },
     { data: billsData = [] },
     { data: debtsData = [] },
     { data: spendData = [] },
@@ -45,10 +48,6 @@ export default async function DashboardPage() {
       .order("date_iso", { ascending: false })
       .limit(200),
   ]);
-
-  if (profileError && profileError.code !== "PGRST116") { // PGRST116 = no rows
-    console.error("Profile fetch error:", profileError);
-  }
 
   const profile = profileData || {
     display_name: null,
