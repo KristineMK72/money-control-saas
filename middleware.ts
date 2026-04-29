@@ -6,42 +6,69 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient({ req, res });
 
-  // Load session
+  const { pathname } = req.nextUrl;
+
+  /* ─────────────────────────────
+     1. PUBLIC ROUTES (skip auth)
+  ───────────────────────────── */
+  const publicRoutes = [
+    "/",
+    "/login",
+    "/signup",
+    "/auth/callback",
+  ];
+
+  if (publicRoutes.includes(pathname)) {
+    return res;
+  }
+
+  /* ─────────────────────────────
+     2. GET USER SESSION
+  ───────────────────────────── */
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  const pathname = req.nextUrl.pathname;
-
-  // Public routes
-  const publicRoutes = ["/", "/login", "/signup", "/auth/callback"];
-  if (publicRoutes.includes(pathname)) return res;
-
-  // Require login
   if (!session) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // Load profile
+  const userId = session.user.id;
+
+  /* ─────────────────────────────
+     3. FETCH PROFILE (SAFE)
+     IMPORTANT: use ONE table only
+  ───────────────────────────── */
   const { data: profile } = await supabase
-    .from("user_profile")
-    .select("*")
-    .eq("user_id", session.user.id)
+    .from("profiles")
+    .select("id, onboarding_complete, is_premium")
+    .eq("id", userId)
     .maybeSingle();
 
-  // If no profile yet → onboarding
-  if (!profile && !pathname.startsWith("/onboarding")) {
+  /* ─────────────────────────────
+     4. ONBOARDING GUARD
+  ───────────────────────────── */
+
+  const isOnboardingRoute = pathname.startsWith("/onboarding");
+
+  // If no profile → force onboarding
+  if (!profile && !isOnboardingRoute) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
-  // If onboarding not complete → force onboarding
-  if (profile && !profile.onboarding_complete) {
-    if (!pathname.startsWith("/onboarding")) {
-      return NextResponse.redirect(new URL("/onboarding", req.url));
-    }
+  // If profile exists but onboarding incomplete → force onboarding
+  if (profile && !profile.onboarding_complete && !isOnboardingRoute) {
+    return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
-  // Premium gating
+  // Prevent onboarding loop
+  if (isOnboardingRoute) {
+    return res;
+  }
+
+  /* ─────────────────────────────
+     5. PREMIUM ROUTES
+  ───────────────────────────── */
   const premiumRoutes = [
     "/forecast",
     "/analytics",
@@ -52,12 +79,17 @@ export async function middleware(req: NextRequest) {
     "/credit/builder",
   ];
 
-  if (premiumRoutes.some((r) => pathname.startsWith(r))) {
-    if (!profile?.is_premium) {
-      return NextResponse.redirect(new URL("/upgrade", req.url));
-    }
+  const isPremiumRoute = premiumRoutes.some((r) =>
+    pathname.startsWith(r)
+  );
+
+  if (isPremiumRoute && !profile?.is_premium) {
+    return NextResponse.redirect(new URL("/upgrade", req.url));
   }
 
+  /* ─────────────────────────────
+     6. DEFAULT ALLOW
+  ───────────────────────────── */
   return res;
 }
 
@@ -66,4 +98,3 @@ export const config = {
     "/((?!_next|static|public|favicon.ico|manifest.json|images|api|auth|login|signup).*)",
   ],
 };
-
