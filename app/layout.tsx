@@ -68,12 +68,13 @@ export default function RootLayout({
               <nav className="flex items-center gap-2 overflow-x-auto">
                 <NavLink href="/">Home</NavLink>
                 <NavLink href="/dashboard">Dashboard</NavLink>
-                <NavLink href="/chat">Ask Ben</NavLink>
                 <NavLink href="/income">Income</NavLink>
                 <NavLink href="/payments">Payments</NavLink>
                 <NavLink href="/bills">Bills</NavLink>
+                <NavLink href="/"debt">Debt</NavLink>
                 <NavLink href="/forecast">Forecast</NavLink>
                 <NavLink href="/calendar">Calendar</NavLink>
+                <NavLink href="/chat">Ask Ben</NavLink>
                 <NavLink href="/credit-health">Credit Health</NavLink>
                 <NavLink href="/credit-recovery">Credit Recovery</NavLink>
                 <NavLink href="/crisis">Crisis</NavLink>
