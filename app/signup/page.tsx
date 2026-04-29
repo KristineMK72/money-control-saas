@@ -1,11 +1,11 @@
 "use client";
 
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
 
-export default function SignupPage() {
+function SignupForm() {
   const searchParams = useSearchParams();
-  const plan = searchParams.get("plan"); // ❗ no default
+  const plan = searchParams.get("plan");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -85,5 +85,19 @@ export default function SignupPage() {
         </a>
       </p>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-zinc-950 text-white p-10">
+          Loading…
+        </div>
+      }
+    >
+      <SignupForm />
+    </Suspense>
   );
 }
