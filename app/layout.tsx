@@ -38,7 +38,7 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
 
-  // ⭐ FIXED: use getSession() instead of getUser()
+  // ⭐ Correct session retrieval
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -55,7 +55,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           fontFamily: "system-ui, sans-serif",
         }}
       >
-        <SupabaseProvider>
+        {/* ⭐ FIX: Pass session into provider so the client hydrates */}
+        <SupabaseProvider initialSession={session}>
           <header
             style={{
               position: "sticky",
