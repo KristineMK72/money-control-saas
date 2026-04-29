@@ -65,10 +65,11 @@ export default function RootLayout({
               </div>
 
               {/* NAV */}
-              <nav className="flex items-center gap-2 overflow-x-auto">
+                          <nav className="flex items-center gap-2 overflow-x-auto">
                 <NavLink href="/">Home</NavLink>
                 <NavLink href="/dashboard">Dashboard</NavLink>
                 <NavLink href="/chat">Ask Ben</NavLink>
+                <NavLink href="/income">Income</NavLink>
                 <NavLink href="/payments">Payments</NavLink>
                 <NavLink href="/bills">Bills</NavLink>
                 <NavLink href="/forecast">Forecast</NavLink>
@@ -78,7 +79,6 @@ export default function RootLayout({
                 <NavLink href="/crisis">Crisis</NavLink>
                 <LogoutButton />
               </nav>
-            </div>
           </header>
 
           {/* PAGE */}
