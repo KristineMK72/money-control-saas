@@ -1,44 +1,24 @@
-import { createServerClient } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
-export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: { headers: request.headers },
-  })
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next()
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return request.cookies.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
-        },
-      },
-    }
-  )
+  const supabase = createMiddlewareClient({ req, res })
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // This refreshes the session and attaches it to the request
+  await supabase.auth.getSession()
 
-  const protectedRoutes = ['/dashboard', '/spend', '/income', '/bills', '/debt', '/forecast', '/payments', '/chat']
-  const isProtected = protectedRoutes.some(path => request.nextUrl.pathname.startsWith(path))
-
-  // Redirect to login if accessing protected route without session
-  if (!user && isProtected) {
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
-
-  // Redirect to dashboard if already logged in and trying to access login/signup
-  if (user && (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup')) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
-  }
-
-  return response
+  return res
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: [
+    '/dashboard/:path*',
+    '/spend/:path*',
+    '/income/:path*',
+    '/debt/:path*',
+    '/payments/:path*',
+  ],
 }
