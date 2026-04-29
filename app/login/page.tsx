@@ -2,9 +2,12 @@
 
 import { useState } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
   const supabase = createClientComponentClient()
+  const router = useRouter()
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -12,19 +15,18 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const { error } = await supabase.auth.signInWithPassword(
-      {
-        email,
-        password,
-      },
-      {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      }
-    )
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
 
     if (error) {
       setError(error.message)
+      return
     }
+
+    // Manual redirect (your version requires this)
+    router.push('/dashboard')
   }
 
   return (
