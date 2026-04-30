@@ -1,9 +1,78 @@
+"use client";
+
 import Image from "next/image";
+import { useEffect, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 export default function HomePage() {
+  const [supabase] = useState(() => createSupabaseBrowserClient());
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    async function loadUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        setUserEmail(user.email ?? null);
+
+        // Try to grab name from profiles (try both id and user_id schemas)
+        const { data: profileById } = await supabase
+          .from("profiles")
+          .select("name,first_name,full_name")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        let p: any = profileById;
+        if (!p) {
+          const { data: profileByUserId } = await supabase
+            .from("profiles")
+            .select("name,first_name,full_name")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          p = profileByUserId;
+        }
+
+        const name =
+          p?.first_name ||
+          p?.name ||
+          p?.full_name ||
+          (user.email ? user.email.split("@")[0] : null);
+
+        setUserName(name);
+      }
+      setChecking(false);
+    }
+    loadUser();
+  }, [supabase]);
+
+  const isLoggedIn = !!userEmail;
+
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
-      <section className="mx-auto max-w-6xl px-6 py-20">
+      <section className="mx-auto max-w-6xl px-6 py-12 sm:py-20">
+        {/* Logged-in welcome banner */}
+        {isLoggedIn && (
+          <div className="mb-10 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <p className="text-sm text-emerald-300 font-semibold">
+                Welcome back{userName ? `, ${userName}` : ""} 👋
+              </p>
+              <p className="text-xs text-zinc-400 mt-1">
+                You're signed in as {userEmail}
+              </p>
+            </div>
+            <a
+              href="/dashboard"
+              className="rounded-xl bg-emerald-400 px-5 py-2.5 font-semibold text-black text-sm transition hover:bg-emerald-300"
+            >
+              Open Dashboard →
+            </a>
+          </div>
+        )}
 
         {/* HERO */}
         <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr]">
@@ -20,36 +89,57 @@ export default function HomePage() {
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg text-white/70">
-              Track bills, spending, and income — then let Ben turn it into a calm,
-              clear plan for today. No overwhelm. No guesswork. Just direction.
+              Track bills, spending, and income — then let Ben turn it into a
+              calm, clear plan for today. No overwhelm. No guesswork. Just
+              direction.
             </p>
 
+            {/* CTAs — change based on auth state */}
             <div className="mt-8 flex flex-wrap gap-3">
-              <a
-                href="/dashboard"
-                className="rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black transition hover:opacity-90"
-              >
-                Preview App
-              </a>
-
-              <a
-                href="/signup"
-                className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white transition hover:bg-white/5"
-              >
-                Start Free
-              </a>
-
-              <a
-                href="/signup"
-                className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white transition hover:bg-white/5"
-              >
-                Login
-              </a>
+              {isLoggedIn ? (
+                <>
+                  <a
+                    href="/dashboard"
+                    className="rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black transition hover:opacity-90"
+                  >
+                    Open Dashboard
+                  </a>
+                  <a
+                    href="/chat"
+                    className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white transition hover:bg-white/5"
+                  >
+                    Ask Ben
+                  </a>
+                </>
+              ) : (
+                <>
+                  <a
+                    href="/signup"
+                    className="rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black transition hover:opacity-90"
+                  >
+                    Start Free
+                  </a>
+                  <a
+                    href="/login"
+                    className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white transition hover:bg-white/5"
+                  >
+                    Log in
+                  </a>
+                  <a
+                    href="/dashboard"
+                    className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white transition hover:bg-white/5"
+                  >
+                    Preview App
+                  </a>
+                </>
+              )}
             </div>
 
-            <p className="mt-4 text-sm text-white/60">
-              No credit card required. Upgrade anytime.
-            </p>
+            {!isLoggedIn && (
+              <p className="mt-4 text-sm text-white/60">
+                No credit card required. Upgrade anytime.
+              </p>
+            )}
           </div>
 
           {/* BEN CARD */}
@@ -72,9 +162,9 @@ export default function HomePage() {
                 </div>
 
                 <p className="mt-3 text-lg font-semibold leading-7 text-white">
-                  “America trusted me with the $100 bill.
+                  "America trusted me with the $100 bill.
                   <br />
-                  I can probably help you with your electric bill too.”
+                  I can probably help you with your electric bill too."
                 </p>
 
                 <p className="mt-3 text-sm text-white/65">
@@ -126,7 +216,7 @@ export default function HomePage() {
 
         {/* WHO IT'S FOR */}
         <div className="mt-24">
-          <h2 className="text-2xl font-bold tracking-tight">Who it’s for</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Who it's for</h2>
           <p className="mt-2 text-white/60 max-w-xl">
             AskBen is built for real people, not finance experts.
           </p>
@@ -152,85 +242,91 @@ export default function HomePage() {
           <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
             <h2 className="text-lg font-bold">Priority engine</h2>
             <p className="mt-2 text-sm text-white/70">
-              Know which bill matters most first based on due date and real-life risk.
+              Know which bill matters most first based on due date and real-life
+              risk.
             </p>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
             <h2 className="text-lg font-bold">Spending clarity</h2>
             <p className="mt-2 text-sm text-white/70">
-              Track spending and payments separately so your money picture stays honest.
+              Track spending and payments separately so your money picture stays
+              honest.
             </p>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
             <h2 className="text-lg font-bold">Screenshot import</h2>
             <p className="mt-2 text-sm text-white/70">
-              Import transactions from screenshots instead of typing everything by hand.
+              Import transactions from screenshots instead of typing everything
+              by hand.
             </p>
           </div>
         </div>
 
-        {/* PRICING */}
-        <div className="mt-24 grid gap-6 lg:grid-cols-2">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-8">
-            <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/50">
-              Pro Monthly
-            </div>
-            <div className="mt-3 text-4xl font-black">
-              $5<span className="text-lg text-white/60">/month</span>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-white/70">
-              Perfect for users who want screenshot import, smarter prioritization,
-              and a calm weekly money plan.
-            </p>
+        {/* PRICING — only show when logged out */}
+        {!isLoggedIn && (
+          <div className="mt-24 grid gap-6 lg:grid-cols-2">
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-8">
+              <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/50">
+                Pro Monthly
+              </div>
+              <div className="mt-3 text-4xl font-black">
+                $5<span className="text-lg text-white/60">/month</span>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-white/70">
+                Perfect for users who want screenshot import, smarter
+                prioritization, and a calm weekly money plan.
+              </p>
 
-            <ul className="mt-6 space-y-2 text-sm text-white/70">
-              <li>• Full dashboard + forecast</li>
-              <li>• Screenshot transaction import</li>
-              <li>• Crisis mode planning</li>
-              <li>• Shareable financial plan</li>
-            </ul>
+              <ul className="mt-6 space-y-2 text-sm text-white/70">
+                <li>• Full dashboard + forecast</li>
+                <li>• Screenshot transaction import</li>
+                <li>• Crisis mode planning</li>
+                <li>• Shareable financial plan</li>
+              </ul>
 
-            <a
-              href="/signup?plan=monthly"
-              className="mt-8 inline-flex rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black transition hover:opacity-90"
-            >
-              Choose $5/month
-            </a>
+              <a
+                href="/signup?plan=monthly"
+                className="mt-8 inline-flex rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black transition hover:opacity-90"
+              >
+                Choose $5/month
+              </a>
+            </div>
+
+            <div className="rounded-3xl border border-cyan-300/30 bg-cyan-400/10 p-8">
+              <div className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200">
+                Pro Yearly
+              </div>
+              <div className="mt-3 text-4xl font-black">
+                $39<span className="text-lg text-white/60">/year</span>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-white/70">
+                Best value for users who want the full app all year and a lower
+                effective monthly price.
+              </p>
+
+              <ul className="mt-6 space-y-2 text-sm text-white/70">
+                <li>• Everything in Monthly</li>
+                <li>• Lower yearly price</li>
+                <li>• Better long-term planning</li>
+                <li>• Ideal for serious users</li>
+              </ul>
+
+              <a
+                href="/signup?plan=yearly"
+                className="mt-8 inline-flex rounded-xl bg-white px-5 py-3 font-semibold text-black transition hover:bg-zinc-100"
+              >
+                Choose $39/year
+              </a>
+            </div>
           </div>
-
-          <div className="rounded-3xl border border-cyan-300/30 bg-cyan-400/10 p-8">
-            <div className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200">
-              Pro Yearly
-            </div>
-            <div className="mt-3 text-4xl font-black">
-              $39<span className="text-lg text-white/60">/year</span>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-white/70">
-              Best value for users who want the full app all year and a lower
-              effective monthly price.
-            </p>
-
-            <ul className="mt-6 space-y-2 text-sm text-white/70">
-              <li>• Everything in Monthly</li>
-              <li>• Lower yearly price</li>
-              <li>• Better long-term planning</li>
-              <li>• Ideal for serious users</li>
-            </ul>
-
-            <a
-              href="/signup?plan=yearly"
-              className="mt-8 inline-flex rounded-xl bg-white px-5 py-3 font-semibold text-black transition hover:bg-zinc-100"
-            >
-              Choose $39/year
-            </a>
-          </div>
-        </div>
+        )}
 
         {/* TRUST */}
         <div className="mt-24 text-center text-white/50 text-sm">
-          Your data stays yours. Cancel anytime. No credit card required to start.
+          Your data stays yours. Cancel anytime. No credit card required to
+          start.
         </div>
       </section>
     </main>
