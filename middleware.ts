@@ -2,28 +2,19 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 // =========================
-// RATE LIMIT STORE
-// =========================
-const ipMap = new Map<string, { count: number; last: number }>();
-
-const RATE_LIMIT = 25;
-const WINDOW = 10 * 1000;
-
-// =========================
 // STATIC BLOCK LIST
 // =========================
 const blockedIPs = ["18.144.7.244", "3.101.150.105"];
 
-// =========================
-// SUSPICIOUS PATHS
-// =========================
-const suspiciousPaths = ["/api/v1/env", "/api/v2/config"];
+const publicRoutes = ["/", "/login", "/signup", "/auth/callback"];
+
+const premiumRoutes = ["/forecast", "/analytics", "/chat/premium", "/credit"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // =========================
-  // EARLY ALLOW: STATIC + ASSETS
+  // SKIP STATIC FILES EARLY (IMPORTANT)
   // =========================
   if (
     pathname.startsWith("/_next") ||
@@ -31,93 +22,40 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/images/") ||
     pathname.startsWith("/icons/") ||
     pathname === "/favicon.ico" ||
-    pathname === "/favicon.png" ||
-    pathname.startsWith("/opengraph-image") ||
     pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico)$/)
   ) {
     return NextResponse.next();
   }
 
-  // =========================
-  // CREATE BASE RESPONSE
-  // =========================
-  const res = NextResponse.next();
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
 
-  // =========================
-  // IP + REQUEST INFO
-  // =========================
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
-
-  const ua = req.headers.get("user-agent") || "unknown";
-  const path = req.nextUrl.pathname;
-  const now = Date.now();
-
-  // =========================
-  // HARD BLOCK
-  // =========================
   if (blockedIPs.includes(ip)) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
   // =========================
-  // BLOCK SUSPICIOUS PATHS
+  // PUBLIC ROUTES EARLY EXIT
   // =========================
-  if (suspiciousPaths.includes(path)) {
-    return new NextResponse("Blocked", { status: 403 });
+  const isPublic =
+    publicRoutes.includes(pathname) || pathname.startsWith("/api/");
+
+  if (isPublic) {
+    return NextResponse.next();
   }
 
   // =========================
-  // RATE LIMITING
+  // SUPABASE CLIENT (ONLY WHEN NEEDED)
   // =========================
-  const record = ipMap.get(ip) || { count: 0, last: now };
+  const res = NextResponse.next();
 
-  if (now - record.last > WINDOW) {
-    record.count = 1;
-    record.last = now;
-  } else {
-    record.count++;
-  }
-
-  ipMap.set(ip, record);
-
-  if (record.count > RATE_LIMIT) {
-    return new NextResponse("Too many requests", { status: 429 });
-  }
-
-  // =========================
-  // SIMPLE BOT DETECTION
-  // =========================
-  const isBot = record.count > 15 && (!ua || ua.length < 20);
-
-  if (isBot) {
-    return new NextResponse("Bot blocked", { status: 403 });
-  }
-
-  // =========================
-  // LOG EVENTS (NON-BLOCKING)
-  // =========================
-  if (!path.startsWith("/api/") && !path.includes(".")) {
-    fetch(`${req.nextUrl.origin}/api/log-event`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ip, ua, path }),
-    }).catch(() => {});
-  }
-
-  // =========================
-  // SUPABASE SSR CLIENT
-  // =========================
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return req.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
+        getAll: () => req.cookies.getAll(),
+        setAll: (cookies) => {
+          cookies.forEach(({ name, value, options }) => {
             res.cookies.set(name, value, options);
           });
         },
@@ -126,38 +64,18 @@ export async function middleware(req: NextRequest) {
   );
 
   // =========================
-  // PUBLIC ROUTES
-  // =========================
-  const publicRoutes = [
-    "/",
-    "/login",
-    "/signup",
-    "/auth/callback",
-    "/onboarding",
-  ];
-
-  const isPublic =
-    publicRoutes.includes(pathname) ||
-    pathname.startsWith("/api/");
-
-  if (isPublic) {
-    return res;
-  }
-
-  // =========================
-  // VERIFY USER SESSION
+  // AUTH CHECK
   // =========================
   const {
     data: { user },
-    error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user) {
+  if (!user) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
   // =========================
-  // PROFILE LOOKUP
+  // PROFILE CHECK
   // =========================
   const { data: profile } = await supabase
     .from("profiles")
@@ -165,29 +83,22 @@ export async function middleware(req: NextRequest) {
     .eq("id", user.id)
     .maybeSingle();
 
-  const isOnboardingRoute = pathname.startsWith("/onboarding");
-
   // =========================
-  // ONBOARDING GATE
+  // ONBOARDING FLOW
   // =========================
-  if (profile?.onboarding_complete && isOnboardingRoute) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
-  }
+  const isOnboarding = pathname.startsWith("/onboarding");
 
-  if (profile && !profile.onboarding_complete && !isOnboardingRoute) {
+  if (!profile?.onboarding_complete && !isOnboarding) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
-  // =========================
-  // PREMIUM ROUTES
-  // =========================
-  const premiumRoutes = [
-    "/forecast",
-    "/analytics",
-    "/chat/premium",
-    "/credit",
-  ];
+  if (profile?.onboarding_complete && isOnboarding) {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
+  }
 
+  // =========================
+  // PREMIUM GATE
+  // =========================
   const isPremiumRoute = premiumRoutes.some((r) =>
     pathname.startsWith(r)
   );
@@ -200,5 +111,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/(.*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
