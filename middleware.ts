@@ -22,11 +22,15 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/images/") ||
     pathname.startsWith("/icons/") ||
     pathname === "/favicon.ico" ||
+    pathname === "/manifest.json" ||        // <-- ADDED
     pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico)$/)
   ) {
     return NextResponse.next();
   }
 
+  // =========================
+  // IP BLOCKING
+  // =========================
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
 
   if (blockedIPs.includes(ip)) {
@@ -44,7 +48,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // =========================
-  // SUPABASE CLIENT (ONLY WHEN NEEDED)
+  // SUPABASE CLIENT
   // =========================
   const res = NextResponse.next();
 
@@ -110,6 +114,11 @@ export async function middleware(req: NextRequest) {
   return res;
 }
 
+// =========================
+// FIXED MATCHER
+// =========================
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|icons|backgrounds|.*\\.png$|.*\\.jpg$).*)",
+  ],
 };
