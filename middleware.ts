@@ -3,9 +3,20 @@ import { createServerClient } from "@supabase/ssr";
 
 const blockedIPs = ["18.144.7.244", "3.101.150.105"];
 
-const publicRoutes = ["/", "/login", "/signup", "/auth/callback"];
+const publicRoutes = [
+  "/",
+  "/login",
+  "/signup",
+  "/auth/callback",
+  "/onboarding",
+];
 
-const premiumRoutes = ["/forecast", "/analytics", "/chat/premium", "/credit"];
+const premiumRoutes = [
+  "/forecast",
+  "/analytics",
+  "/chat/premium",
+  "/credit",
+];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -23,22 +34,27 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // IP BLOCK
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
+  // BLOCKED IPS
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
+
   if (blockedIPs.includes(ip)) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
   // PUBLIC ROUTES
   const isPublic =
-    publicRoutes.includes(pathname) || pathname.startsWith("/api/");
+    publicRoutes.includes(pathname) ||
+    pathname.startsWith("/api/");
+
   if (isPublic) {
     return NextResponse.next();
   }
 
-  // SUPABASE CLIENT
+  // RESPONSE
   const res = NextResponse.next();
 
+  // SUPABASE
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -54,20 +70,16 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  // AUTH CHECK
+  // AUTH
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    const redirectRes = NextResponse.redirect(new URL("/login", req.url));
-    res.cookies.getAll().forEach((cookie) => {
-      redirectRes.cookies.set(cookie);
-    });
-    return redirectRes;
+    return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // PROFILE CHECK
+  // PROFILE
   const { data: profile } = await supabase
     .from("profiles")
     .select("onboarding_complete, is_premium")
@@ -76,40 +88,22 @@ export async function middleware(req: NextRequest) {
 
   const isOnboarding = pathname.startsWith("/onboarding");
 
-  // ONBOARDING FLOW
+  // ONBOARDING
   if (!profile?.onboarding_complete && !isOnboarding) {
-    const redirectRes = NextResponse.redirect(
-      new URL("/onboarding", req.url)
-    );
-    res.cookies.getAll().forEach((cookie) => {
-      redirectRes.cookies.set(cookie);
-    });
-    return redirectRes;
+    return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
   if (profile?.onboarding_complete && isOnboarding) {
-    const redirectRes = NextResponse.redirect(
-      new URL("/dashboard", req.url)
-    );
-    res.cookies.getAll().forEach((cookie) => {
-      redirectRes.cookies.set(cookie);
-    });
-    return redirectRes;
+    return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  // PREMIUM GATE
+  // PREMIUM
   const isPremiumRoute = premiumRoutes.some((r) =>
     pathname.startsWith(r)
   );
 
   if (isPremiumRoute && !profile?.is_premium) {
-    const redirectRes = NextResponse.redirect(
-      new URL("/upgrade", req.url)
-    );
-    res.cookies.getAll().forEach((cookie) => {
-      redirectRes.cookies.set(cookie);
-    });
-    return redirectRes;
+    return NextResponse.redirect(new URL("/upgrade", req.url));
   }
 
   return res;
@@ -117,6 +111,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|icons|backgrounds|.*\\.png$|.*\\.jpg$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json).*)",
   ],
 };
