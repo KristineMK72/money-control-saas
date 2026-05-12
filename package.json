@@ -31,7 +31,7 @@
 
     "leaflet": "^1.9.4",
     "react-leaflet": "^4.2.1",
-    "@changey/react-leaflet-markercluster": "^3.0.0",
+    "@changey/react-leaflet-markercluster": "^2.0.0",
 
     "lucide-react": "^0.469.0"
   },
