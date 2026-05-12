@@ -12,12 +12,28 @@
     "next": "14.2.15",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tesseract.js": "^5.1.0",
-    "openai": "^4.56.0",
+
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/supabase-js": "^2.49.1",
     "@supabase/ssr": "^0.3.0",
-    "zustand": "^5.0.12"
+
+    "openai": "^4.56.0",
+    "tesseract.js": "^5.1.0",
+    "zustand": "^5.0.12",
+
+    "stripe": "^14.0.0",
+    "@stripe/stripe-js": "^2.0.0",
+
+    "chart.js": "^4.4.1",
+    "react-chartjs-2": "^5.2.0",
+    "date-fns": "^3.6.0",
+    "chartjs-adapter-date-fns": "^3.0.0",
+
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^4.2.1",
+    "@changey/react-leaflet-markercluster": "^3.0.0",
+
+    "lucide-react": "^0.469.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
