@@ -27,7 +27,7 @@ export default function AppInitializer({
       const [bills, debts, income, spend, payments] = await Promise.all([
         supabase.from("bills").select("*").eq("user_id", user.id),
         supabase.from("debts").select("*").eq("user_id", user.id),
-        supabase.from("income").select("*").eq("user_id", user.id),
+        supabase.from("income_entries").select("*").eq("user_id", user.id),
         supabase.from("spend_entries").select("*").eq("user_id", user.id),
         supabase.from("payments").select("*").eq("user_id", user.id),
       ]);
@@ -42,6 +42,16 @@ export default function AppInitializer({
     }
 
     load();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void load();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [supabase, setAll, reset]);
 
   return <>{children}</>;

@@ -80,9 +80,17 @@ function getEnv(name: string) {
   return value;
 }
 
-const supabaseUrl = getEnv("NEXT_PUBLIC_SUPABASE_URL");
-const supabaseAnonKey = getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
-const supabaseServiceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+function supabaseUrl() {
+  return getEnv("NEXT_PUBLIC_SUPABASE_URL");
+}
+
+function supabaseAnonKey() {
+  return getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+}
+
+function supabaseServiceRoleKey() {
+  return getEnv("SUPABASE_SERVICE_ROLE_KEY");
+}
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -94,7 +102,7 @@ function asNumber(value: unknown) {
 }
 
 async function getAuthenticatedUser(accessToken: string) {
-  const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+  const authClient = createClient(supabaseUrl(), supabaseAnonKey(), {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -108,7 +116,7 @@ async function getAuthenticatedUser(accessToken: string) {
 }
 
 function getAdminClient() {
-  return createClient(supabaseUrl, supabaseServiceRoleKey, {
+  return createClient(supabaseUrl(), supabaseServiceRoleKey(), {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }

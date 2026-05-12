@@ -4,6 +4,7 @@ import LogoutButton from "@/components/LogoutButton";
 import BenPersona from "@/components/BenPersona";
 import UserGreeting from "@/components/UserGreeting";
 import InstallBanner from "@/components/InstallBanner";
+import AppInitializer from "@/components/AppInitializer";
 
 export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
@@ -33,12 +34,21 @@ export const metadata: Metadata = {
     url: "https://www.askben.buzz/",
     siteName: "AskBen",
     type: "website",
+    images: [
+      {
+        url: "/askben-social.jpeg",
+        width: 1200,
+        height: 630,
+        alt: "AskBen",
+      },
+    ],
   },
 
   twitter: {
     card: "summary_large_image",
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
+    images: ["/askben-social.jpeg"],
   },
 };
 
@@ -81,14 +91,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
+        className="app-shell"
         style={{
           margin: 0,
           fontFamily:
             "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
-          background: "#f5f5f4",
           color: "#18181b",
         }}
       >
+        <AppInitializer>
         <header
           style={{
             position: "sticky",
@@ -168,6 +179,7 @@ export default function RootLayout({
                 {/* CORE APP AREAS */}
                   <NavLink href="/spend">Spend</NavLink>
                   <NavLink href="/income">Income</NavLink>
+                  <NavLink href="/income-plan">Income plan</NavLink>
                   <NavLink href="/bills">Bills</NavLink>
                   <NavLink href="/debt">Debt</NavLink>
                   <NavLink href="/payments">Payments</NavLink>
@@ -221,6 +233,7 @@ export default function RootLayout({
         >
           © 2026 Spatialytics — Built with ❤️ in Minnesota
         </footer>
+        </AppInitializer>
       </body>
     </html>
   );

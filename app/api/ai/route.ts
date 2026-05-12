@@ -3,9 +3,13 @@ import { NextResponse } from "next/server";
 import { getSystemPrompt } from "@/lib/ai/systemPrompts";
 import type { AiRequestBody } from "@/lib/ai/types";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is not configured");
+  }
+  return new OpenAI({ apiKey });
+}
 
 type BenAction =
   | {
@@ -177,7 +181,7 @@ Return valid JSON only with this exact shape:
 }
 `.trim();
 
-    const completion = await client.chat.completions.create({
+    const completion = await getOpenAIClient().chat.completions.create({
       model: "gpt-4.1-mini",
       temperature: 0.2,
       messages: [

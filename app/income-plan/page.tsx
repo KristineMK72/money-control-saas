@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { BenWeeklyRow } from "@/lib/ben/viewTypes";
 
 type IncomeRow = {
   id: string;
@@ -158,6 +159,7 @@ export default function IncomePlanPage() {
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [sideHustles, setSideHustles] = useState<SideHustleRow[]>([]);
+  const [weeklySql, setWeeklySql] = useState<BenWeeklyRow | null>(null);
 
   const [name, setName] = useState("");
   const [incomeType, setIncomeType] = useState<"hourly" | "item" | "project" | "fixed">("hourly");
@@ -186,7 +188,7 @@ export default function IncomePlanPage() {
 
       setUserId(session.user.id);
 
-      const [incomeRes, spendRes, paymentsRes, billsRes, debtsRes, hustlesRes] =
+      const [incomeRes, spendRes, paymentsRes, billsRes, debtsRes, hustlesRes, weeklyRes] =
         await Promise.all([
           supabase.from("income_entries").select("id, amount, date_iso"),
           supabase.from("spend_entries").select("id, amount, date_iso"),
@@ -194,6 +196,7 @@ export default function IncomePlanPage() {
           supabase.from("bills").select("id, target, due_date, is_monthly, monthly_target, due_day"),
           supabase.from("debts").select("id, min_payment, due_date, is_monthly, due_day, monthly_min_payment"),
           supabase.from("side_hustles").select("*").order("created_at", { ascending: false }),
+          supabase.from("ben_weekly").select("*").eq("user_id", session.user.id).maybeSingle(),
         ]);
 
       if (!incomeRes.error) setIncomeEntries((incomeRes.data || []) as IncomeRow[]);
@@ -202,6 +205,11 @@ export default function IncomePlanPage() {
       if (!billsRes.error) setBills((billsRes.data || []) as BillRow[]);
       if (!debtsRes.error) setDebts((debtsRes.data || []) as DebtRow[]);
       if (!hustlesRes.error) setSideHustles((hustlesRes.data || []) as SideHustleRow[]);
+      if (!weeklyRes.error && weeklyRes.data) {
+        setWeeklySql(weeklyRes.data as BenWeeklyRow);
+      } else {
+        setWeeklySql(null);
+      }
 
       setLoading(false);
     }
@@ -323,10 +331,13 @@ export default function IncomePlanPage() {
       .reduce((sum, debt) => sum + debt.amount, 0);
   }, [debts, weekEnd]);
 
-  const gapThisWeek = Math.max(
+  const gapThisWeekClient = Math.max(
     0,
     billsThisWeekTotal + debtThisWeekTotal + totalSpending + totalPayments - totalIncome
   );
+
+  const gapThisWeek =
+    weeklySql != null ? Math.max(0, Number(weeklySql.gap_week)) : gapThisWeekClient;
 
   const plannedIncome = useMemo(() => {
     return sideHustles.reduce(

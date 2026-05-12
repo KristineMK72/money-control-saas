@@ -1,18 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import BenBubble from "@/components/BenBubble";
-import BenPersona from "@/components/BenPersona";
 import { getForecast } from "@/lib/ben/forecast";
+import type { BenMasterRow } from "@/lib/ben/viewTypes";
 
 export default function ForecastPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createSupabaseBrowserClient();
 
   const [loading, setLoading] = useState(true);
-  const [totalNeeded, setTotalNeeded] = useState(0);
-  const [incomeSoFar, setIncomeSoFar] = useState(0);
-  const [forecast, setForecast] = useState(null);
+  const [forecast, setForecast] = useState<ReturnType<typeof getForecast> | null>(
+    null
+  );
 
   useEffect(() => {
     async function loadData() {
@@ -29,33 +29,23 @@ export default function ForecastPage() {
 
       const userId = session.user.id;
 
-      // Load obligations
-      const { data: obligations } = await supabase
-        .from("obligations")
-        .select("amount")
-        .eq("user_id", userId);
+      const { data: master, error } = await supabase
+        .from("ben_master")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
 
-      const total = obligations?.reduce(
-        (sum, item) => sum + (item.amount || 0),
-        0
-      );
+      if (error) {
+        setForecast(null);
+        setLoading(false);
+        return;
+      }
 
-      setTotalNeeded(total || 0);
+      const m = master as BenMasterRow | null;
 
-      // Load income
-      const { data: income } = await supabase
-        .from("income")
-        .select("amount")
-        .eq("user_id", userId);
+      const totalNeeded = Number(m?.total_obligations ?? 0);
+      const incomeSoFar = Number(m?.total_income ?? 0);
 
-      const incomeTotal = income?.reduce(
-        (sum, item) => sum + (item.amount || 0),
-        0
-      );
-
-      setIncomeSoFar(incomeTotal || 0);
-
-      // Forecast math
       const today = new Date();
       const daysElapsed = today.getDate();
       const daysTotal = new Date(
@@ -67,8 +57,8 @@ export default function ForecastPage() {
       const result = getForecast({
         name: null,
         timeframeLabel: "Forecast",
-        totalNeeded: total || 0,
-        incomeSoFar: incomeTotal || 0,
+        totalNeeded,
+        incomeSoFar,
         daysElapsed,
         daysTotal,
       });
@@ -77,64 +67,59 @@ export default function ForecastPage() {
       setLoading(false);
     }
 
-    loadData();
-  }, []);
+    void loadData();
+  }, [supabase]);
 
   if (loading) {
     return (
-      <div className="p-6">
-        <BenBubble text="Crunching the numbers…" mood="witty" />
-        <p className="text-gray-400 mt-4">Loading your forecast…</p>
-      </div>
+      <main className="min-h-screen p-6 bg-zinc-50">
+        <BenBubble message="Crunching the numbers…" mood="witty" />
+        <p className="mt-4 text-sm text-zinc-600">Loading your forecast…</p>
+      </main>
     );
   }
 
   if (!forecast) {
     return (
-      <div className="p-6">
+      <main className="min-h-screen p-6 bg-zinc-50">
         <BenBubble
-          text="I could not gather enough data to forecast your month."
+          message="I could not gather enough data to forecast your month. Log in and add a few entries, then come back."
           mood="stern"
         />
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 pb-24">
-      {/* Ben Narrator */}
-      <BenBubble text={forecast.ben.text} mood={forecast.ben.mood} />
+    <main className="min-h-screen space-y-6 bg-zinc-50 p-6 pb-24">
+      <BenBubble message={forecast.ben.text} mood={forecast.ben.mood} />
 
-      {/* Forecast Metrics */}
-      <div className="grid grid-cols-1 gap-4">
-        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-          <p className="text-gray-400 text-sm">Income Gap</p>
-          <p className="text-2xl font-semibold text-white">
+      <div className="grid max-w-lg grid-cols-1 gap-4">
+        <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-zinc-500">Income gap (obligations vs income)</p>
+          <p className="text-2xl font-semibold text-zinc-950">
             ${forecast.incomeGap.toFixed(2)}
           </p>
         </div>
 
-        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-          <p className="text-gray-400 text-sm">Daily Income Needed</p>
-          <p className="text-2xl font-semibold text-white">
+        <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-zinc-500">Daily income needed</p>
+          <p className="text-2xl font-semibold text-zinc-950">
             ${forecast.dailyIncomeNeeded.toFixed(2)}
           </p>
         </div>
 
-        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-          <p className="text-gray-400 text-sm">Status</p>
+        <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-zinc-500">Status</p>
           <p
             className={`text-2xl font-semibold ${
-              forecast.projectedOnTrack ? "text-green-400" : "text-orange-400"
+              forecast.projectedOnTrack ? "text-emerald-600" : "text-orange-600"
             }`}
           >
-            {forecast.projectedOnTrack ? "On Track" : "Behind"}
+            {forecast.projectedOnTrack ? "On track" : "Behind"}
           </p>
         </div>
       </div>
-
-      {/* Floating AI Bubble */}
-      <BenPersona />
-    </div>
+    </main>
   );
 }
