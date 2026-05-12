@@ -14,7 +14,7 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // =========================
-  // SKIP STATIC FILES EARLY (IMPORTANT)
+  // SKIP STATIC FILES EARLY
   // =========================
   if (
     pathname.startsWith("/_next") ||
@@ -22,7 +22,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/images/") ||
     pathname.startsWith("/icons/") ||
     pathname === "/favicon.ico" ||
-    pathname === "/manifest.json" ||        // <-- ADDED
+    pathname === "/manifest.json" ||
     pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico)$/)
   ) {
     return NextResponse.next();
@@ -38,7 +38,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // =========================
-  // PUBLIC ROUTES EARLY EXIT
+  // PUBLIC ROUTES
   // =========================
   const isPublic =
     publicRoutes.includes(pathname) || pathname.startsWith("/api/");
@@ -75,7 +75,8 @@ export async function middleware(req: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.redirect(new URL("/login", req.url));
+    res.redirect(new URL("/login", req.url));
+    return res; // <-- CRITICAL FIX
   }
 
   // =========================
@@ -87,17 +88,19 @@ export async function middleware(req: NextRequest) {
     .eq("id", user.id)
     .maybeSingle();
 
+  const isOnboarding = pathname.startsWith("/onboarding");
+
   // =========================
   // ONBOARDING FLOW
   // =========================
-  const isOnboarding = pathname.startsWith("/onboarding");
-
   if (!profile?.onboarding_complete && !isOnboarding) {
-    return NextResponse.redirect(new URL("/onboarding", req.url));
+    res.redirect(new URL("/onboarding", req.url));
+    return res;
   }
 
   if (profile?.onboarding_complete && isOnboarding) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    res.redirect(new URL("/dashboard", req.url));
+    return res;
   }
 
   // =========================
@@ -108,7 +111,8 @@ export async function middleware(req: NextRequest) {
   );
 
   if (isPremiumRoute && !profile?.is_premium) {
-    return NextResponse.redirect(new URL("/upgrade", req.url));
+    res.redirect(new URL("/upgrade", req.url));
+    return res;
   }
 
   return res;
