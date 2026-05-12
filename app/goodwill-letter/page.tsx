@@ -47,7 +47,7 @@ ${name}
     navigator.clipboard.writeText(letter);
   }
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-zinc-950/82 backdrop-blur-md text-white">
       <div className="mx-auto max-w-4xl px-6 py-10">
 
         <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-8 shadow-2xl">

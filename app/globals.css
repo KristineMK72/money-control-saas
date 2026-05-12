@@ -13,19 +13,30 @@ body {
   padding: 0;
 }
 
+/* Full-screen backdrop on <html> so it isn’t covered by opaque <main> blocks. */
+html.app-shell {
+  min-height: 100%;
+  background-color: #f8fafc;
+  background-image:
+    url("/backgrounds/grain.svg"),
+    url("/backgrounds/benworld.svg"),
+    url("/backgrounds/wash.svg");
+  background-repeat: repeat, no-repeat, no-repeat;
+  background-size:
+    240px 240px,
+    cover,
+    cover;
+  background-position:
+    0 0,
+    center bottom,
+    center top;
+  background-attachment: fixed, fixed, fixed;
+}
+
 body {
   color: #111827;
   font-family: Arial, Helvetica, sans-serif;
-}
-
-.app-shell {
-  min-height: 100vh;
-  background-color: #f8fafc;
-  background-image: url("/backgrounds/grain.svg"), url("/backgrounds/wash.svg");
-  background-repeat: repeat, no-repeat;
-  background-size: 240px 240px, cover;
-  background-position: 0 0, center top;
-  background-attachment: fixed, fixed;
+  background: transparent;
 }
 
 * {

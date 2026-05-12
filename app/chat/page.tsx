@@ -1000,7 +1000,10 @@ ${
 const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: "100vh",
-    background: "linear-gradient(180deg, #f8f5ef 0%, #f4efe7 100%)",
+    background:
+      "linear-gradient(180deg, rgba(248, 245, 239, 0.72) 0%, rgba(244, 239, 231, 0.72) 100%)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
     padding: 24,
   },
   card: {

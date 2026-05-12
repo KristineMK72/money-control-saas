@@ -2,7 +2,7 @@ import Image from "next/image";
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
+    <main className="min-h-screen bg-zinc-950/88 backdrop-blur-md text-white">
       <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="max-w-3xl">

@@ -310,7 +310,7 @@ export default function CalendarPage() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-zinc-950/82 backdrop-blur-md text-white">
       <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-10">
         <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-5 shadow-2xl md:p-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">

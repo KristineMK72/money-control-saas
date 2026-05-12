@@ -167,7 +167,7 @@ export default function IncomePage() {
   }, [entries]);
 
   return (
-    <main className="min-h-screen bg-zinc-50 text-zinc-900">
+    <main className="min-h-screen bg-zinc-50/78 backdrop-blur-sm text-zinc-900">
       <div className="mx-auto max-w-4xl px-6 py-10">
 
         <div>

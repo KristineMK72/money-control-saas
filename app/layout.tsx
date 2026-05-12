@@ -89,9 +89,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className="app-shell">
       <body
-        className="app-shell"
         style={{
           margin: 0,
           fontFamily:
