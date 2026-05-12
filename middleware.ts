@@ -1,73 +1,204 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
-/** App routes that require a Supabase session (avoid /api — JSON routes must not redirect). */
-const PROTECTED =
-  /^\/(dashboard|spend|income|income-plan|bills|debt|payments|forecast|chat|calendar|crisis|credit-health|credit-recovery|goodwill-letter|dispute-letter)(\/|$)/i;
+// =========================
+// RATE LIMIT STORE
+// =========================
+const ipMap = new Map<string, { count: number; last: number }>();
+
+const RATE_LIMIT = 25;
+const WINDOW = 10 * 1000;
+
+// =========================
+// STATIC BLOCK LIST
+// =========================
+const blockedIPs = ["18.144.7.244", "3.101.150.105"];
+
+// =========================
+// SUSPICIOUS PATHS
+// =========================
+const suspiciousPaths = ["/api/v1/env", "/api/v2/config"];
 
 export async function middleware(req: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: req.headers,
-    },
-  });
+  const { pathname } = req.nextUrl;
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return response;
+  // =========================
+  // EARLY ALLOW: STATIC + ASSETS
+  // =========================
+  if (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/backgrounds/") ||
+    pathname.startsWith("/images/") ||
+    pathname.startsWith("/icons/") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/favicon.png" ||
+    pathname.startsWith("/opengraph-image") ||
+    pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico)$/)
+  ) {
+    return NextResponse.next();
   }
 
+  // =========================
+  // CREATE BASE RESPONSE
+  // =========================
+  const res = NextResponse.next();
+
+  // =========================
+  // IP + REQUEST INFO
+  // =========================
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
+
+  const ua = req.headers.get("user-agent") || "unknown";
+  const path = req.nextUrl.pathname;
+  const now = Date.now();
+
+  // =========================
+  // HARD BLOCK
+  // =========================
+  if (blockedIPs.includes(ip)) {
+    return new NextResponse("Forbidden", { status: 403 });
+  }
+
+  // =========================
+  // BLOCK SUSPICIOUS PATHS
+  // =========================
+  if (suspiciousPaths.includes(path)) {
+    return new NextResponse("Blocked", { status: 403 });
+  }
+
+  // =========================
+  // RATE LIMITING
+  // =========================
+  const record = ipMap.get(ip) || { count: 0, last: now };
+
+  if (now - record.last > WINDOW) {
+    record.count = 1;
+    record.last = now;
+  } else {
+    record.count++;
+  }
+
+  ipMap.set(ip, record);
+
+  if (record.count > RATE_LIMIT) {
+    return new NextResponse("Too many requests", { status: 429 });
+  }
+
+  // =========================
+  // SIMPLE BOT DETECTION
+  // =========================
+  const isBot = record.count > 15 && (!ua || ua.length < 20);
+
+  if (isBot) {
+    return new NextResponse("Bot blocked", { status: 403 });
+  }
+
+  // =========================
+  // LOG EVENTS (NON-BLOCKING)
+  // =========================
+  if (!path.startsWith("/api/") && !path.includes(".")) {
+    fetch(`${req.nextUrl.origin}/api/log-event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip, ua, path }),
+    }).catch(() => {});
+  }
+
+  // =========================
+  // SUPABASE SSR CLIENT
+  // =========================
   const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         getAll() {
           return req.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => {
-            req.cookies.set(name, value);
-          });
-
-          response = NextResponse.next({
-            request: {
-              headers: req.headers,
-            },
-          });
-
           cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
+            res.cookies.set(name, value, options);
           });
         },
       },
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // =========================
+  // PUBLIC ROUTES
+  // =========================
+  const publicRoutes = [
+    "/",
+    "/login",
+    "/signup",
+    "/auth/callback",
+    "/onboarding",
+  ];
 
-  const { pathname } = req.nextUrl;
+  const isPublic =
+    publicRoutes.includes(pathname) ||
+    pathname.startsWith("/api/");
 
-  if (!pathname.startsWith("/api") && PROTECTED.test(pathname) && !user) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/signup";
-    url.searchParams.set("mode", "login");
-    return NextResponse.redirect(url);
+  if (isPublic) {
+    return res;
   }
 
-  return response;
+  // =========================
+  // VERIFY USER SESSION
+  // =========================
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.redirect(new URL("/login", req.url));
+  }
+
+  // =========================
+  // PROFILE LOOKUP
+  // =========================
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("onboarding_complete, is_premium")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const isOnboardingRoute = pathname.startsWith("/onboarding");
+
+  // =========================
+  // ONBOARDING GATE
+  // =========================
+  if (profile?.onboarding_complete && isOnboardingRoute) {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
+  }
+
+  if (profile && !profile.onboarding_complete && !isOnboardingRoute) {
+    return NextResponse.redirect(new URL("/onboarding", req.url));
+  }
+
+  // =========================
+  // PREMIUM ROUTES
+  // =========================
+  const premiumRoutes = [
+    "/forecast",
+    "/analytics",
+    "/chat/premium",
+    "/credit",
+  ];
+
+  const isPremiumRoute = premiumRoutes.some((r) =>
+    pathname.startsWith(r)
+  );
+
+  if (isPremiumRoute && !profile?.is_premium) {
+    return NextResponse.redirect(new URL("/upgrade", req.url));
+  }
+
+  return res;
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Skip Next internals, common static files, and hashed assets so middleware
-     * never blocks images, fonts, manifest, or service worker.
-     */
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|robots.txt|sw.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|json|txt|webmanifest|woff2?|ttf|eot)$).*)",
-  ],
+  matcher: ["/(.*)"],
 };
