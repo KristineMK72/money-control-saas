@@ -1,27 +1,59 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
-/** App routes that require a Supabase session (avoid /api — JSON routes must not redirect). */
-const PROTECTED =
-  /^\/(dashboard|spend|income|income-plan|bills|debt|payments|forecast|chat|calendar|crisis|credit-health|credit-recovery|goodwill-letter|dispute-letter)(\/|$)/i;
+const blockedIPs = new Set(["18.144.7.244", "3.101.150.105"]);
+
+const publicRoutes = new Set([
+  "/",
+  "/login",
+  "/signup",
+  "/auth/callback",
+]);
+
+const premiumRoutes = [
+  "/forecast",
+  "/analytics",
+  "/chat/premium",
+  "/credit",
+];
+
+function isStaticAsset(pathname: string) {
+  return (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/backgrounds/") ||
+    pathname.startsWith("/images/") ||
+    pathname.startsWith("/icons/") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/manifest.json" ||
+    /\.(svg|png|jpg|jpeg|gif|webp|ico|txt)$/.test(pathname)
+  );
+}
 
 export async function middleware(req: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: req.headers,
-    },
-  });
+  const { pathname } = req.nextUrl;
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return response;
+  if (isStaticAsset(pathname)) {
+    return NextResponse.next();
   }
 
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+
+  if (blockedIPs.has(ip)) {
+    return new NextResponse("Forbidden", { status: 403 });
+  }
+
+  if (publicRoutes.has(pathname) || pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
+  let res = NextResponse.next({
+    request: req,
+  });
+
   const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         getAll() {
@@ -32,14 +64,12 @@ export async function middleware(req: NextRequest) {
             req.cookies.set(name, value);
           });
 
-          response = NextResponse.next({
-            request: {
-              headers: req.headers,
-            },
+          res = NextResponse.next({
+            request: req,
           });
 
           cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
+            res.cookies.set(name, value, options);
           });
         },
       },
@@ -50,24 +80,39 @@ export async function middleware(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = req.nextUrl;
-
-  if (!pathname.startsWith("/api") && PROTECTED.test(pathname) && !user) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/signup";
-    url.searchParams.set("mode", "login");
-    return NextResponse.redirect(url);
+  if (!user) {
+    return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  return response;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("onboarding_complete, is_premium")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const onboardingComplete = profile?.onboarding_complete ?? false;
+  const isPremium = profile?.is_premium ?? false;
+  const isOnboarding = pathname.startsWith("/onboarding");
+
+  if (!onboardingComplete && !isOnboarding) {
+    return NextResponse.redirect(new URL("/onboarding", req.url));
+  }
+
+  if (onboardingComplete && isOnboarding) {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
+  }
+
+  const isPremiumRoute = premiumRoutes.some((route) =>
+    pathname.startsWith(route)
+  );
+
+  if (isPremiumRoute && !isPremium) {
+    return NextResponse.redirect(new URL("/upgrade", req.url));
+  }
+
+  return res;
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Skip Next internals, common static files, and hashed assets so middleware
-     * never blocks images, fonts, manifest, or service worker.
-     */
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|robots.txt|sw.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|json|txt|webmanifest|woff2?|ttf|eot)$).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.json).*)"],
 };
