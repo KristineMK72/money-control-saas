@@ -22,7 +22,6 @@ type BenMasterRow = {
   pressure_pct?: number | string | null;
   total_debt?: number | string | null;
   monthly_minimums?: number | string | null;
-
   total_income?: number | string | null;
   total_spend?: number | string | null;
   total_debt_balance?: number | string | null;
@@ -42,6 +41,9 @@ function formatUSD(value: number) {
     maximumFractionDigits: 2,
   });
 }
+
+const panelClass =
+  "rounded-xl border border-white/40 bg-white/88 shadow-xl";
 
 export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -154,7 +156,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-transparent p-6">
-        <div className="mx-auto max-w-6xl rounded-xl border border-zinc-200 bg-white/90 p-6">
+        <div className={`${panelClass} mx-auto max-w-6xl p-6`}>
           Loading dashboard...
         </div>
       </main>
@@ -164,9 +166,9 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-transparent p-6">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-6">
+        <header className="mb-6 rounded-2xl border border-white/40 bg-white/88 p-6 shadow-xl">
           <h1 className="text-3xl font-black text-zinc-950">Dashboard</h1>
-          <p className="mt-2 text-sm text-zinc-600">
+          <p className="mt-2 text-sm text-zinc-700">
             Your live AskBen money snapshot from Supabase.
           </p>
 
@@ -232,7 +234,7 @@ export default function DashboardPage() {
           />
         </section>
 
-        <section className="mt-8 rounded-xl border border-zinc-200 bg-white/90 p-6 text-sm text-zinc-600 backdrop-blur space-y-1">
+        <section className={`${panelClass} mt-8 p-6 text-sm text-zinc-700 space-y-1`}>
           <div>Spend lines loaded: {spend.length}</div>
           <div>Ben master row: {master ? "loaded" : "missing"}</div>
           <div>Obligations: {formatUSD(totalObligations)}</div>
@@ -244,8 +246,8 @@ export default function DashboardPage() {
 
 function Card({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white/90 p-4 backdrop-blur">
-      <div className="text-sm text-zinc-500">{label}</div>
+    <div className={`${panelClass} p-4`}>
+      <div className="text-sm text-zinc-600">{label}</div>
       <div className="text-2xl font-black text-zinc-950">{value}</div>
     </div>
   );
@@ -261,10 +263,10 @@ function InfoCard({
   text: string;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white/90 p-6 backdrop-blur">
+    <div className={`${panelClass} p-6`}>
       <h2 className="font-bold text-zinc-900">{title}</h2>
       <p className="mt-2 text-2xl font-black text-zinc-950">{value}</p>
-      <p className="mt-2 text-sm text-zinc-600">{text}</p>
+      <p className="mt-2 text-sm text-zinc-700">{text}</p>
     </div>
   );
 }
