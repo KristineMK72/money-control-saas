@@ -5,12 +5,12 @@ import BenPersona from "@/components/BenPersona";
 import UserGreeting from "@/components/UserGreeting";
 import InstallBanner from "@/components/InstallBanner";
 import AppInitializer from "@/components/AppInitializer";
+import BenWorldBackground from "@/components/BenWorldBackground";
 
 export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
   description: "Stop financial chaos. See exactly what to pay first.",
   metadataBase: new URL("https://www.askben.buzz"),
-
   manifest: "/manifest.json",
 
   icons: {
@@ -18,13 +18,7 @@ export const metadata: Metadata = {
       { url: "/ben-head.png", sizes: "192x192", type: "image/png" },
       { url: "/ben-head.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [
-      {
-        url: "/apple-touch-icon.png",
-        sizes: "180x180",
-        type: "image/png",
-      },
-    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
     shortcut: "/ben-head.png",
   },
 
@@ -74,7 +68,7 @@ function NavLink({
         color: "#1c1917",
         fontSize: 14,
         border: "1px solid #e7e5e4",
-        background: "#fff",
+        background: "rgba(255,255,255,0.92)",
         whiteSpace: "nowrap",
       }}
     >
@@ -89,8 +83,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="app-shell">
+    <html lang="en">
       <body
+        className="app-shell"
         style={{
           margin: 0,
           fontFamily:
@@ -98,140 +93,130 @@ export default function RootLayout({
           color: "#18181b",
         }}
       >
+        <BenWorldBackground />
+
         <AppInitializer>
-        <header
-          style={{
-            position: "sticky",
-            top: 0,
-            zIndex: 100,
-            background: "#ffffff",
-            borderBottom: "1px solid #e7e5e4",
-          }}
-        >
-          <div
+          <header
             style={{
-              maxWidth: 1100,
-              margin: "0 auto",
-              padding: "14px 20px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 16,
-              flexWrap: "wrap",
+              position: "sticky",
+              top: 0,
+              zIndex: 100,
+              background: "rgba(255,255,255,0.90)",
+              backdropFilter: "blur(14px)",
+              borderBottom: "1px solid rgba(231,229,228,0.85)",
             }}
           >
             <div
               style={{
+                maxWidth: 1100,
+                margin: "0 auto",
+                padding: "14px 20px",
                 display: "flex",
+                justifyContent: "space-between",
                 alignItems: "center",
-                gap: 14,
+                gap: 16,
+                flexWrap: "wrap",
               }}
             >
-              <div
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 14,
-                  overflow: "hidden",
-                  background: "#0f172a",
-                  flexShrink: 0,
-                }}
-              >
-                <img
-                  src="/ben.png"
-                  alt="AskBen"
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div
                   style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
+                    width: 56,
+                    height: 56,
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    background: "#0f172a",
+                    flexShrink: 0,
                   }}
-                />
+                >
+                  <img
+                    src="/ben.png"
+                    alt="AskBen"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
+                    }}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    fontWeight: 900,
+                    fontSize: 24,
+                    color: "#111827",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  AskBen
+                </div>
+
+                <UserGreeting />
               </div>
 
               <div
                 style={{
-                  fontWeight: 900,
-                  fontSize: 24,
-                  color: "#111827",
-                  whiteSpace: "nowrap",
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  justifyContent: "flex-end",
                 }}
               >
-                AskBen
+                <NavLink href="/">Home</NavLink>
+                <NavLink href="/dashboard">Dashboard</NavLink>
+                <NavLink href="/spend">Spend</NavLink>
+                <NavLink href="/income">Income</NavLink>
+                <NavLink href="/income-plan">Income plan</NavLink>
+                <NavLink href="/bills">Bills</NavLink>
+                <NavLink href="/debt">Debt</NavLink>
+                <NavLink href="/payments">Payments</NavLink>
+                <NavLink href="/forecast">Forecast</NavLink>
+                <NavLink href="/chat">Ask Ben</NavLink>
+                <NavLink href="/signup">Signup / Login</NavLink>
+                <LogoutButton />
               </div>
-
-              <UserGreeting />
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                alignItems: "center",
-                flexWrap: "wrap",
-                justifyContent: "flex-end",
-              }}
-            >
-              <NavLink href="/">Home</NavLink>
-                <NavLink href="/dashboard">Dashboard</NavLink>
+            <BenPersona />
+          </header>
 
-                {/* CORE APP AREAS */}
-                  <NavLink href="/spend">Spend</NavLink>
-                  <NavLink href="/income">Income</NavLink>
-                  <NavLink href="/income-plan">Income plan</NavLink>
-                  <NavLink href="/bills">Bills</NavLink>
-                  <NavLink href="/debt">Debt</NavLink>
-                  <NavLink href="/payments">Payments</NavLink>
+          <main>{children}</main>
 
-                {/* INTELLIGENCE */}
-                  <NavLink href="/forecast">Forecast</NavLink>
-                  <NavLink href="/chat">Ask Ben</NavLink>
+          <InstallBanner />
 
-                {/* AUTH */}
-                    <NavLink href="/signup">Signup / Login</NavLink>
+          <a
+            href="/chat"
+            style={{
+              position: "fixed",
+              bottom: 24,
+              right: 24,
+              background: "#111827",
+              color: "#fff",
+              padding: "14px 18px",
+              borderRadius: 999,
+              fontWeight: 700,
+              textDecoration: "none",
+              boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
+              zIndex: 9999,
+              fontSize: 15,
+            }}
+          >
+            Ask Ben 💰
+          </a>
 
-                <LogoutButton />
-        </div>
-          </div>
-
-          <BenPersona />
-        </header>
-
-        <main>{children}</main>
-
-        <InstallBanner />
-
-        <a
-          href="/chat"
-          style={{
-            position: "fixed",
-            bottom: 24,
-            right: 24,
-            background: "#111827",
-            color: "#fff",
-            padding: "14px 18px",
-            borderRadius: 999,
-            fontWeight: 700,
-            textDecoration: "none",
-            boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
-            zIndex: 9999,
-            fontSize: 15,
-          }}
-        >
-          Ask Ben 💰
-        </a>
-
-        <footer
-          style={{
-            marginTop: 60,
-            padding: "20px",
-            textAlign: "center",
-            fontSize: 12,
-            color: "#71717a",
-          }}
-        >
-          © 2026 Spatialytics — Built with ❤️ in Minnesota
-        </footer>
+          <footer
+            style={{
+              marginTop: 60,
+              padding: "20px",
+              textAlign: "center",
+              fontSize: 12,
+              color: "#71717a",
+            }}
+          >
+            © 2026 Spatialytics — Built with ❤️ in Minnesota
+          </footer>
         </AppInitializer>
       </body>
     </html>
