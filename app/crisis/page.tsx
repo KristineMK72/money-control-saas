@@ -1,13 +1,19 @@
 "use client";
 
-
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type BillRow = {
   id: string;
   name: string;
-  category: "housing" | "utilities" | "transportation" | "debt" | "food" | "other" | null;
+  category:
+    | "housing"
+    | "utilities"
+    | "transportation"
+    | "debt"
+    | "food"
+    | "other"
+    | null;
   target: number;
   due_date: string | null;
   focus: boolean | null;
@@ -44,6 +50,18 @@ type CrisisItem = {
   score: number;
 };
 
+const pageCard =
+  "rounded-[32px] border border-white/50 bg-white/94 p-6 text-zinc-950 shadow-2xl md:p-8";
+
+const card =
+  "rounded-3xl border border-white/60 bg-white/94 p-6 text-zinc-950 shadow-xl";
+
+const softCard =
+  "rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-zinc-950";
+
+const button =
+  "rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-950 hover:bg-zinc-100";
+
 function startOfToday() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -74,7 +92,15 @@ function getNextDueDateFromDay(dueDay?: number | null) {
   const nextMonth = month === 11 ? 0 : month + 1;
   const lastDayNextMonth = new Date(nextMonthYear, nextMonth + 1, 0).getDate();
   const safeDayNextMonth = Math.min(dueDay, lastDayNextMonth);
-  const nextMonthDue = new Date(nextMonthYear, nextMonth, safeDayNextMonth, 12, 0, 0, 0);
+  const nextMonthDue = new Date(
+    nextMonthYear,
+    nextMonth,
+    safeDayNextMonth,
+    12,
+    0,
+    0,
+    0
+  );
 
   return nextMonthDue.toISOString().slice(0, 10);
 }
@@ -107,7 +133,11 @@ function daysUntil(dateISO?: string | null) {
 }
 
 function formatUSD(n: number) {
-  return `$${n.toFixed(2)}`;
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  });
 }
 
 function scoreItem(item: Omit<CrisisItem, "score">) {
@@ -141,17 +171,8 @@ function formatDueLabel(dateISO?: string | null) {
   return `Due ${dateISO}`;
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
-      <div className="text-sm text-zinc-500">{label}</div>
-      <div className="mt-2 text-3xl font-black text-zinc-950">{value}</div>
-    </div>
-  );
-}
-
 export default function CrisisPage() {
-  const supabase = createSupabaseBrowserClient();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
@@ -168,6 +189,7 @@ export default function CrisisPage() {
       setMessage("");
 
       const { data, error } = await supabase.auth.getSession();
+
       if (error) {
         setMessage(error.message);
         setLoading(false);
@@ -175,6 +197,7 @@ export default function CrisisPage() {
       }
 
       const session = data.session;
+
       if (!session?.user) {
         setMessage("Please log in to view Crisis Mode.");
         setLoading(false);
@@ -183,13 +206,31 @@ export default function CrisisPage() {
 
       setUserId(session.user.id);
 
-      const [billsRes, incomeRes, spendRes, paymentsRes, debtsRes] = await Promise.all([
-        supabase.from("bills").select("*").order("created_at", { ascending: false }),
-        supabase.from("income_entries").select("id, amount, date_iso"),
-        supabase.from("spend_entries").select("id, amount, date_iso"),
-        supabase.from("payments").select("id, amount, date_iso"),
-        supabase.from("debts").select("*").order("created_at", { ascending: false }),
-      ]);
+      const [billsRes, incomeRes, spendRes, paymentsRes, debtsRes] =
+        await Promise.all([
+          supabase
+            .from("bills")
+            .select("*")
+            .eq("user_id", session.user.id)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("income_entries")
+            .select("id, amount, date_iso")
+            .eq("user_id", session.user.id),
+          supabase
+            .from("spend_entries")
+            .select("id, amount, date_iso")
+            .eq("user_id", session.user.id),
+          supabase
+            .from("payments")
+            .select("id, amount, date_iso")
+            .eq("user_id", session.user.id),
+          supabase
+            .from("debts")
+            .select("*")
+            .eq("user_id", session.user.id)
+            .order("created_at", { ascending: false }),
+        ]);
 
       if (billsRes.error) setMessage(billsRes.error.message);
       else setBills((billsRes.data || []) as BillRow[]);
@@ -202,8 +243,8 @@ export default function CrisisPage() {
       setLoading(false);
     }
 
-    loadCrisis();
-  }, []);
+    void loadCrisis();
+  }, [supabase]);
 
   const totals = useMemo(() => {
     const income = incomeEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
@@ -224,6 +265,7 @@ export default function CrisisPage() {
         category: bill.category,
         source: "bill" as const,
       };
+
       return { ...item, score: scoreItem(item) };
     });
 
@@ -238,6 +280,7 @@ export default function CrisisPage() {
           category: "debt",
           source: "debt" as const,
         };
+
         return { ...item, score: scoreItem(item) };
       });
 
@@ -268,9 +311,11 @@ export default function CrisisPage() {
     if (topCategories.includes("housing")) {
       return "Protect housing first, then utilities and transportation.";
     }
+
     if (topCategories.includes("utilities")) {
       return "Protect essential services first, then minimum debt obligations.";
     }
+
     if (topCategories.includes("transportation")) {
       return "Protect transportation first so income stays possible.";
     }
@@ -305,54 +350,53 @@ export default function CrisisPage() {
   }, [top3]);
 
   return (
-    <main className="min-h-screen bg-zinc-950/82 backdrop-blur-md text-white">
-      <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 md:p-8 shadow-2xl">
+    <main className="min-h-screen bg-transparent p-6 text-zinc-950">
+      <div className="mx-auto max-w-6xl">
+        <section className={pageCard}>
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
+              <div className="inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-emerald-800">
                 72-hour triage
               </div>
-              <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
+
+              <h1 className="mt-4 text-4xl font-black tracking-tight text-zinc-950">
                 Crisis Mode
               </h1>
-              <p className="mt-3 max-w-2xl text-lg text-zinc-300">
-                Calm triage for what matters most right now, powered by your real data.
+
+              <p className="mt-3 max-w-2xl text-lg text-zinc-700">
+                Calm triage for what matters most right now, powered by your
+                real data.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <a
-                href="/dashboard"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
+              <a href="/dashboard" className={button}>
                 Dashboard
               </a>
-              <a
-                href="/forecast"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
+              <a href="/forecast" className={button}>
                 Forecast
               </a>
             </div>
           </div>
 
           {message ? (
-            <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
+            <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
               {message}
             </div>
           ) : null}
 
           {!userId && !loading ? (
-            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
-              <div className="font-semibold text-white">You are not logged in.</div>
-              <p className="mt-2 text-sm text-zinc-300">
+            <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-6">
+              <div className="font-semibold text-amber-950">
+                You are not logged in.
+              </div>
+              <p className="mt-2 text-sm text-amber-900">
                 Go to signup/login first, then come back here.
               </p>
               <div className="mt-4">
                 <a
                   href="/signup"
-                  className="inline-flex rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-black hover:bg-emerald-300"
+                  className="inline-flex rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-600"
                 >
                   Go to Signup / Login
                 </a>
@@ -360,34 +404,49 @@ export default function CrisisPage() {
             </div>
           ) : null}
 
-          <div className="mt-8 rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+          <div className={`${card} mt-8`}>
             <div className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
               Today’s focus
             </div>
-            <div className="mt-3 text-2xl font-black tracking-tight">{headline}</div>
+            <div className="mt-3 text-2xl font-black tracking-tight">
+              {headline}
+            </div>
             <div className="mt-4 text-sm text-zinc-600">
-              Income logged: {formatUSD(totals.income)} · Spending: {formatUSD(totals.spending)} · Payments: {formatUSD(totals.payments)} · Monthly debt minimums: {formatUSD(totals.debtMinimums)}
+              Income logged: {formatUSD(totals.income)} · Spending:{" "}
+              {formatUSD(totals.spending)} · Payments:{" "}
+              {formatUSD(totals.payments)} · Monthly debt minimums:{" "}
+              {formatUSD(totals.debtMinimums)}
             </div>
           </div>
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <StatCard label="Critical next 7 days" value={formatUSD(criticalNext7Total)} />
-            <StatCard label="Room after critical items" value={formatUSD(stabilizationRoom)} />
-            <StatCard label="Tracked obligations" value={String(rankedItems.length)} />
+            <StatCard
+              label="Critical next 7 days"
+              value={formatUSD(criticalNext7Total)}
+            />
+            <StatCard
+              label="Room after critical items"
+              value={formatUSD(stabilizationRoom)}
+            />
+            <StatCard
+              label="Tracked obligations"
+              value={String(rankedItems.length)}
+            />
           </div>
 
           <div className="mt-8 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+            <div className={card}>
               <h2 className="text-2xl font-black">Top 3 actions now</h2>
+
               <div className="mt-5 grid gap-3">
                 {loading ? (
-                  <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                    Loading crisis plan...
-                  </div>
+                  <div className={softCard}>Loading crisis plan...</div>
                 ) : (
                   actions.map((action, i) => (
-                    <div key={i} className="rounded-2xl bg-zinc-50 p-4">
-                      <div className="text-xs font-semibold text-zinc-500">Action {i + 1}</div>
+                    <div key={i} className={softCard}>
+                      <div className="text-xs font-semibold text-zinc-500">
+                        Action {i + 1}
+                      </div>
                       <div className="mt-1 font-semibold">{action}</div>
                     </div>
                   ))
@@ -396,21 +455,31 @@ export default function CrisisPage() {
 
               <div className="mt-6">
                 <h3 className="text-lg font-bold">72-hour stabilization plan</h3>
+
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-xs font-semibold text-zinc-500">Today</div>
+                  <div className={softCard}>
+                    <div className="text-xs font-semibold text-zinc-500">
+                      Today
+                    </div>
                     <div className="mt-1 font-semibold">
                       Fund the highest-risk essential item first.
                     </div>
                   </div>
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-xs font-semibold text-zinc-500">Next 24 hours</div>
+
+                  <div className={softCard}>
+                    <div className="text-xs font-semibold text-zinc-500">
+                      Next 24 hours
+                    </div>
                     <div className="mt-1 font-semibold">
-                      Protect utilities, transportation, or monthly minimum obligations.
+                      Protect utilities, transportation, or monthly minimum
+                      obligations.
                     </div>
                   </div>
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-xs font-semibold text-zinc-500">This week</div>
+
+                  <div className={softCard}>
+                    <div className="text-xs font-semibold text-zinc-500">
+                      This week
+                    </div>
                     <div className="mt-1 font-semibold">
                       Pause non-essential spending and reduce leak categories.
                     </div>
@@ -420,32 +489,32 @@ export default function CrisisPage() {
             </div>
 
             <div className="grid gap-6">
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+              <div className={card}>
                 <h2 className="text-xl font-black">Priority funding</h2>
+
                 <div className="mt-4 grid gap-3">
                   {loading ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                      Loading priorities...
-                    </div>
+                    <div className={softCard}>Loading priorities...</div>
                   ) : top3.length === 0 ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                      No priority items yet.
-                    </div>
+                    <div className={softCard}>No priority items yet.</div>
                   ) : (
                     top3.map((item) => (
                       <div
                         key={item.id}
-                        className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
+                        className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 p-4"
                       >
                         <div>
                           <div className="font-semibold">{item.name}</div>
                           <div className="text-sm text-zinc-500">
-                            {formatDueLabel(item.dueDate)} · {item.category || item.source}
+                            {formatDueLabel(item.dueDate)} ·{" "}
+                            {item.category || item.source}
                           </div>
                         </div>
                         <div className="text-right">
                           <div className="font-bold">{formatUSD(item.amount)}</div>
-                          <div className="text-xs text-zinc-500">Score {item.score}</div>
+                          <div className="text-xs text-zinc-500">
+                            Score {item.score}
+                          </div>
                         </div>
                       </div>
                     ))
@@ -453,34 +522,36 @@ export default function CrisisPage() {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+              <div className={card}>
                 <h2 className="text-xl font-black">Everything ranked</h2>
+
                 <div className="mt-4 grid gap-3">
                   {loading ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                      Loading ranked items...
-                    </div>
+                    <div className={softCard}>Loading ranked items...</div>
                   ) : rankedItems.length === 0 ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                    <div className={softCard}>
                       No bills or debt minimums to rank yet.
                     </div>
                   ) : (
                     rankedItems.slice(0, 8).map((item, idx) => (
                       <div
                         key={item.id}
-                        className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
+                        className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 p-4"
                       >
                         <div>
                           <div className="font-semibold">
                             {idx + 1}. {item.name}
                           </div>
                           <div className="text-sm text-zinc-500">
-                            {formatDueLabel(item.dueDate)} · {item.category || item.source}
+                            {formatDueLabel(item.dueDate)} ·{" "}
+                            {item.category || item.source}
                           </div>
                         </div>
                         <div className="text-right">
                           <div className="font-bold">{formatUSD(item.amount)}</div>
-                          <div className="text-xs text-zinc-500">Score {item.score}</div>
+                          <div className="text-xs text-zinc-500">
+                            Score {item.score}
+                          </div>
                         </div>
                       </div>
                     ))
@@ -491,10 +562,21 @@ export default function CrisisPage() {
           </div>
 
           {loading ? (
-            <div className="mt-6 text-sm text-zinc-400">Loading crisis mode...</div>
+            <div className="mt-6 text-sm text-zinc-500">
+              Loading crisis mode...
+            </div>
           ) : null}
-        </div>
+        </section>
       </div>
     </main>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className={card}>
+      <div className="text-sm text-zinc-600">{label}</div>
+      <div className="mt-2 text-3xl font-black text-zinc-950">{value}</div>
+    </div>
   );
 }
