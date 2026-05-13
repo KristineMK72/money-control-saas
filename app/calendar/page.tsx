@@ -46,6 +46,15 @@ type CalendarItem = {
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+const shellCard =
+  "rounded-[32px] border border-white/50 bg-white/94 p-5 text-zinc-950 shadow-2xl md:p-8";
+
+const card =
+  "rounded-3xl border border-white/60 bg-white/94 p-5 text-zinc-950 shadow-xl";
+
+const darkButton =
+  "rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-950 hover:bg-zinc-100";
+
 function formatUSD(n: number) {
   return `$${Number(n || 0).toFixed(2)}`;
 }
@@ -74,28 +83,27 @@ function todayISO() {
 function categoryTone(category?: string | null) {
   switch (category) {
     case "housing":
-      return "bg-red-50 text-red-700";
+      return "bg-red-100 text-red-800 border-red-200";
     case "utilities":
-      return "bg-amber-50 text-amber-700";
+      return "bg-amber-100 text-amber-800 border-amber-200";
     case "transportation":
-      return "bg-blue-50 text-blue-700";
+      return "bg-blue-100 text-blue-800 border-blue-200";
     case "credit":
-      return "bg-purple-50 text-purple-700";
+      return "bg-purple-100 text-purple-800 border-purple-200";
     case "loan":
-      return "bg-indigo-50 text-indigo-700";
+      return "bg-indigo-100 text-indigo-800 border-indigo-200";
     default:
-      return "bg-zinc-100 text-zinc-700";
+      return "bg-zinc-100 text-zinc-800 border-zinc-200";
   }
 }
 
 export default function CalendarPage() {
-  const supabase = createSupabaseBrowserClient();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const now = new Date();
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [debugUser, setDebugUser] = useState("");
-  const [userId, setUserId] = useState<string | null>(null);
 
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
@@ -124,12 +132,12 @@ export default function CalendarPage() {
       }
 
       if (!user) {
-        window.location.href = "/signup?mode=login";
+        setMessage("Please log in to see your calendar.");
+        setLoading(false);
         return;
       }
 
       setDebugUser(`${user.email || "unknown"} · ${user.id}`);
-      setUserId(user.id);
 
       const [billsRes, debtsRes] = await Promise.all([
         supabase
@@ -161,7 +169,7 @@ export default function CalendarPage() {
       setLoading(false);
     }
 
-    loadCalendarData();
+    void loadCalendarData();
 
     return () => {
       mounted = false;
@@ -176,15 +184,11 @@ export default function CalendarPage() {
 
       if (bill.due_date) {
         const parsed = new Date(`${bill.due_date}T12:00:00`);
-        if (
-          parsed.getFullYear() === viewYear &&
-          parsed.getMonth() === viewMonth
-        ) {
+        if (parsed.getFullYear() === viewYear && parsed.getMonth() === viewMonth) {
           dueDate = bill.due_date;
         }
       } else if (bill.is_monthly && bill.due_day) {
-        const safeDay = clampDay(viewYear, viewMonth, bill.due_day);
-        dueDate = isoFromYMD(viewYear, viewMonth, safeDay);
+        dueDate = isoFromYMD(viewYear, viewMonth, clampDay(viewYear, viewMonth, bill.due_day));
       }
 
       if (!dueDate) continue;
@@ -204,15 +208,11 @@ export default function CalendarPage() {
 
       if (debt.due_date) {
         const parsed = new Date(`${debt.due_date}T12:00:00`);
-        if (
-          parsed.getFullYear() === viewYear &&
-          parsed.getMonth() === viewMonth
-        ) {
+        if (parsed.getFullYear() === viewYear && parsed.getMonth() === viewMonth) {
           dueDate = debt.due_date;
         }
       } else if (debt.is_monthly && debt.due_day) {
-        const safeDay = clampDay(viewYear, viewMonth, debt.due_day);
-        dueDate = isoFromYMD(viewYear, viewMonth, safeDay);
+        dueDate = isoFromYMD(viewYear, viewMonth, clampDay(viewYear, viewMonth, debt.due_day));
       }
 
       if (!dueDate) continue;
@@ -255,24 +255,17 @@ export default function CalendarPage() {
     const firstOfMonth = new Date(viewYear, viewMonth, 1);
     const lastOfMonth = new Date(viewYear, viewMonth + 1, 0);
 
-    const firstWeekday = firstOfMonth.getDay();
-    const daysInMonth = lastOfMonth.getDate();
-
     const cells: Array<{
       iso: string | null;
       dayNumber: number | null;
       isCurrentMonth: boolean;
     }> = [];
 
-    for (let i = 0; i < firstWeekday; i++) {
-      cells.push({
-        iso: null,
-        dayNumber: null,
-        isCurrentMonth: false,
-      });
+    for (let i = 0; i < firstOfMonth.getDay(); i++) {
+      cells.push({ iso: null, dayNumber: null, isCurrentMonth: false });
     }
 
-    for (let day = 1; day <= daysInMonth; day++) {
+    for (let day = 1; day <= lastOfMonth.getDate(); day++) {
       cells.push({
         iso: isoFromYMD(viewYear, viewMonth, day),
         dayNumber: day,
@@ -281,11 +274,7 @@ export default function CalendarPage() {
     }
 
     while (cells.length % 7 !== 0) {
-      cells.push({
-        iso: null,
-        dayNumber: null,
-        isCurrentMonth: false,
-      });
+      cells.push({ iso: null, dayNumber: null, isCurrentMonth: false });
     }
 
     return cells;
@@ -310,104 +299,59 @@ export default function CalendarPage() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950/82 backdrop-blur-md text-white">
-      <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-10">
-        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-5 shadow-2xl md:p-8">
+    <main className="min-h-screen bg-transparent p-4 text-zinc-950 md:p-8">
+      <div className="mx-auto max-w-7xl">
+        <section className={shellCard}>
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
+              <div className="inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-emerald-800">
                 Due dates
               </div>
 
-              <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
+              <h1 className="mt-4 text-4xl font-black tracking-tight text-zinc-950">
                 Calendar
               </h1>
 
-              <p className="mt-3 max-w-2xl text-lg text-zinc-300">
+              <p className="mt-3 max-w-2xl text-lg text-zinc-700">
                 See bills and debt due dates in one monthly calendar view.
               </p>
 
               {debugUser ? (
-                <p className="mt-2 text-xs text-zinc-400">
-                  Logged in as: {debugUser}
-                </p>
+                <p className="mt-2 text-xs text-zinc-500">Logged in as: {debugUser}</p>
               ) : null}
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <a
-                href="/dashboard"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Dashboard
-              </a>
-              <a
-                href="/bills"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Bills
-              </a>
-              <a
-                href="/debt"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Credit & Loans
-              </a>
-              <a
-                href="/forecast"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Forecast
-              </a>
+              <a href="/dashboard" className={darkButton}>Dashboard</a>
+              <a href="/bills" className={darkButton}>Bills</a>
+              <a href="/debt" className={darkButton}>Credit & Loans</a>
+              <a href="/forecast" className={darkButton}>Forecast</a>
             </div>
           </div>
 
           {message ? (
-            <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
+            <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
               {message}
             </div>
           ) : null}
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
-              <div className="text-sm text-zinc-500">Total due this month</div>
-              <div className="mt-2 text-3xl font-black text-zinc-950">
-                {formatUSD(monthSummary.total)}
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
-              <div className="text-sm text-zinc-500">Bills this month</div>
-              <div className="mt-2 text-3xl font-black text-zinc-950">
-                {formatUSD(monthSummary.bills)}
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
-              <div className="text-sm text-zinc-500">Debt minimums this month</div>
-              <div className="mt-2 text-3xl font-black text-zinc-950">
-                {formatUSD(monthSummary.debts)}
-              </div>
-            </div>
+            <SummaryCard label="Total due this month" value={formatUSD(monthSummary.total)} />
+            <SummaryCard label="Bills this month" value={formatUSD(monthSummary.bills)} />
+            <SummaryCard label="Debt minimums this month" value={formatUSD(monthSummary.debts)} />
           </div>
 
-          <div className="mt-8 rounded-3xl border border-white/10 bg-white p-4 text-zinc-950 shadow-sm md:p-6">
+          <div className="mt-8 rounded-3xl border border-zinc-200 bg-white p-4 text-zinc-950 shadow-xl md:p-6">
             <div className="mb-5 flex items-center justify-between gap-3">
-              <button
-                onClick={goPrevMonth}
-                className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-              >
+              <button onClick={goPrevMonth} className={darkButton}>
                 ← Prev
               </button>
 
-              <h2 className="text-xl font-black text-center">
+              <h2 className="text-center text-xl font-black">
                 {getMonthName(viewYear, viewMonth)}
               </h2>
 
-              <button
-                onClick={goNextMonth}
-                className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-              >
+              <button onClick={goNextMonth} className={darkButton}>
                 Next →
               </button>
             </div>
@@ -447,7 +391,7 @@ export default function CalendarPage() {
                           {items.slice(0, 3).map((item) => (
                             <div
                               key={item.id}
-                              className={`rounded-xl px-2 py-2 text-[11px] leading-4 md:text-xs ${categoryTone(
+                              className={`rounded-xl border px-2 py-2 text-[11px] leading-4 md:text-xs ${categoryTone(
                                 item.category
                               )}`}
                             >
@@ -470,7 +414,7 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          <div className="mt-8 rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+          <div className={`${card} mt-8`}>
             <h2 className="text-2xl font-black">This month’s due list</h2>
             <div className="mt-5 grid gap-3">
               {loading ? (
@@ -499,12 +443,17 @@ export default function CalendarPage() {
               )}
             </div>
           </div>
-
-          {loading ? (
-            <div className="mt-6 text-sm text-zinc-400">Loading calendar...</div>
-          ) : null}
-        </div>
+        </section>
       </div>
     </main>
+  );
+}
+
+function SummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className={card}>
+      <div className="text-sm text-zinc-600">{label}</div>
+      <div className="mt-2 text-3xl font-black text-zinc-950">{value}</div>
+    </div>
   );
 }
