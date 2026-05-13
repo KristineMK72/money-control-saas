@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { BenEngine } from "@/lib/ben/engine";
 import BenBubble from "@/components/BenBubble";
+import XpBar from "@/components/XpBar";
 
 type SpendRow = {
   id: string;
