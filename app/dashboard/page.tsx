@@ -34,6 +34,7 @@ type ProfileRow = {
   xp?: number | null;
   level?: number | null;
 };
+
 function num(value: unknown) {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -47,8 +48,11 @@ function formatUSD(value: number) {
   });
 }
 
-const panelClass =
-  "rounded-xl border border-white/40 bg-white/88 shadow-xl";
+const cardClass =
+  "rounded-2xl border border-white/70 bg-white/95 p-5 shadow-2xl backdrop-blur-md transition hover:-translate-y-0.5 hover:bg-white";
+
+const sectionClass =
+  "rounded-[2rem] border border-white/25 bg-slate-950/55 p-4 shadow-2xl backdrop-blur-sm md:p-6";
 
 export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -78,7 +82,7 @@ export default function DashboardPage() {
       const user = session?.user;
 
       if (!user) {
-        setNotice("No client session found. Log in again if the numbers do not load.");
+        setNotice("Connecting to your financial snapshot...");
         setLoading(false);
         return;
       }
@@ -96,12 +100,13 @@ export default function DashboardPage() {
           .select("*")
           .eq("user_id", uid)
           .maybeSingle(),
-      supabase
+
+        supabase
           .from("profiles")
           .select("xp, level")
           .eq("user_id", uid)
           .maybeSingle(),
-          ]);
+      ]);
 
       if (spendRes.error) {
         console.error("Dashboard spend_entries error:", spendRes.error);
@@ -111,6 +116,10 @@ export default function DashboardPage() {
         console.error("Dashboard ben_master error:", masterRes.error);
       }
 
+      if (profileRes.error) {
+        console.error("Dashboard profiles error:", profileRes.error);
+      }
+
       setSpend((spendRes.data || []) as SpendRow[]);
       setMaster((masterRes.data || null) as BenMasterRow | null);
       setProfile((profileRes.data || null) as ProfileRow | null);
@@ -118,7 +127,8 @@ export default function DashboardPage() {
       const messages = [
         spendRes.error ? `Spend error: ${spendRes.error.message}` : "",
         masterRes.error ? `Ben master error: ${masterRes.error.message}` : "",
-        !masterRes.data ? "No ben_master row returned for this user." : "",
+        profileRes.error ? `Profile error: ${profileRes.error.message}` : "",
+        !masterRes.data ? "No Ben master row returned yet." : "",
       ].filter(Boolean);
 
       setNotice(messages.join(" "));
@@ -167,58 +177,77 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-transparent p-6">
-        <div className={`${panelClass} mx-auto max-w-6xl p-6`}>
-          Loading dashboard...
+      <main className="min-h-screen bg-transparent p-4 md:p-6">
+        <div className={`${sectionClass} mx-auto max-w-6xl`}>
+          <div className="rounded-2xl bg-white/95 p-6 font-bold text-zinc-900 shadow-xl">
+            Loading your AskBen dashboard...
+          </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-transparent p-6">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-6 rounded-2xl border border-white/40 bg-white/88 p-6 shadow-xl">
-          <h1 className="text-3xl font-black text-zinc-950">Dashboard</h1>
-          <p className="mt-2 text-sm text-zinc-700">
-            Your live AskBen money snapshot from Supabase.
-          </p>
+    <main className="min-h-screen bg-transparent p-4 md:p-6">
+      <div className={`${sectionClass} mx-auto max-w-6xl`}>
+        <header className="rounded-[1.5rem] border border-white/70 bg-white/95 p-5 shadow-2xl backdrop-blur-md md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-700">
+                AskBen Command Center
+              </p>
+              <h1 className="mt-1 text-3xl font-black text-zinc-950 md:text-4xl">
+                Dashboard
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm font-medium text-zinc-700">
+                Your live money snapshot, pressure check, XP progress, and Ben’s
+                latest judgment.
+              </p>
+            </div>
 
-          <div className="mt-4">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-right shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                Level
+              </p>
+              <p className="text-3xl font-black text-emerald-950">
+                {profile?.level ?? 1}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-xl">
             <BenBubble message={ben.text} mood={ben.mood} />
           </div>
 
-          <div className="mt-4">
-            <XpBar
-            xp={profile?.xp ?? 0}
-            level={profile?.level ?? 1}
-          />
+          <div className="mt-5">
+            <XpBar xp={profile?.xp ?? 0} level={profile?.level ?? 1} />
           </div>
+
           {notice && (
-            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900 shadow-sm">
               {notice}
             </div>
           )}
         </header>
 
-        <section className="grid gap-4 md:grid-cols-4">
-          <Card label="Income" value={formatUSD(totalIncome)} />
-          <Card label="Spend" value={formatUSD(totalSpend)} />
-          <Card label="Debt" value={formatUSD(totalDebtBalance)} />
-          <Card label="Net" value={formatUSD(net)} />
+        <section className="mt-6 grid gap-4 md:grid-cols-4">
+          <MoneyCard label="Income" value={formatUSD(totalIncome)} tone="good" />
+          <MoneyCard label="Spend" value={formatUSD(totalSpend)} tone="warn" />
+          <MoneyCard label="Debt" value={formatUSD(totalDebtBalance)} tone="danger" />
+          <MoneyCard label="Net" value={formatUSD(net)} tone={net >= 0 ? "good" : "danger"} />
         </section>
 
-        <section className="mt-8 grid gap-4 md:grid-cols-3">
+        <section className="mt-6 grid gap-4 md:grid-cols-3">
           <InfoCard
             title="Bills"
             value={formatUSD(bills)}
-            text="Monthly bills from the Ben master summary."
+            text="Monthly bills from your Ben master summary."
           />
 
           <InfoCard
             title="Debt minimums"
             value={formatUSD(totalDebtMinimums)}
-            text="Monthly minimum payments from your debt records."
+            text="Minimum payments currently pressuring your monthly cashflow."
           />
 
           <InfoCard
@@ -228,7 +257,7 @@ export default function DashboardPage() {
           />
         </section>
 
-        <section className="mt-8 grid gap-4 md:grid-cols-3">
+        <section className="mt-6 grid gap-4 md:grid-cols-3">
           <InfoCard
             title="Top spending category"
             value={topCategoryName}
@@ -252,21 +281,40 @@ export default function DashboardPage() {
           />
         </section>
 
-        <section className={`${panelClass} mt-8 p-6 text-sm text-zinc-700 space-y-1`}>
-          <div>Spend lines loaded: {spend.length}</div>
-          <div>Ben master row: {master ? "loaded" : "missing"}</div>
-          <div>Obligations: {formatUSD(totalObligations)}</div>
+        <section className="mt-6 rounded-2xl border border-white/60 bg-white/90 p-5 text-sm font-medium text-zinc-800 shadow-xl backdrop-blur-md">
+          <div className="flex flex-wrap gap-4">
+            <div>Spend lines loaded: {spend.length}</div>
+            <div>Ben master row: {master ? "loaded" : "missing"}</div>
+            <div>Obligations: {formatUSD(totalObligations)}</div>
+          </div>
         </section>
       </div>
     </main>
   );
 }
 
-function Card({ label, value }: { label: string; value: string }) {
+function MoneyCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "good" | "warn" | "danger";
+}) {
+  const toneClass =
+    tone === "good"
+      ? "from-emerald-50 to-white border-emerald-200"
+      : tone === "warn"
+        ? "from-amber-50 to-white border-amber-200"
+        : "from-rose-50 to-white border-rose-200";
+
   return (
-    <div className={`${panelClass} p-4`}>
-      <div className="text-sm text-zinc-600">{label}</div>
-      <div className="text-2xl font-black text-zinc-950">{value}</div>
+    <div className={`${cardClass} bg-gradient-to-br ${toneClass}`}>
+      <div className="text-sm font-black uppercase tracking-wide text-zinc-700">
+        {label}
+      </div>
+      <div className="mt-2 text-3xl font-black text-zinc-950">{value}</div>
     </div>
   );
 }
@@ -281,10 +329,14 @@ function InfoCard({
   text: string;
 }) {
   return (
-    <div className={`${panelClass} p-6`}>
-      <h2 className="font-bold text-zinc-900">{title}</h2>
-      <p className="mt-2 text-2xl font-black text-zinc-950">{value}</p>
-      <p className="mt-2 text-sm text-zinc-700">{text}</p>
+    <div className={cardClass}>
+      <h2 className="text-sm font-black uppercase tracking-wide text-zinc-700">
+        {title}
+      </h2>
+      <p className="mt-2 text-3xl font-black text-zinc-950">{value}</p>
+      <p className="mt-3 text-sm font-semibold leading-relaxed text-zinc-800">
+        {text}
+      </p>
     </div>
   );
 }
