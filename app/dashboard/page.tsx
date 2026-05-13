@@ -30,6 +30,10 @@ type BenMasterRow = {
   net?: number | string | null;
 };
 
+type ProfileRow = {
+  xp?: number | null;
+  level?: number | null;
+};
 function num(value: unknown) {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -51,6 +55,7 @@ export default function DashboardPage() {
 
   const [spend, setSpend] = useState<SpendRow[]>([]);
   const [master, setMaster] = useState<BenMasterRow | null>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
 
@@ -80,7 +85,7 @@ export default function DashboardPage() {
 
       const uid = user.id;
 
-      const [spendRes, masterRes] = await Promise.all([
+      const [spendRes, masterRes, profileRes] = await Promise.all([
         supabase
           .from("spend_entries")
           .select("id, amount, category")
@@ -91,7 +96,12 @@ export default function DashboardPage() {
           .select("*")
           .eq("user_id", uid)
           .maybeSingle(),
-      ]);
+      supabase
+          .from("profiles")
+          .select("xp, level")
+          .eq("user_id", uid)
+          .maybeSingle(),
+          ]);
 
       if (spendRes.error) {
         console.error("Dashboard spend_entries error:", spendRes.error);
@@ -103,6 +113,7 @@ export default function DashboardPage() {
 
       setSpend((spendRes.data || []) as SpendRow[]);
       setMaster((masterRes.data || null) as BenMasterRow | null);
+      setProfile((profileRes.data || null) as ProfileRow | null);
 
       const messages = [
         spendRes.error ? `Spend error: ${spendRes.error.message}` : "",
@@ -177,6 +188,12 @@ export default function DashboardPage() {
             <BenBubble message={ben.text} mood={ben.mood} />
           </div>
 
+          <div className="mt-4">
+            <XpBar
+            xp={profile?.xp ?? 0}
+            level={profile?.level ?? 1}
+          />
+          </div>
           {notice && (
             <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
               {notice}
