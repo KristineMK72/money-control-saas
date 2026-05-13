@@ -111,7 +111,7 @@ export default function DashboardPage() {
           <Card label="Net" value={net} />
         </section>
 
-        <section className="mt-8 rounded-xl border border-zinc-200 bg-white/90 p-6 backdrop-blur">
+        <section className="mt-8 rounded-xl border border-white/40 bg-white/94 shadow-xl p-6 ">
           <h2 className="font-bold text-zinc-900">Top spending category</h2>
           <p className="mt-2 text-2xl font-black text-zinc-950">{topCategory}</p>
           <p className="mt-2 text-sm text-zinc-600">
@@ -120,7 +120,7 @@ export default function DashboardPage() {
           </p>
         </section>
 
-        <section className="mt-8 rounded-xl border border-zinc-200 bg-white/90 p-6 text-sm text-zinc-600 backdrop-blur space-y-1">
+        <section className="mt-8 rounded-xl border border-white/40 bg-white/94 shadow-xl p-6 text-sm text-zinc-600  space-y-1">
           <div>Spend lines: {spend.length}</div>
           <div>Debt minimums (monthly): {formatUSD(totalDebtMinimums)}</div>
           <div>Obligations (spend + minimums): {formatUSD(totalObligations)}</div>
@@ -132,7 +132,7 @@ export default function DashboardPage() {
 
 function Card({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white/90 p-4 backdrop-blur">
+    <div className="rounded-xl border border-white/40 bg-white/94 shadow-xl p-4 ">
       <div className="text-sm text-zinc-500">{label}</div>
       <div className="text-2xl font-black text-zinc-950">{formatUSD(value)}</div>
     </div>
