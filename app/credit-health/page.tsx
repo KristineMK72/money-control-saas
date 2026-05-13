@@ -19,8 +19,27 @@ type DebtRow = {
   created_at?: string;
 };
 
+const pageCard =
+  "rounded-[32px] border border-white/50 bg-white/94 p-6 text-zinc-950 shadow-2xl md:p-8";
+
+const card =
+  "rounded-3xl border border-white/60 bg-white/94 p-6 text-zinc-950 shadow-xl";
+
+const softCard =
+  "rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-zinc-950";
+
+const button =
+  "rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-950 hover:bg-zinc-100";
+
+const darkButton =
+  "rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black";
+
 function formatUSD(n: number) {
-  return `$${Number(n || 0).toFixed(2)}`;
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  });
 }
 
 function pct(n: number) {
@@ -28,10 +47,10 @@ function pct(n: number) {
 }
 
 function utilizationTone(util: number) {
-  if (util >= 75) return "text-red-600 bg-red-50";
-  if (util >= 50) return "text-orange-600 bg-orange-50";
-  if (util >= 30) return "text-amber-700 bg-amber-50";
-  return "text-emerald-700 bg-emerald-50";
+  if (util >= 75) return "text-red-700 bg-red-100 border-red-200";
+  if (util >= 50) return "text-orange-700 bg-orange-100 border-orange-200";
+  if (util >= 30) return "text-amber-800 bg-amber-100 border-amber-200";
+  return "text-emerald-800 bg-emerald-100 border-emerald-200";
 }
 
 function utilizationLabel(util: number) {
@@ -57,26 +76,8 @@ function paymentNeededForTarget(
   return Math.max(0, balance - targetBalance);
 }
 
-function StatCard({
-  label,
-  value,
-  subtext,
-}: {
-  label: string;
-  value: string;
-  subtext?: string;
-}) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-white p-5 text-zinc-950 shadow-sm">
-      <div className="text-sm text-zinc-500">{label}</div>
-      <div className="mt-2 text-3xl font-black">{value}</div>
-      {subtext ? <div className="mt-2 text-sm text-zinc-500">{subtext}</div> : null}
-    </div>
-  );
-}
-
 export default function CreditHealthPage() {
-  const supabase = createSupabaseBrowserClient();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -118,6 +119,7 @@ export default function CreditHealthPage() {
           .select("display_name")
           .eq("user_id", user.id)
           .maybeSingle(),
+
         supabase
           .from("debts")
           .select("*")
@@ -127,7 +129,9 @@ export default function CreditHealthPage() {
 
       if (!mounted) return;
 
-      if (profileRes.data?.display_name) setName(profileRes.data.display_name);
+      if (profileRes.data?.display_name) {
+        setName(profileRes.data.display_name);
+      }
 
       if (debtsRes.error) {
         setMessage(debtsRes.error.message);
@@ -138,7 +142,7 @@ export default function CreditHealthPage() {
       setLoading(false);
     }
 
-    load();
+    void load();
 
     return () => {
       mounted = false;
@@ -146,30 +150,37 @@ export default function CreditHealthPage() {
   }, [supabase]);
 
   const creditCards = useMemo(
-    () => debts.filter((d) => d.kind === "credit"),
+    () => debts.filter((debt) => debt.kind === "credit"),
     [debts]
   );
 
   const loans = useMemo(
-    () => debts.filter((d) => d.kind === "loan"),
+    () => debts.filter((debt) => debt.kind === "loan"),
     [debts]
   );
 
   const totals = useMemo(() => {
-    const totalDebt = debts.reduce((sum, d) => sum + Number(d.balance || 0), 0);
+    const totalDebt = debts.reduce(
+      (sum, debt) => sum + Number(debt.balance || 0),
+      0
+    );
+
     const totalCreditDebt = creditCards.reduce(
-      (sum, d) => sum + Number(d.balance || 0),
+      (sum, debt) => sum + Number(debt.balance || 0),
       0
     );
+
     const totalCreditLimit = creditCards.reduce(
-      (sum, d) => sum + Number(d.credit_limit || 0),
+      (sum, debt) => sum + Number(debt.credit_limit || 0),
       0
     );
+
     const utilization =
       totalCreditLimit > 0 ? (totalCreditDebt / totalCreditLimit) * 100 : 0;
 
     const totalMinimums = debts.reduce(
-      (sum, d) => sum + Number(d.monthly_min_payment || d.min_payment || 0),
+      (sum, debt) =>
+        sum + Number(debt.monthly_min_payment || debt.min_payment || 0),
       0
     );
 
@@ -193,12 +204,12 @@ export default function CreditHealthPage() {
   }, [creditCards]);
 
   const over80Cards = useMemo(
-    () => riskyCards.filter((c) => c.utilization >= 80),
+    () => riskyCards.filter((card) => card.utilization >= 80),
     [riskyCards]
   );
 
   const maxedCards = useMemo(
-    () => riskyCards.filter((c) => c.utilization >= 100),
+    () => riskyCards.filter((card) => card.utilization >= 100),
     [riskyCards]
   );
 
@@ -233,11 +244,15 @@ export default function CreditHealthPage() {
 
     if (maxedCards.length > 0) {
       items.push(
-        `${maxedCards.length} card${maxedCards.length === 1 ? " is" : "s are"} maxed or over limit. Those are your highest-priority credit targets.`
+        `${maxedCards.length} card${
+          maxedCards.length === 1 ? " is" : "s are"
+        } maxed or over limit. Those are your highest-priority credit targets.`
       );
     } else if (over80Cards.length > 0) {
       items.push(
-        `${over80Cards.length} card${over80Cards.length === 1 ? " is" : "s are"} above 80% utilization. Paying those down first can help the fastest.`
+        `${over80Cards.length} card${
+          over80Cards.length === 1 ? " is" : "s are"
+        } above 80% utilization. Paying those down first can help the fastest.`
       );
     }
 
@@ -277,75 +292,71 @@ export default function CreditHealthPage() {
       ),
     };
   }, [totals]);
-    if (loading) {
+
+  if (loading) {
     return (
-      <main className="min-h-screen bg-zinc-950/82 backdrop-blur-md px-6 py-10 text-white">
-        Loading credit health...
+      <main className="min-h-screen bg-transparent p-6">
+        <div className={`${pageCard} mx-auto max-w-6xl`}>
+          Loading credit health...
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950/82 backdrop-blur-md text-white">
-      <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 shadow-2xl md:p-8">
+    <main className="min-h-screen bg-transparent p-6">
+      <div className="mx-auto max-w-6xl">
+        <section className={pageCard}>
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
+              <div className="inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-emerald-800">
                 Credit Health
               </div>
-              <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
+
+              <h1 className="mt-4 text-4xl font-black tracking-tight text-zinc-950">
                 {name ? `${name}'s Credit Health` : "Credit Health"}
               </h1>
-              <p className="mt-3 max-w-2xl text-lg text-zinc-300">
-                Track utilization, risk cards, score pressure, and the fastest next moves.
+
+              <p className="mt-3 max-w-2xl text-lg text-zinc-700">
+                Track utilization, risk cards, score pressure, and the fastest
+                next moves.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
-  <a
-    href="/dashboard"
-    className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-  >
-    Dashboard
-  </a>
-  <a
-    href="/debt"
-    className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-  >
-    Credit & Loans
-  </a>
-  <a
-    href="/goodwill-letter"
-    className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-  >
-    Goodwill Letter
-  </a>
-  <a
-    href="/dispute-letter"
-    className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-  >
-    Dispute Letter
-  </a>
-</div>
+              <a href="/dashboard" className={button}>
+                Dashboard
+              </a>
+              <a href="/debt" className={button}>
+                Credit & Loans
+              </a>
+              <a href="/goodwill-letter" className={button}>
+                Goodwill Letter
+              </a>
+              <a href="/dispute-letter" className={button}>
+                Dispute Letter
+              </a>
+            </div>
           </div>
 
           {message ? (
-            <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
+            <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
               {message}
             </div>
           ) : null}
 
           {!userId ? (
-            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
-              <div className="font-semibold text-white">You are not logged in.</div>
-              <p className="mt-2 text-sm text-zinc-300">
+            <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-6">
+              <div className="font-semibold text-amber-950">
+                You are not logged in.
+              </div>
+              <p className="mt-2 text-sm text-amber-900">
                 Go to signup/login first, then come back here.
               </p>
               <div className="mt-4">
                 <a
                   href="/signup?mode=login"
-                  className="inline-flex rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-black hover:bg-emerald-300"
+                  className="inline-flex rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-600"
                 >
                   Go to Signup / Login
                 </a>
@@ -362,7 +373,9 @@ export default function CreditHealthPage() {
             <StatCard
               label="Total debt"
               value={formatUSD(totals.totalDebt)}
-              subtext={`${creditCards.length} credit card${creditCards.length === 1 ? "" : "s"} · ${loans.length} loan${loans.length === 1 ? "" : "s"}`}
+              subtext={`${creditCards.length} credit card${
+                creditCards.length === 1 ? "" : "s"
+              } · ${loans.length} loan${loans.length === 1 ? "" : "s"}`}
             />
             <StatCard
               label="Total credit limit"
@@ -376,98 +389,95 @@ export default function CreditHealthPage() {
 
           <div className="mt-8 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             <div className="grid gap-6">
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-2xl font-black">Accounts impacting score</h2>
-                <p className="mt-1 text-sm text-zinc-500">
+              <div className={card}>
+                <h2 className="text-2xl font-black">
+                  Accounts impacting score
+                </h2>
+                <p className="mt-1 text-sm text-zinc-600">
                   Highest utilization cards appear first.
                 </p>
 
                 <div className="mt-5 grid gap-3">
                   {riskyCards.length === 0 ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                    <div className={softCard}>
                       No credit card accounts found yet.
                     </div>
                   ) : (
-                    riskyCards.map((card) => (
-                      <div key={card.id} className="rounded-2xl bg-zinc-50 p-4">
+                    riskyCards.map((cardItem) => (
+                      <div key={cardItem.id} className={softCard}>
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <div className="font-semibold">{card.name}</div>
-                            <div className="mt-1 text-sm text-zinc-500">
-                              Balance {formatUSD(card.balance)} · Limit{" "}
-                              {formatUSD(card.credit_limit || 0)}
-                              {card.apr != null
-                                ? ` · APR ${Number(card.apr).toFixed(2)}%`
+                            <div className="font-semibold">{cardItem.name}</div>
+                            <div className="mt-1 text-sm text-zinc-600">
+                              Balance {formatUSD(cardItem.balance)} · Limit{" "}
+                              {formatUSD(cardItem.credit_limit || 0)}
+                              {cardItem.apr != null
+                                ? ` · APR ${Number(cardItem.apr).toFixed(2)}%`
                                 : ""}
                             </div>
                           </div>
 
                           <div
-                            className={`rounded-full px-3 py-1 text-xs font-semibold ${utilizationTone(
-                              card.utilization
+                            className={`rounded-full border px-3 py-1 text-xs font-bold ${utilizationTone(
+                              cardItem.utilization
                             )}`}
                           >
-                            {pct(card.utilization)} · {utilizationLabel(card.utilization)}
+                            {pct(cardItem.utilization)} ·{" "}
+                            {utilizationLabel(cardItem.utilization)}
                           </div>
                         </div>
 
                         <div className="mt-4 h-3 overflow-hidden rounded-full bg-zinc-200">
                           <div
                             className={`h-full rounded-full ${
-                              card.utilization >= 75
+                              cardItem.utilization >= 75
                                 ? "bg-red-500"
-                                : card.utilization >= 50
+                                : cardItem.utilization >= 50
                                 ? "bg-orange-500"
-                                : card.utilization >= 30
+                                : cardItem.utilization >= 30
                                 ? "bg-amber-500"
                                 : "bg-emerald-500"
                             }`}
                             style={{
                               width: `${Math.min(
                                 100,
-                                Math.max(0, card.utilization)
+                                Math.max(0, cardItem.utilization)
                               )}%`,
                             }}
                           />
                         </div>
 
                         <div className="mt-4 grid gap-2 text-sm text-zinc-700 md:grid-cols-3">
-                          <div className="rounded-xl bg-white p-3">
-                            To 50%:{" "}
-                            <span className="font-semibold">
-                              {formatUSD(
-                                paymentNeededForTarget(
-                                  card.balance,
-                                  card.credit_limit,
-                                  50
-                                )
-                              )}
-                            </span>
-                          </div>
-                          <div className="rounded-xl bg-white p-3">
-                            To 30%:{" "}
-                            <span className="font-semibold">
-                              {formatUSD(
-                                paymentNeededForTarget(
-                                  card.balance,
-                                  card.credit_limit,
-                                  30
-                                )
-                              )}
-                            </span>
-                          </div>
-                          <div className="rounded-xl bg-white p-3">
-                            To 10%:{" "}
-                            <span className="font-semibold">
-                              {formatUSD(
-                                paymentNeededForTarget(
-                                  card.balance,
-                                  card.credit_limit,
-                                  10
-                                )
-                              )}
-                            </span>
-                          </div>
+                          <MiniTarget
+                            label="To 50%"
+                            value={formatUSD(
+                              paymentNeededForTarget(
+                                cardItem.balance,
+                                cardItem.credit_limit,
+                                50
+                              )
+                            )}
+                          />
+                          <MiniTarget
+                            label="To 30%"
+                            value={formatUSD(
+                              paymentNeededForTarget(
+                                cardItem.balance,
+                                cardItem.credit_limit,
+                                30
+                              )
+                            )}
+                          />
+                          <MiniTarget
+                            label="To 10%"
+                            value={formatUSD(
+                              paymentNeededForTarget(
+                                cardItem.balance,
+                                cardItem.credit_limit,
+                                10
+                              )
+                            )}
+                          />
                         </div>
                       </div>
                     ))
@@ -475,55 +485,76 @@ export default function CreditHealthPage() {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-2xl font-black">Credit improvement plan</h2>
+              <div className={card}>
+                <h2 className="text-2xl font-black">
+                  Credit improvement plan
+                </h2>
+
                 <div className="mt-5 grid gap-3">
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="font-semibold">Step 1</div>
-                    <div className="mt-1 text-sm text-zinc-600">
-                      Protect payment history first by covering all minimums:{" "}
-                      <span className="font-bold">
-                        {formatUSD(totals.totalMinimums)}
-                      </span>
-                    </div>
-                  </div>
+                  <PlanStep
+                    step="Step 1"
+                    text={
+                      <>
+                        Protect payment history first by covering all minimums:{" "}
+                        <span className="font-bold">
+                          {formatUSD(totals.totalMinimums)}
+                        </span>
+                      </>
+                    }
+                  />
 
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="font-semibold">Step 2</div>
-                    <div className="mt-1 text-sm text-zinc-600">
-                      Pay <span className="font-bold">{formatUSD(targetPlan.to50)}</span>{" "}
-                      to get under <span className="font-bold">50%</span> utilization.
-                    </div>
-                  </div>
+                  <PlanStep
+                    step="Step 2"
+                    text={
+                      <>
+                        Pay{" "}
+                        <span className="font-bold">
+                          {formatUSD(targetPlan.to50)}
+                        </span>{" "}
+                        to get under <span className="font-bold">50%</span>{" "}
+                        utilization.
+                      </>
+                    }
+                  />
 
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="font-semibold">Step 3</div>
-                    <div className="mt-1 text-sm text-zinc-600">
-                      Pay <span className="font-bold">{formatUSD(targetPlan.to30)}</span>{" "}
-                      to get under <span className="font-bold">30%</span> utilization.
-                    </div>
-                  </div>
+                  <PlanStep
+                    step="Step 3"
+                    text={
+                      <>
+                        Pay{" "}
+                        <span className="font-bold">
+                          {formatUSD(targetPlan.to30)}
+                        </span>{" "}
+                        to get under <span className="font-bold">30%</span>{" "}
+                        utilization.
+                      </>
+                    }
+                  />
 
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="font-semibold">Step 4</div>
-                    <div className="mt-1 text-sm text-zinc-600">
-                      Long-term premium zone: pay{" "}
-                      <span className="font-bold">{formatUSD(targetPlan.to10)}</span>{" "}
-                      to get near <span className="font-bold">10%</span>.
-                    </div>
-                  </div>
+                  <PlanStep
+                    step="Step 4"
+                    text={
+                      <>
+                        Long-term premium zone: pay{" "}
+                        <span className="font-bold">
+                          {formatUSD(targetPlan.to10)}
+                        </span>{" "}
+                        to get near <span className="font-bold">10%</span>.
+                      </>
+                    }
+                  />
                 </div>
               </div>
             </div>
 
             <div className="grid gap-6">
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+              <div className={card}>
                 <h2 className="text-xl font-black">Ben’s Credit Advice</h2>
                 <div className="mt-4 grid gap-3">
                   {benAdvice.map((item, idx) => (
                     <div
                       key={idx}
-                      className="rounded-2xl bg-zinc-50 p-4 text-sm leading-6 text-zinc-700"
+                      className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-6 text-zinc-700"
                     >
                       {item}
                     </div>
@@ -531,61 +562,40 @@ export default function CreditHealthPage() {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+              <div className={card}>
                 <h2 className="text-xl font-black">Score pressure snapshot</h2>
+
                 <div className="mt-4 grid gap-3">
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
-                    <span className="text-zinc-500">Cards above 80%</span>
-                    <span className="font-bold">{over80Cards.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
-                    <span className="text-zinc-500">Maxed cards</span>
-                    <span className="font-bold">{maxedCards.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
-                    <span className="text-zinc-500">Credit accounts</span>
-                    <span className="font-bold">{creditCards.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
-                    <span className="text-zinc-500">Loan accounts</span>
-                    <span className="font-bold">{loans.length}</span>
-                  </div>
+                  <Snapshot label="Cards above 80%" value={over80Cards.length} />
+                  <Snapshot label="Maxed cards" value={maxedCards.length} />
+                  <Snapshot label="Credit accounts" value={creditCards.length} />
+                  <Snapshot label="Loan accounts" value={loans.length} />
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+              <div className={card}>
                 <h2 className="text-xl font-black">Quick actions</h2>
+
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <a
-                    href="/debt"
-                    className="rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
-                  >
+                  <a href="/debt" className={darkButton}>
                     Update Debt
                   </a>
-                  <a
-                    href="/payments"
-                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
-                  >
+                  <a href="/payments" className={button}>
                     Add Payment
                   </a>
-                  <a
-                    href="/calendar"
-                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
-                  >
+                  <a href="/calendar" className={button}>
                     Open Calendar
                   </a>
-                  <a
-                    href="/dashboard"
-                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
-                  >
+                  <a href="/dashboard" className={button}>
                     Dashboard
                   </a>
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+              <div className={card}>
                 <h2 className="text-xl font-black">AskBen view</h2>
-                <div className="mt-4 rounded-2xl bg-zinc-50 p-4 text-sm leading-6 text-zinc-700">
+
+                <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-6 text-zinc-700">
                   {totals.utilization >= 75
                     ? "Your biggest score driver right now is very high utilization. Protect minimums, then attack your highest-used card first."
                     : totals.utilization >= 50
@@ -596,59 +606,107 @@ export default function CreditHealthPage() {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+              <div className={card}>
                 <h2 className="text-xl font-black">Credit Repair Tools</h2>
-                <p className="mt-2 text-sm text-zinc-500">
-                  Guided support for fixing errors, protecting payment history, and improving utilization.
+                <p className="mt-2 text-sm text-zinc-600">
+                  Guided support for fixing errors, protecting payment history,
+                  and improving utilization.
                 </p>
 
                 <div className="mt-4 grid gap-3">
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="font-semibold">Dispute incorrect information</div>
-                    <div className="mt-1 text-sm text-zinc-600">
-                      Track issues like wrong balances, duplicate accounts, or accounts that do not belong to you.
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="font-semibold">Goodwill / hardship letters</div>
-                    <div className="mt-1 text-sm text-zinc-600">
-                      Generate letters for late-payment forgiveness, hardship requests, and payment arrangement support.
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="font-semibold">Late payment protection</div>
-                    <div className="mt-1 text-sm text-zinc-600">
-                      Use your calendar, forecast, and minimums to catch score-damaging late-payment risk before it happens.
-                    </div>
-                  </div>
+                  <RepairTool
+                    title="Dispute incorrect information"
+                    text="Track issues like wrong balances, duplicate accounts, or accounts that do not belong to you."
+                  />
+                  <RepairTool
+                    title="Goodwill / hardship letters"
+                    text="Generate letters for late-payment forgiveness, hardship requests, and payment arrangement support."
+                  />
+                  <RepairTool
+                    title="Late payment protection"
+                    text="Use your calendar, forecast, and minimums to catch score-damaging late-payment risk before it happens."
+                  />
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    className="rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
-                  >
+                  <a href="/dispute-letter" className={darkButton}>
                     Start dispute tool
-                  </button>
+                  </a>
 
-                  <button
-                    type="button"
-                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
-                  >
+                  <a href="/goodwill-letter" className={button}>
                     Generate goodwill letter
-                  </button>
+                  </a>
                 </div>
 
-                <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">
-                  Ben says: Credit repair is not magic. It’s catching errors, protecting payment history, and lowering utilization on purpose.
+                <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">
+                  Ben says: Credit repair is not magic. It’s catching errors,
+                  protecting payment history, and lowering utilization on
+                  purpose.
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </main>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  subtext,
+}: {
+  label: string;
+  value: string;
+  subtext?: string;
+}) {
+  return (
+    <div className={card}>
+      <div className="text-sm text-zinc-600">{label}</div>
+      <div className="mt-2 text-3xl font-black text-zinc-950">{value}</div>
+      {subtext ? <div className="mt-2 text-sm text-zinc-600">{subtext}</div> : null}
+    </div>
+  );
+}
+
+function MiniTarget({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-3">
+      {label}: <span className="font-semibold">{value}</span>
+    </div>
+  );
+}
+
+function PlanStep({
+  step,
+  text,
+}: {
+  step: string;
+  text: React.ReactNode;
+}) {
+  return (
+    <div className={softCard}>
+      <div className="font-semibold">{step}</div>
+      <div className="mt-1 text-sm text-zinc-600">{text}</div>
+    </div>
+  );
+}
+
+function Snapshot({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+      <span className="text-zinc-600">{label}</span>
+      <span className="font-bold">{value}</span>
+    </div>
+  );
+}
+
+function RepairTool({ title, text }: { title: string; text: string }) {
+  return (
+    <div className={softCard}>
+      <div className="font-semibold">{title}</div>
+      <div className="mt-1 text-sm text-zinc-600">{text}</div>
+    </div>
   );
 }
