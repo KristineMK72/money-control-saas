@@ -1,11 +1,30 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import { Inter, Cormorant_Garamond, IM_Fell_English } from "next/font/google";
+
 import LogoutButton from "@/components/LogoutButton";
 import BenPersona from "@/components/BenPersona";
 import UserGreeting from "@/components/UserGreeting";
 import InstallBanner from "@/components/InstallBanner";
 import AppInitializer from "@/components/AppInitializer";
 import BenWorldBackground from "@/components/BenWorldBackground";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-cormorant",
+});
+
+const imFell = IM_Fell_English({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-im-fell",
+});
 
 export const metadata: Metadata = {
   title: "AskBen — Financial Triage",
@@ -93,18 +112,17 @@ function NavLink({
         padding: "9px 16px",
         borderRadius: 999,
         textDecoration: "none",
-        fontWeight: 700,
+        fontWeight: 800,
         fontSize: 15,
         color: "rgba(255,255,255,0.96)",
-        background: "rgba(255,255,255,0.07)",
-        border: "1px solid rgba(255,255,255,0.18)",
+        background: "rgba(255,255,255,0.08)",
+        border: "1px solid rgba(255,255,255,0.2)",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
         whiteSpace: "nowrap",
         boxShadow: "0 8px 24px rgba(0,0,0,0.22)",
         letterSpacing: "0.35px",
-        fontFamily:
-          '"Cinzel", "Cormorant Garamond", Georgia, Times, serif',
+        fontFamily: "var(--font-cormorant), Georgia, serif",
       }}
     >
       {children}
@@ -120,12 +138,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className="app-shell"
+        className={`${inter.variable} ${cormorant.variable} ${imFell.variable} app-shell`}
         style={{
           margin: 0,
           minHeight: "100vh",
-          fontFamily:
-            '"Cormorant Garamond", Georgia, "Times New Roman", serif',
+          fontFamily: "var(--font-inter), system-ui, sans-serif",
           color: "#f8fafc",
           background: "#050505",
         }}
@@ -139,11 +156,11 @@ export default function RootLayout({
               top: 0,
               zIndex: 100,
               background:
-                "linear-gradient(180deg, rgba(5,5,8,0.72), rgba(5,5,8,0.28))",
+                "linear-gradient(180deg, rgba(5,5,8,0.78), rgba(5,5,8,0.32))",
               backdropFilter: "blur(14px)",
               WebkitBackdropFilter: "blur(14px)",
-              borderBottom: "1px solid rgba(255,255,255,0.08)",
-              boxShadow: "0 12px 40px rgba(0,0,0,0.25)",
+              borderBottom: "1px solid rgba(255,255,255,0.1)",
+              boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
             }}
           >
             <div
@@ -176,14 +193,15 @@ export default function RootLayout({
                 >
                   <div
                     style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 16,
+                      width: 56,
+                      height: 56,
+                      borderRadius: 18,
                       overflow: "hidden",
-                      background: "rgba(0,0,0,0.6)",
-                      border: "1px solid rgba(255,255,255,0.16)",
-                      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                      background: "rgba(0,0,0,0.62)",
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      boxShadow: "0 10px 30px rgba(0,0,0,0.38)",
                       flexShrink: 0,
+                      position: "relative",
                     }}
                   >
                     <img
@@ -196,32 +214,64 @@ export default function RootLayout({
                         display: "block",
                       }}
                     />
+
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        right: -4,
+                        bottom: -4,
+                        width: 24,
+                        height: 24,
+                        display: "grid",
+                        placeItems: "center",
+                        borderRadius: 999,
+                        background: "rgba(255,247,237,0.95)",
+                        border: "1px solid rgba(120,53,15,0.35)",
+                        fontSize: 14,
+                        boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
+                      }}
+                    >
+                      🖋️
+                    </span>
                   </div>
 
                   <div style={{ minWidth: 0 }}>
                     <div
                       style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
                         fontWeight: 900,
-                        fontSize: 28,
+                        fontSize: 31,
                         lineHeight: 1,
                         color: "#fff7ed",
                         whiteSpace: "nowrap",
                         textShadow: "0 3px 18px rgba(0,0,0,0.75)",
-                        fontFamily:
-                          '"Cinzel", "Cormorant Garamond", Georgia, serif',
-                        letterSpacing: "1px",
+                        fontFamily: "var(--font-cormorant), Georgia, serif",
+                        letterSpacing: "0.8px",
                       }}
                     >
-                      AskBen
+                      <span>AskBen</span>
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          fontSize: 22,
+                          filter: "drop-shadow(0 2px 8px rgba(251,191,36,0.45))",
+                        }}
+                      >
+                        🕯️
+                      </span>
                     </div>
 
                     <div
                       style={{
                         marginTop: 3,
                         fontSize: 13,
-                        color: "rgba(255,255,255,0.68)",
+                        color: "rgba(255,255,255,0.72)",
                         fontWeight: 600,
-                        letterSpacing: "0.4px",
+                        letterSpacing: "0.6px",
+                        fontFamily: "var(--font-im-fell), Georgia, serif",
                       }}
                     >
                       Financial triage, with judgment.
@@ -286,20 +336,19 @@ export default function RootLayout({
               position: "fixed",
               bottom: 22,
               right: 18,
-              background: "rgba(5,5,8,0.74)",
+              background: "rgba(5,5,8,0.78)",
               color: "#fff7ed",
               padding: "14px 18px",
               borderRadius: 999,
-              fontWeight: 800,
+              fontWeight: 900,
               textDecoration: "none",
               boxShadow: "0 14px 40px rgba(0,0,0,0.42)",
-              border: "1px solid rgba(255,255,255,0.18)",
+              border: "1px solid rgba(255,255,255,0.2)",
               backdropFilter: "blur(14px)",
               WebkitBackdropFilter: "blur(14px)",
               zIndex: 9999,
               fontSize: 15,
-              fontFamily:
-                '"Cinzel", "Cormorant Garamond", Georgia, serif',
+              fontFamily: "var(--font-cormorant), Georgia, serif",
               letterSpacing: "0.4px",
             }}
           >
@@ -314,11 +363,37 @@ export default function RootLayout({
               padding: "24px 20px 34px",
               textAlign: "center",
               fontSize: 13,
-              color: "rgba(255,255,255,0.58)",
+              color: "rgba(255,255,255,0.62)",
               textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+              fontFamily: "var(--font-inter), system-ui, sans-serif",
             }}
           >
-            © 2026 Spatialytics — Built with ❤️ in Minnesota
+            <div
+              style={{
+                fontFamily: "var(--font-cormorant), Georgia, serif",
+                fontSize: 18,
+                fontWeight: 800,
+                color: "#fff7ed",
+              }}
+            >
+              AskBen 🖋️
+            </div>
+
+            <div style={{ marginTop: 4 }}>
+              © 2026 Spatialytics — Built with ❤️ in Minnesota
+            </div>
+
+            <div
+              style={{
+                marginTop: 6,
+                fontFamily: "var(--font-im-fell), Georgia, serif",
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.5)",
+              }}
+            >
+              Spend wisely.
+            </div>
           </footer>
         </AppInitializer>
       </body>
