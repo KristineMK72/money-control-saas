@@ -162,7 +162,6 @@ export default function RootLayout({
               boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
             }}
           >
-            {/* Your full header content stays exactly the same */}
             <div
               style={{
                 maxWidth: 1180,
@@ -173,8 +172,146 @@ export default function RootLayout({
                 gap: 12,
               }}
             >
-              {/* ... rest of your header (logo, nav, UserGreeting, etc.) ... */}
-              {/* Keep everything from your original header here */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
+              >
+                <a
+                  href="/dashboard"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    textDecoration: "none",
+                    minWidth: 0,
+                  }}
+                >
+                  {/* Logo Section */}
+                  <div
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 18,
+                      overflow: "hidden",
+                      background: "rgba(0,0,0,0.62)",
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      boxShadow: "0 10px 30px rgba(0,0,0,0.38)",
+                      flexShrink: 0,
+                      position: "relative",
+                    }}
+                  >
+                    <img
+                      src="/ben.png"
+                      alt="AskBen"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        right: -4,
+                        bottom: -4,
+                        width: 24,
+                        height: 24,
+                        display: "grid",
+                        placeItems: "center",
+                        borderRadius: 999,
+                        background: "rgba(255,247,237,0.95)",
+                        border: "1px solid rgba(120,53,15,0.35)",
+                        fontSize: 14,
+                        boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
+                      }}
+                    >
+                      🖋️
+                    </span>
+                  </div>
+
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontWeight: 900,
+                        fontSize: 31,
+                        lineHeight: 1,
+                        color: "#fff7ed",
+                        whiteSpace: "nowrap",
+                        textShadow: "0 3px 18px rgba(0,0,0,0.75)",
+                        fontFamily: "var(--font-cormorant), Georgia, serif",
+                        letterSpacing: "0.8px",
+                      }}
+                    >
+                      <span>AskBen</span>
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          fontSize: 22,
+                          filter: "drop-shadow(0 2px 8px rgba(251,191,36,0.45))",
+                        }}
+                      >
+                        🕯️
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 3,
+                        fontSize: 13,
+                        color: "rgba(255,255,255,0.72)",
+                        fontWeight: 600,
+                        letterSpacing: "0.6px",
+                        fontFamily: "var(--font-im-fell), Georgia, serif",
+                      }}
+                    >
+                      Financial triage, with judgment.
+                    </div>
+                  </div>
+                </a>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    flexShrink: 0,
+                  }}
+                >
+                  <UserGreeting />
+                  <LogoutButton />
+                </div>
+              </div>
+
+              {/* === NAVBAR === */}
+              <nav
+                aria-label="AskBen navigation"
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "center",
+                  overflowX: "auto",
+                  flexWrap: "nowrap",
+                  width: "100%",
+                  padding: "2px 0 8px",
+                  WebkitOverflowScrolling: "touch",
+                  scrollbarWidth: "none",
+                }}
+              >
+                {navLinks.map((link) => (
+                  <NavLink key={link.href} href={link.href}>
+                    {link.label}
+                  </NavLink>
+                ))}
+              </nav>
             </div>
 
             <BenPersona />
