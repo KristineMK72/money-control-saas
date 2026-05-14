@@ -130,12 +130,14 @@ export default function BillsPage() {
     setMessage("Scanning image...");
 
     try {
-      const text = await ocrImageFile(file);
-      const parsed = parseTransactionsScreenshot(text);
+      const ocrResult = await ocrImageFile(file);
+      const parsed = parseTransactionsScreenshot(ocrResult.text);
       const first = parsed?.[0];
 
       if (!first) {
-        setMessage("Scanner could not find a bill or transaction. You can still enter it manually.");
+        setMessage(
+          "Scanner could not find a bill or transaction. You can still enter it manually."
+        );
         setScanning(false);
         return;
       }
@@ -145,16 +147,20 @@ export default function BillsPage() {
       const parsedDate = String(first.date_iso || "").trim();
 
       if (merchant) setName(merchant);
+
       if (Number.isFinite(parsedAmount) && parsedAmount > 0) {
         setAmount(String(parsedAmount));
       }
+
       if (parsedDate) setDueDate(parsedDate);
 
       setOpenPanel("add");
       setMessage("Scanner filled what it could. Check it, then tap Add Bill.");
     } catch (error) {
       console.error("Bill scanner error:", error);
-      setMessage("Scanner had trouble reading that image. Try another photo or enter it manually.");
+      setMessage(
+        "Scanner had trouble reading that image. Try another photo or enter it manually."
+      );
     }
 
     setScanning(false);
@@ -261,6 +267,11 @@ export default function BillsPage() {
     [bills]
   );
 
+  const totalPaidThisMonth = useMemo(
+    () => payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+    [payments]
+  );
+
   function getMonthlyPaid(billId: string) {
     const month = new Date().toISOString().slice(0, 7);
 
@@ -304,12 +315,7 @@ export default function BillsPage() {
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             <MiniStat label="Total Bills" value={money(totalBills)} />
             <MiniStat label="Bill Count" value={String(bills.length)} />
-            <MiniStat
-              label="Paid This Month"
-              value={money(
-                payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
-              )}
-            />
+            <MiniStat label="Paid This Month" value={money(totalPaidThisMonth)} />
           </div>
 
           {message && (
