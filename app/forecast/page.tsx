@@ -72,11 +72,14 @@ export default function ForecastPage() {
         return;
       }
 
-      const { data: master, error } = await supabase
-        .from("ben_master")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
+      const currentMonth = new Date().toISOString().slice(0, 7) + "-01";
+
+    const { data: master, error } = await supabase
+      .from("ben_master_monthly")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .eq("month", currentMonth)
+      .maybeSingle();
 
       if (error) {
         setMessage(error.message);
@@ -125,7 +128,7 @@ export default function ForecastPage() {
 
       const result = getForecast({
         name: null,
-        timeframeLabel: "Forecast",
+        timeframeLabel: "This Month",
         totalNeeded: monthlyNeed,
         incomeSoFar,
         daysElapsed,
@@ -244,9 +247,9 @@ export default function ForecastPage() {
 
         <section className="grid gap-4 md:grid-cols-2">
           <ForecastCard
-            label="Income so far"
+            label="Income logged so far"
             value={money(breakdown.income)}
-            helper="Total income Ben sees this month."
+            helper="Income currently logged for this month. Future paychecks may still be missing."
           />
 
           <ForecastCard
