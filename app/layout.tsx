@@ -26,13 +26,109 @@ const imFell = IM_Fell_English({
   variable: "--font-im-fell",
 });
 
-export const metadata: Metadata = { ... }; // (unchanged - keeping your existing metadata)
+export const metadata: Metadata = {
+  title: "AskBen — Financial Triage",
+  description: "Stop financial chaos. See exactly what to pay first.",
+  metadataBase: new URL("https://www.askben.buzz"),
+  manifest: "/manifest.json",
 
-export const viewport: Viewport = { ... }; // (unchanged)
+  icons: {
+    icon: [
+      { url: "/ben-head.png", sizes: "192x192", type: "image/png" },
+      { url: "/ben-head.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      {
+        url: "/apple-touch-icon.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+    shortcut: "/ben-head.png",
+  },
 
-const navLinks = [ ... ]; // (unchanged)
+  openGraph: {
+    title: "AskBen",
+    description: "AI financial triage. Know what bill to pay first.",
+    url: "https://www.askben.buzz/",
+    siteName: "AskBen",
+    type: "website",
+    images: [
+      {
+        url: "/askben-social.jpeg",
+        width: 1200,
+        height: 630,
+        alt: "AskBen",
+      },
+    ],
+  },
 
-function NavLink({ ... }) { ... } // (unchanged)
+  twitter: {
+    card: "summary_large_image",
+    title: "AskBen",
+    description: "AI financial triage. Know what bill to pay first.",
+    images: ["/askben-social.jpeg"],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#050505",
+};
+
+const navLinks = [
+  { href: "/", label: "Home" },
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/spend", label: "Spend" },
+  { href: "/income", label: "Income" },
+  { href: "/income-plan", label: "Income Plan" },
+  { href: "/bills", label: "Bills" },
+  { href: "/debt", label: "Debt" },
+  { href: "/payments", label: "Payments" },
+  { href: "/forecast", label: "Forecast" },
+  { href: "/calendar", label: "Calendar" },
+  { href: "/credit-health", label: "Credit Health" },
+  { href: "/credit-recovery", label: "Credit Recovery" },
+  { href: "/crisis", label: "Crisis" },
+  { href: "/dispute-letter", label: "Dispute Letter" },
+  { href: "/goodwill-letter", label: "Goodwill Letter" },
+  { href: "/chat", label: "Ask Ben" },
+  { href: "/signup", label: "Signup / Login" },
+];
+
+function NavLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "9px 16px",
+        borderRadius: 999,
+        textDecoration: "none",
+        fontWeight: 800,
+        fontSize: 15,
+        color: "rgba(255,255,255,0.96)",
+        background: "rgba(255,255,255,0.08)",
+        border: "1px solid rgba(255,255,255,0.2)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        whiteSpace: "nowrap",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.22)",
+        letterSpacing: "0.35px",
+        fontFamily: "var(--font-cormorant), Georgia, serif",
+      }}
+    >
+      {children}
+    </a>
+  );
+}
 
 export default function RootLayout({
   children,
@@ -66,7 +162,22 @@ export default function RootLayout({
               boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
             }}
           >
-            {/* ... your existing header content (unchanged) ... */}
+            {/* Your full header content stays exactly the same */}
+            <div
+              style={{
+                maxWidth: 1180,
+                margin: "0 auto",
+                padding: "12px 14px 10px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              {/* ... rest of your header (logo, nav, UserGreeting, etc.) ... */}
+              {/* Keep everything from your original header here */}
+            </div>
+
+            <BenPersona />
           </header>
 
           <main
@@ -79,12 +190,12 @@ export default function RootLayout({
             {children}
           </main>
 
-          {/* === INLINE INSTALL BANNER - Clean & Non-intrusive === */}
+          {/* === INLINE INSTALL BANNER === */}
           <div className="max-w-4xl mx-auto px-4">
             <InstallBanner />
           </div>
 
-          {/* Floating Ask Ben Button - kept as is */}
+          {/* Floating Ask Ben Button */}
           <a
             href="/chat"
             aria-label="Ask Ben"
