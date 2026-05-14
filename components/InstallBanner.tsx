@@ -2,16 +2,17 @@
 
 import { useEffect, useState } from "react";
 
-export default function InstallBanner({ inline = true }: { inline?: boolean }) {
+export default function InstallBanner() {
   const [show, setShow] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
-    // Check if already dismissed
-    const dismissed = localStorage.getItem("installBannerDismissed");
-    if (dismissed) return;
+    // Don't show if already dismissed
+    if (localStorage.getItem("installBannerDismissed") === "true") {
+      return;
+    }
 
-    // iOS Safari
+    // iOS Safari detection
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
     const isStandalone = (window.navigator as any).standalone === true;
 
@@ -19,8 +20,8 @@ export default function InstallBanner({ inline = true }: { inline?: boolean }) {
       setShow(true);
     }
 
-    // Android / Chrome / Edge
-    const handler = (e: Event) => {
+    // Android / Chrome PWA prompt
+    const handler = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
       setShow(true);
@@ -28,19 +29,22 @@ export default function InstallBanner({ inline = true }: { inline?: boolean }) {
 
     window.addEventListener("beforeinstallprompt", handler);
 
-    return () => window.removeEventListener("beforeinstallprompt", handler);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler);
+    };
   }, []);
 
   const handleInstall = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      if (choice.outcome === "accepted") {
-        setShow(false);
-        localStorage.setItem("installBannerDismissed", "true");
-      }
-      setDeferredPrompt(null);
+    if (!deferredPrompt) return;
+    
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    
+    if (outcome === "accepted") {
+      localStorage.setItem("installBannerDismissed", "true");
     }
+    setShow(false);
+    setDeferredPrompt(null);
   };
 
   const handleDismiss = () => {
@@ -51,29 +55,29 @@ export default function InstallBanner({ inline = true }: { inline?: boolean }) {
   if (!show) return null;
 
   return (
-    <div className="mt-8 mb-10 mx-auto max-w-md">
-      <div className="rounded-3xl bg-white/90 border border-white/40 backdrop-blur-xl p-6 shadow-2xl text-center text-zinc-950">
-        <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-2xl flex items-center justify-center mb-4 text-3xl">
+    <div className="max-w-md mx-auto mt-12 mb-16 px-4">
+      <div className="rounded-3xl bg-white/90 border border-white/40 backdrop-blur-xl p-7 shadow-2xl text-center text-zinc-950">
+        <div className="mx-auto w-16 h-16 bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl flex items-center justify-center mb-5 text-4xl">
           📱
         </div>
 
-        <h3 className="text-xl font-semibold mb-2">Add AskBen to Home Screen</h3>
+        <h3 className="text-2xl font-semibold mb-3">Add AskBen to Your Home Screen</h3>
         
-        <p className="text-sm text-zinc-600 mb-5">
-          Get faster access to your daily priorities, forecasts, and Ben’s guidance — always one tap away.
+        <p className="text-zinc-600 mb-6">
+          Get quick access to your financial triage, daily priorities, and Ben’s advice anytime.
         </p>
 
         {deferredPrompt ? (
           <button
             onClick={handleInstall}
-            className="w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-medium py-3 px-6 rounded-2xl mb-3 transition-all active:scale-[0.985]"
+            className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-semibold py-3.5 rounded-2xl mb-4 transition-all"
           >
-            Install App
+            Install App Now
           </button>
         ) : (
-          <div className="text-left text-sm bg-white/70 rounded-2xl p-4 mb-5 border border-white/60">
-            <strong>On Safari:</strong> Tap the Share button <span className="text-lg">⎙</span> → 
-            <strong>Add to Home Screen</strong>
+          <div className="bg-white/70 rounded-2xl p-5 mb-5 text-left text-sm border border-white/60">
+            <strong>Safari users:</strong> Tap the Share button <span className="text-lg">⎙</span> then{" "}
+            <strong>“Add to Home Screen”</strong>
           </div>
         )}
 
@@ -81,7 +85,7 @@ export default function InstallBanner({ inline = true }: { inline?: boolean }) {
           onClick={handleDismiss}
           className="text-xs text-zinc-500 hover:text-zinc-700 underline"
         >
-          Don’t show again
+          Dismiss — Don’t show again
         </button>
       </div>
     </div>
