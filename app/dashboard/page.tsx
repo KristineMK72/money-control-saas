@@ -14,7 +14,10 @@ type SpendRow = {
 
 type BenMasterRow = {
   user_id: string;
-  date: string;
+
+  month?: string;
+  date?: string;
+
   income?: number | string | null;
   spend?: number | string | null;
   bills?: number | string | null;
@@ -95,11 +98,12 @@ export default function DashboardPage() {
           .select("id, amount, category")
           .eq("user_id", uid),
 
-        supabase
-          .from("ben_master")
-          .select("*")
-          .eq("user_id", uid)
-          .maybeSingle(),
+       supabase
+        .from("ben_master_monthly")
+        .select("*")
+        .eq("user_id", uid)
+        .eq("month", new Date().toISOString().slice(0, 7) + "-01")
+        .maybeSingle(),
 
         supabase
           .from("profiles")
@@ -128,7 +132,9 @@ export default function DashboardPage() {
         spendRes.error ? `Spend error: ${spendRes.error.message}` : "",
         masterRes.error ? `Ben master error: ${masterRes.error.message}` : "",
         profileRes.error ? `Profile error: ${profileRes.error.message}` : "",
-        !masterRes.data ? "No Ben master row returned yet." : "",
+        !masterRes.data
+        ? "No monthly Ben snapshot found yet."
+        : "",
       ].filter(Boolean);
 
       setNotice(messages.join(" "));
