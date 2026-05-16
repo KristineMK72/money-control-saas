@@ -5,8 +5,27 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import BenBubble from "@/components/BenBubble";
 import { BenEngine } from "@/lib/ben/engine";
 
-type BillRow = { /* your existing BillRow type */ };
-type DebtRow = { /* your existing DebtRow type */ };
+type BillRow = {
+  id: string;
+  name: string;
+  target: number | null;
+  monthly_target: number | null;
+  due_date: string | null;
+  due_day: number | null;
+  is_monthly: boolean | null;
+  category?: string | null;
+};
+
+type DebtRow = {
+  id: string;
+  name: string;
+  balance: number | null;
+  min_payment: number | null;
+  monthly_min_payment: number | null;
+  due_date: string | null;
+  due_day: number | null;
+  is_monthly: boolean | null;
+};
 
 function money(n: number) {
   return n.toLocaleString("en-US", {
@@ -30,115 +49,108 @@ export default function CalendarPage() {
   const [viewMonth, setViewMonth] = useState(now.getMonth());
   const [expandedWeeks, setExpandedWeeks] = useState<Record<number, boolean>>({});
 
-  // Load data (your existing logic)
   useEffect(() => {
-    // ... your data loading code ...
-  }, [supabase, viewYear, viewMonth]);
+    loadData();
+  }, [viewYear, viewMonth]);
 
-  const { calendarItems, weekSummaries, monthSummary } = useMemo(() => {
-    // ... your existing logic to build calendarItems and weekSummaries ...
+  async function loadData() {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-    const summaries = /* your weekSummaries calculation */;
+    const [billsRes, debtsRes] = await Promise.all([
+      supabase.from("bills").select("*").eq("user_id", user.id),
+      supabase.from("debts").select("*").eq("user_id", user.id),
+    ]);
 
-    return {
-      calendarItems: /* ... */,
-      weekSummaries: summaries.map(w => ({
-        ...w,
-        incomeNeeded: Math.max(0, w.total), // You can subtract expected income later
-      })),
-      monthSummary: /* ... */,
-    };
+    setBills(billsRes.data || []);
+    setDebts(debtsRes.data || []);
+    setLoading(false);
+  }
+
+  // Weekly summaries with income needed
+  const weekSummaries = useMemo(() => {
+    // TODO: Replace with your full logic for building weeks
+    // For now using placeholder structure
+    return [];
   }, [bills, debts, viewYear, viewMonth]);
+
+  const monthTotal = useMemo(() => {
+    return bills.reduce((sum, b) => sum + Number(b.monthly_target || b.target || 0), 0) +
+           debts.reduce((sum, d) => sum + Number(d.monthly_min_payment || d.min_payment || 0), 0);
+  }, [bills, debts]);
 
   const benInsight = BenEngine.getForecastMessage({
     name: null,
-    timeframeLabel: getMonthName(viewYear, viewMonth),
-    totalNeeded: monthSummary.total,
+    timeframeLabel: `${new Date(viewYear, viewMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}`,
+    totalNeeded: monthTotal,
     incomeSoFar: 0,
-    incomeGap: monthSummary.total,
-    dailyIncomeNeeded: 0,
+    incomeGap: monthTotal,
+    dailyIncomeNeeded: Math.ceil(monthTotal / 30),
   });
+
+  if (loading) {
+    return <div className="p-8 text-center text-white">Loading calendar...</div>;
+  }
 
   return (
     <main className="min-h-screen bg-transparent p-4 md:p-6">
       <div className={`${shellClass} mx-auto max-w-6xl space-y-10`}>
         <header>
           <h1 className="text-5xl font-black text-white tracking-tight">Calendar</h1>
-          <p className="mt-2 text-lg text-white/80">Know exactly what’s coming and how much income you need each week.</p>
+          <p className="mt-2 text-lg text-white/80">See what’s due and how much income you need each week.</p>
         </header>
 
-        {/* Ben's Take */}
+        {/* Ben Insight */}
         <div className="rounded-3xl border border-slate-200 bg-slate-950 p-6 shadow-xl">
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </div>
 
-        {/* Monthly Overview */}
+        {/* Monthly Summary */}
         <div className="grid gap-4 md:grid-cols-3">
-          <SummaryCard label="Total Due This Month" value={money(monthSummary.total)} />
-          <SummaryCard label="Bills" value={money(monthSummary.bills)} />
-          <SummaryCard label="Debt Minimums" value={money(monthSummary.debts)} />
+          <StatCard label="Total Due This Month" value={money(monthTotal)} />
         </div>
 
-        {/* Weekly Income Targets - The Star Feature */}
+        {/* Weekly Income Targets */}
         <section>
           <h2 className="mb-6 text-2xl font-black text-white">Weekly Income Targets</h2>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {weekSummaries.map((week) => {
-              const isExpanded = expandedWeeks[week.weekNumber] ?? true;
-              const progress = Math.min(Math.round((week.total / 5000) * 100), 100); // example progress
-
-              return (
-                <div key={week.weekNumber} className={`${cardClass} overflow-hidden`}>
-                  <div className="flex justify-between items-start">
+            {weekSummaries.length > 0 ? (
+              weekSummaries.map((week: any) => (
+                <div key={week.weekNumber} className={cardClass}>
+                  <div className="flex justify-between">
                     <div>
-                      <p className="font-black text-lg">{week.label}</p>
+                      <p className="font-black">{week.label}</p>
                       <p className="text-sm text-zinc-500">
-                        {prettyDate(week.startISO)} — {prettyDate(week.endISO)}
+                        {week.startISO} — {week.endISO}
                       </p>
                     </div>
-                    <button
-                      onClick={() => setExpandedWeeks(p => ({ ...p, [week.weekNumber]: !p[week.weekNumber] }))}
-                      className="text-2xl text-zinc-400 hover:text-white"
-                    >
-                      {isExpanded ? "−" : "+"}
-                    </button>
                   </div>
-
                   <div className="mt-6 text-4xl font-black text-emerald-600">
-                    {money(week.incomeNeeded)}
+                    {money(week.total)}
                   </div>
-                  <p className="text-sm text-zinc-500">income needed this week</p>
-
-                  {isExpanded && week.items.length > 0 && (
-                    <div className="mt-6 space-y-3 border-t border-white/10 pt-4">
-                      {week.items.map(item => (
-                        <div key={item.id} className="flex justify-between text-sm">
-                          <span className="text-zinc-700">{item.name}</span>
-                          <span className="font-semibold">{money(item.amount)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <p className="text-sm text-zinc-500">needed this week</p>
                 </div>
-              );
-            })}
+              ))
+            ) : (
+              <div className={cardClass}>No obligations found for this month yet.</div>
+            )}
           </div>
         </section>
 
-        {/* Full Monthly Calendar Grid */}
-        <div className={cardClass}>
-          {/* Your existing beautiful calendar grid code goes here */}
-          {/* ... keep your daysGrid rendering ... */}
-        </div>
+        {/* Your original calendar grid can go here */}
       </div>
     </main>
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className={cardClass}>
-      <div className="text-sm font-black uppercase tracking-widest text-zinc-600">{label}</div>
+      <div className="uppercase tracking-widest text-xs font-black text-zinc-600">{label}</div>
       <div className="mt-3 text-4xl font-black text-zinc-950">{value}</div>
     </div>
   );
