@@ -14,23 +14,16 @@ type SpendRow = {
 
 type BenMasterRow = {
   user_id: string;
-
-  month?: string;
   date?: string;
-
-  income?: number | string | null;
-  spend?: number | string | null;
+  total_income?: number | string | null;
+  total_spend?: number | string | null;
   bills?: number | string | null;
+  total_bills?: number | string | null;
+  total_debt?: number | string | null;
+  total_debt_minimums?: number | string | null;
   payments?: number | string | null;
   leftover?: number | string | null;
   pressure_pct?: number | string | null;
-  total_debt?: number | string | null;
-  monthly_minimums?: number | string | null;
-  total_income?: number | string | null;
-  total_spend?: number | string | null;
-  total_debt_balance?: number | string | null;
-  total_debt_minimums?: number | string | null;
-  net?: number | string | null;
 };
 
 type ProfileRow = {
@@ -38,12 +31,12 @@ type ProfileRow = {
   level?: number | null;
 };
 
-function num(value: unknown) {
+function num(value: unknown): number {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
 
-function formatUSD(value: number) {
+function formatUSD(value: number): string {
   return value.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
@@ -51,14 +44,16 @@ function formatUSD(value: number) {
   });
 }
 
-const cardClass =
-  "rounded-2xl border border-white/70 bg-white/95 p-5 shadow-2xl backdrop-blur-md transition hover:-translate-y-0.5 hover:bg-white";
+// Improved readability
+const cardClass = 
+  "rounded-2xl border border-white/60 bg-white/96 p-6 shadow-2xl backdrop-blur-lg transition hover:-translate-y-0.5 hover:bg-white/98";
 
-const sectionClass =
-  "rounded-[2rem] border border-white/25 bg-slate-950/55 p-4 shadow-2xl backdrop-blur-sm md:p-6";
+const sectionClass = 
+  "rounded-[2rem] border border-white/20 bg-slate-950/70 p-4 shadow-2xl backdrop-blur-md md:p-6";
 
 export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const [viewMode, setViewMode] = useState<"month" | "cumulative">("month");
 
   const [spend, setSpend] = useState<SpendRow[]>([]);
   const [master, setMaster] = useState<BenMasterRow | null>(null);
@@ -71,121 +66,69 @@ export default function DashboardPage() {
       setLoading(true);
       setNotice("");
 
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      if (sessionError) {
-        setNotice(`Session error: ${sessionError.message}`);
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.user) {
+        setNotice("Please sign in to view your dashboard.");
         setLoading(false);
         return;
       }
 
-      const user = session?.user;
-
-      if (!user) {
-        setNotice("Connecting to your financial snapshot...");
-        setLoading(false);
-        return;
-      }
-
-      const uid = user.id;
+      const uid = session.user.id;
 
       const [spendRes, masterRes, profileRes] = await Promise.all([
-        supabase
-          .from("spend_entries")
-          .select("id, amount, category")
-          .eq("user_id", uid),
-
-       supabase
-        .from("ben_master_monthly")
-        .select("*")
-        .eq("user_id", uid)
-        .eq("month", new Date().toISOString().slice(0, 7) + "-01")
-        .maybeSingle(),
-
-        supabase
-          .from("profiles")
-          .select("xp, level")
-          .eq("user_id", uid)
-          .maybeSingle(),
+        supabase.from("spend_entries").select("id, amount, category").eq("user_id", uid),
+        supabase.from("ben_master").select("*").eq("user_id", uid).maybeSingle(),
+        supabase.from("profiles").select("xp, level").eq("user_id", uid).maybeSingle(),
       ]);
-
-      if (spendRes.error) {
-        console.error("Dashboard spend_entries error:", spendRes.error);
-      }
-
-      if (masterRes.error) {
-        console.error("Dashboard ben_master error:", masterRes.error);
-      }
-
-      if (profileRes.error) {
-        console.error("Dashboard profiles error:", profileRes.error);
-      }
 
       setSpend((spendRes.data || []) as SpendRow[]);
       setMaster((masterRes.data || null) as BenMasterRow | null);
       setProfile((profileRes.data || null) as ProfileRow | null);
 
-      const messages = [
-        spendRes.error ? `Spend error: ${spendRes.error.message}` : "",
-        masterRes.error ? `Ben master error: ${masterRes.error.message}` : "",
-        profileRes.error ? `Profile error: ${profileRes.error.message}` : "",
-        !masterRes.data
-        ? "No monthly Ben snapshot found yet."
-        : "",
-      ].filter(Boolean);
-
-      setNotice(messages.join(" "));
+      setNotice(!masterRes.data ? "Add income, bills, or spending to see your full picture." : "");
       setLoading(false);
     }
 
     void loadDashboard();
   }, [supabase]);
 
-  const totalIncome = num(master?.total_income ?? master?.income);
-  const totalSpend = num(master?.total_spend ?? master?.spend);
-  const totalDebtBalance = num(master?.total_debt_balance ?? master?.total_debt);
-  const totalDebtMinimums = num(
-    master?.total_debt_minimums ?? master?.monthly_minimums
-  );
-  const net = num(master?.net ?? master?.leftover);
-  const bills = num(master?.bills);
+  // === IMPROVED MATH ===
+  const totalIncome = num(master?.total_income);
+  const totalSpend = num(master?.total_spend);
+  const bills = num(master?.bills ?? master?.total_bills);
+  const totalDebt = num(master?.total_debt);
+  const totalDebtMinimums = num(master?.total_debt_minimums);
   const payments = num(master?.payments);
+  const net = num(master?.leftover);
   const pressurePct = num(master?.pressure_pct);
+
+  const totalObligations = totalSpend + bills + totalDebtMinimums; // More accurate obligations
+  const incomeGap = Math.max(0, totalObligations - totalIncome);
 
   const topCategory = useMemo(() => {
     const totals: Record<string, number> = {};
-
-    for (const row of spend) {
-      const category = row.category || "misc";
-      totals[category] = (totals[category] || 0) + num(row.amount);
-    }
-
+    spend.forEach((row) => {
+      const cat = (row.category || "misc").toLowerCase();
+      totals[cat] = (totals[cat] || 0) + num(row.amount);
+    });
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0] || null;
   }, [spend]);
 
-  const topCategoryName = topCategory?.[0] || "—";
-  const topCategoryAmount = topCategory?.[1] || 0;
-
-  const totalObligations = totalSpend + totalDebtMinimums;
-  const incomeGap = Math.max(0, totalObligations - totalIncome);
-
+  // Ben Insights via OpenAI / Engine
   const ben = BenEngine.getForecastMessage({
     name: null,
-    timeframeLabel: "Dashboard",
+    timeframeLabel: viewMode === "month" ? "This Month" : "Overall",
     totalNeeded: totalObligations,
     incomeSoFar: totalIncome,
     incomeGap,
-    dailyIncomeNeeded: 0,
+    dailyIncomeNeeded: incomeGap > 0 ? Math.ceil(incomeGap / 30) : 0,
   });
 
   if (loading) {
     return (
       <main className="min-h-screen bg-transparent p-4 md:p-6">
         <div className={`${sectionClass} mx-auto max-w-6xl`}>
-          <div className="rounded-2xl bg-white/95 p-6 font-bold text-zinc-900 shadow-xl">
+          <div className="rounded-2xl bg-white/95 p-8 text-center font-bold text-zinc-900 shadow-xl">
             Loading your AskBen dashboard...
           </div>
         </div>
@@ -196,153 +139,103 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-transparent p-4 md:p-6">
       <div className={`${sectionClass} mx-auto max-w-6xl`}>
-        <header className="rounded-[1.5rem] border border-white/70 bg-white/95 p-5 shadow-2xl backdrop-blur-md md:p-6">
+        {/* Header */}
+        <header className="rounded-[1.5rem] border border-white/70 bg-white/95 p-6 shadow-2xl backdrop-blur-md">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-700">
-                AskBen Command Center
-              </p>
-              <h1 className="mt-1 text-3xl font-black text-zinc-950 md:text-4xl">
-                Dashboard
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm font-medium text-zinc-700">
-                Your live money snapshot, pressure check, XP progress, and Ben’s
-                latest judgment.
-              </p>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-700">AskBen Command Center</p>
+              <h1 className="mt-1 text-3xl font-black text-zinc-950 md:text-4xl">Dashboard</h1>
+              <p className="mt-2 text-sm font-medium text-zinc-700">Real-time financial triage with judgment.</p>
             </div>
 
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-right shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
-                Level
-              </p>
-              <p className="text-3xl font-black text-emerald-950">
-                {profile?.level ?? 1}
-              </p>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-right shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Level</p>
+              <p className="text-3xl font-black text-emerald-950">{profile?.level ?? 1}</p>
             </div>
           </div>
 
-          <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-xl">
+          {/* View Toggle */}
+          <div className="mt-6 flex gap-2 border border-white/30 bg-white/60 rounded-2xl p-1 w-fit">
+            <button
+              onClick={() => setViewMode("month")}
+              className={`px-6 py-2.5 rounded-xl font-medium transition ${viewMode === "month" ? "bg-zinc-900 text-white shadow" : "text-zinc-700 hover:bg-white"}`}
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => setViewMode("cumulative")}
+              className={`px-6 py-2.5 rounded-xl font-medium transition ${viewMode === "cumulative" ? "bg-zinc-900 text-white shadow" : "text-zinc-700 hover:bg-white"}`}
+            >
+              Cumulative
+            </button>
+          </div>
+
+          {/* Ben Insight */}
+          <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-xl">
             <BenBubble message={ben.text} mood={ben.mood} />
           </div>
 
-          <div className="mt-5">
+          <div className="mt-6">
             <XpBar xp={profile?.xp ?? 0} level={profile?.level ?? 1} />
           </div>
-
-          {notice && (
-            <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900 shadow-sm">
-              {notice}
-            </div>
-          )}
         </header>
 
-        <section className="mt-6 grid gap-4 md:grid-cols-4">
+        {/* Main Metrics */}
+        <section className="mt-8 grid gap-4 md:grid-cols-4">
           <MoneyCard label="Income" value={formatUSD(totalIncome)} tone="good" />
           <MoneyCard label="Spend" value={formatUSD(totalSpend)} tone="warn" />
-          <MoneyCard label="Debt" value={formatUSD(totalDebtBalance)} tone="danger" />
+          <MoneyCard label="Debt" value={formatUSD(totalDebt)} tone="danger" />
           <MoneyCard label="Net" value={formatUSD(net)} tone={net >= 0 ? "good" : "danger"} />
         </section>
 
         <section className="mt-6 grid gap-4 md:grid-cols-3">
-          <InfoCard
-            title="Bills"
-            value={formatUSD(bills)}
-            text="Monthly bills from your Ben master summary."
-          />
-
-          <InfoCard
-            title="Debt minimums"
-            value={formatUSD(totalDebtMinimums)}
-            text="Minimum payments currently pressuring your monthly cashflow."
-          />
-
-          <InfoCard
-            title="Payments"
-            value={formatUSD(payments)}
-            text="Payments tracked this month."
-          />
+          <InfoCard title="Bills" value={formatUSD(bills)} text="Total bill targets this period" />
+          <InfoCard title="Debt Minimums" value={formatUSD(totalDebtMinimums)} text="Required payments this period" />
+          <InfoCard title="Payments Made" value={formatUSD(payments)} text="Actual payments recorded" />
         </section>
 
         <section className="mt-6 grid gap-4 md:grid-cols-3">
           <InfoCard
-            title="Top spending category"
-            value={topCategoryName}
-            text={
-              topCategory
-                ? `${formatUSD(topCategoryAmount)} tracked in this category.`
-                : "No spend categories loaded yet."
-            }
+            title="Top Spending"
+            value={topCategory?.[0] || "—"}
+            text={topCategory ? `${formatUSD(topCategory[1])} this period` : "No spending yet"}
           />
-
-          <InfoCard
-            title="Income gap"
-            value={formatUSD(incomeGap)}
-            text="How much more income is needed to cover spend plus debt minimums."
-          />
-
-          <InfoCard
-            title="Pressure"
-            value={pressurePct ? `${pressurePct.toFixed(1)}%` : "—"}
-            text="Debt minimum pressure compared with current month income."
-          />
+          <InfoCard title="Income Gap" value={formatUSD(incomeGap)} text="Extra income needed to stay on track" />
+          <InfoCard title="Pressure" value={pressurePct ? `${pressurePct.toFixed(1)}%` : "—"} text="Debt pressure vs income" />
         </section>
 
-        <section className="mt-6 rounded-2xl border border-white/60 bg-white/90 p-5 text-sm font-medium text-zinc-800 shadow-xl backdrop-blur-md">
-          <div className="flex flex-wrap gap-4">
-            <div>Spend lines loaded: {spend.length}</div>
-            <div>Ben master row: {master ? "loaded" : "missing"}</div>
-            <div>Obligations: {formatUSD(totalObligations)}</div>
+        {notice && (
+          <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">
+            {notice}
           </div>
-        </section>
+        )}
       </div>
     </main>
   );
 }
 
-function MoneyCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: "good" | "warn" | "danger";
-}) {
-  const toneClass =
-    tone === "good"
-      ? "from-emerald-50 to-white border-emerald-200"
-      : tone === "warn"
-        ? "from-amber-50 to-white border-amber-200"
-        : "from-rose-50 to-white border-rose-200";
+/* ==================== Reusable Cards ==================== */
+function MoneyCard({ label, value, tone }: { label: string; value: string; tone: "good" | "warn" | "danger" }) {
+  const toneClass = tone === "good" 
+    ? "from-emerald-50 to-white border-emerald-200" 
+    : tone === "warn" 
+      ? "from-amber-50 to-white border-amber-200" 
+      : "from-rose-50 to-white border-rose-200";
 
   return (
     <div className={`${cardClass} bg-gradient-to-br ${toneClass}`}>
-      <div className="text-sm font-black uppercase tracking-wide text-zinc-700">
-        {label}
-      </div>
-      <div className="mt-2 text-3xl font-black text-zinc-950">{value}</div>
+      <div className="text-sm font-black uppercase tracking-widest text-zinc-700">{label}</div>
+      <div className="mt-4 text-4xl font-black text-zinc-950 tracking-tight">{value}</div>
     </div>
   );
 }
 
-function InfoCard({
-  title,
-  value,
-  text,
-}: {
-  title: string;
-  value: string;
-  text: string;
-}) {
+function InfoCard({ title, value, text }: { title: string; value: string; text: string }) {
   return (
     <div className={cardClass}>
-      <h2 className="text-sm font-black uppercase tracking-wide text-zinc-700">
-        {title}
-      </h2>
-      <p className="mt-2 text-3xl font-black text-zinc-950">{value}</p>
-      <p className="mt-3 text-sm font-semibold leading-relaxed text-zinc-800">
-        {text}
-      </p>
+      <h3 className="text-sm font-black uppercase tracking-widest text-zinc-700">{title}</h3>
+      <p className="mt-4 text-4xl font-black text-zinc-950 tracking-tight">{value}</p>
+      <p className="mt-5 text-sm leading-relaxed text-zinc-600">{text}</p>
     </div>
   );
 }
