@@ -4,10 +4,9 @@ import Stripe from "stripe";
 type Plan = "monthly" | "yearly";
 
 const priceEnv: Record<Plan, string | undefined> = {
-  monthly: process.env.STRIPE_MONTHLY_PRICE_ID,
-  yearly: process.env.STRIPE_YEARLY_PRICE_ID,
+  monthly: process.env.STRIPE_PRICE_ID_MONTHLY,
+  yearly: process.env.STRIPE_PRICE_ID_YEARLY,
 };
-
 export async function POST(request: Request) {
   if (!process.env.STRIPE_SECRET_KEY) {
     return NextResponse.json(
