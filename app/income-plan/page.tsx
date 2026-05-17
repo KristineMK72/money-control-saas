@@ -4,6 +4,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { BenWeeklyRow } from "@/lib/ben/viewTypes";
+import BenBubble from "@/components/BenBubble";
+import { BenEngine } from "@/lib/ben/engine";
 
 type IncomeRow = {
   id: string;
@@ -348,6 +350,14 @@ export default function IncomePlanPage() {
 
   const remainingGap = Math.max(0, gapThisWeek - plannedIncome);
   const overGoal = Math.max(0, plannedIncome - gapThisWeek);
+  const benInsight = BenEngine.getForecastMessage({
+    name: null,
+    timeframeLabel: "Income Plan",
+    totalNeeded: gapThisWeek,
+    incomeSoFar: plannedIncome,
+    incomeGap: remainingGap,
+    dailyIncomeNeeded: Math.ceil(remainingGap / 7),
+  });
 
   return (
     <main className="min-h-screen bg-zinc-950/80 backdrop-blur-md text-white">
@@ -391,6 +401,10 @@ export default function IncomePlanPage() {
               label="Status"
               value={remainingGap <= 0 && gapThisWeek > 0 ? "Covered" : gapThisWeek === 0 ? "No gap" : "Needs work"}
             />
+          </div>
+
+          <div className="mt-8 rounded-2xl border border-white/20 bg-zinc-950/80 p-5 shadow-2xl shadow-zinc-950/20 backdrop-blur-xl">
+            <BenBubble message={benInsight.text} mood={benInsight.mood} />
           </div>
 
           <div className="mt-8 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">

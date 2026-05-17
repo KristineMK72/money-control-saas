@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import BenBubble from "@/components/BenBubble";
 
 type DebtRow = {
   id: string;
@@ -331,6 +332,13 @@ export default function CreditRecoveryPage() {
               label="Monthly minimums"
               value={formatUSD(totals.totalMinimums)}
               subtext="Base payment already required"
+            />
+          </div>
+
+          <div className="mt-8 rounded-2xl border border-white/20 bg-zinc-950/80 p-5 shadow-2xl shadow-zinc-950/20 backdrop-blur-xl">
+            <BenBubble
+              message={benMessage.replace(/^Ben says: /, "")}
+              mood={prioritizedCards.some((card) => card.util >= 50) ? "stern" : "celebratory"}
             />
           </div>
 
