@@ -4,23 +4,53 @@ import { useEffect, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import BenBubble from "@/components/BenBubble";
 import { BenEngine } from "@/lib/ben/engine";
-// ... keep all your existing types (SummaryData, BillRow, etc.)
 
 export default function ChatPage() {
   const supabase = createSupabaseBrowserClient();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const [messages, setMessages] = useState([...]); // your existing initial message
+  const [messages, setMessages] = useState([
+    {
+      role: "assistant" as const,
+      content: "Hi — I’m Ben, your Money Control AI. How can I help you today?",
+    },
+  ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  // ... keep all your other states
 
-  // Auto-scroll
+  // Auto-scroll to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ... keep all your existing logic (loadFinancialContext, sendMessage, etc.)
+  async function sendMessage(customText?: string) {
+    const text = (customText ?? input).trim();
+    if (!text || loading) return;
+
+    const userMessage = { role: "user" as const, content: text };
+    const newMessages = [...messages, userMessage];
+
+    setMessages(newMessages);
+    setInput("");
+    setLoading(true);
+
+    try {
+      // Your existing AI call logic goes here
+      // For now, a placeholder response
+      setTimeout(() => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant" as const,
+            content: "Got it. Let me check your current situation and give you the best next step.",
+          },
+        ]);
+        setLoading(false);
+      }, 800);
+    } catch (err) {
+      setLoading(false);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-transparent p-4 pb-24">
@@ -36,14 +66,9 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Financial Radar Summary */}
-        <div className="mb-8 rounded-3xl border border-white/20 bg-black/40 p-6 backdrop-blur-xl">
-          <BenBubble message={benInsight} mood="thoughtful" />
-        </div>
-
-        {/* Chat Area */}
-        <div className="rounded-3xl border border-white/20 bg-black/60 backdrop-blur-2xl shadow-2xl h-[65vh] flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-6 space-y-6" id="chat-container">
+        {/* Chat Container */}
+        <div className="rounded-3xl border border-white/20 bg-black/70 backdrop-blur-2xl shadow-2xl h-[65vh] flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {messages.map((msg, i) => (
               <div
                 key={i}
@@ -73,8 +98,8 @@ export default function ChatPage() {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Input Area */}
-          <div className="border-t border-white/20 bg-black/70 p-4">
+          {/* Input */}
+          <div className="border-t border-white/20 bg-black/80 p-4">
             <div className="flex gap-3">
               <input
                 value={input}
@@ -93,24 +118,6 @@ export default function ChatPage() {
               </button>
             </div>
           </div>
-        </div>
-
-        {/* Quick Prompts */}
-        <div className="mt-6 flex flex-wrap gap-2">
-          {[
-            "What should I pay first?",
-            "Give me a 7-day survival plan",
-            "How much do I need daily?",
-            "What's my biggest risk right now?",
-          ].map((prompt) => (
-            <button
-              key={prompt}
-              onClick={() => sendMessage(prompt)}
-              className="rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm hover:bg-white/20 transition"
-            >
-              {prompt}
-            </button>
-          ))}
         </div>
       </div>
     </main>
