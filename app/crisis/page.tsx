@@ -33,7 +33,7 @@ function money(n: number) {
 }
 
 const shellClass = "rounded-[2rem] border border-white/20 bg-slate-950/75 p-6 shadow-2xl backdrop-blur-md md:p-8";
-const cardClass = "rounded-2xl border border-white/60 bg-white/97 p-6 shadow-2xl backdrop-blur-xl";
+const cardClass = "rounded-2xl border border-white/60 bg-white/97 p-6 shadow-2xl backdrop-blur-xl cursor-pointer transition hover:bg-white";
 
 export default function CrisisPage() {
   const supabase = createSupabaseBrowserClient();
@@ -41,10 +41,9 @@ export default function CrisisPage() {
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [incomeEntries, setIncomeEntries] = useState<any[]>([]);
-  const [spendEntries, setSpendEntries] = useState<any[]>([]);
-  const [paymentEntries, setPaymentEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     loadCrisisData();
@@ -59,23 +58,18 @@ export default function CrisisPage() {
       return;
     }
 
-    const [billsRes, debtsRes, incomeRes, spendRes, paymentsRes] = await Promise.all([
+    const [billsRes, debtsRes, incomeRes] = await Promise.all([
       supabase.from("bills").select("*").eq("user_id", session.user.id),
       supabase.from("debts").select("*").eq("user_id", session.user.id),
       supabase.from("income_entries").select("*").eq("user_id", session.user.id),
-      supabase.from("spend_entries").select("*").eq("user_id", session.user.id),
-      supabase.from("payments").select("*").eq("user_id", session.user.id),
     ]);
 
     setBills(billsRes.data || []);
     setDebts(debtsRes.data || []);
     setIncomeEntries(incomeRes.data || []);
-    setSpendEntries(spendRes.data || []);
-    setPaymentEntries(paymentsRes.data || []);
     setLoading(false);
   }
 
-  // Placeholder for your ranking logic - replace with your real logic
   const rankedItems = useMemo(() => {
     const items = [
       ...bills.map(b => ({
@@ -83,13 +77,13 @@ export default function CrisisPage() {
         name: b.name,
         amount: Number(b.monthly_target || b.target || 0),
         dueDate: b.due_date,
-        category: b.category,
+        category: b.category || "bill",
         source: "bill" as const,
       })),
       ...debts.map(d => ({
         id: `debt-${d.id}`,
         name: d.name,
-        amount: Number(d.monthly_min_payment || d.min_payment || 0),
+        amount: Number(d.monthly_min_payment || d.min_payment || d.balance || 0),
         dueDate: d.due_date,
         category: "debt",
         source: "debt" as const,
@@ -119,7 +113,7 @@ export default function CrisisPage() {
       <div className={`${shellClass} mx-auto max-w-6xl space-y-10`}>
         <header>
           <h1 className="text-5xl font-black text-white">Crisis Mode</h1>
-          <p className="mt-2 text-lg text-white/80">72-hour triage • Focus on what matters most right now.</p>
+          <p className="mt-2 text-lg text-white/80">72-hour triage — Focus on what matters most right now.</p>
         </header>
 
         {/* Ben’s Guidance */}
@@ -134,24 +128,59 @@ export default function CrisisPage() {
           <StatCard label="Total Obligations" value={money(rankedItems.reduce((sum, i) => sum + i.amount, 0))} />
         </div>
 
-        {/* Top Actions */}
+        {/* Top 3 Actions - Click to Expand */}
         <div className={cardClass}>
           <h2 className="text-2xl font-black mb-6">Top 3 Actions Right Now</h2>
           <div className="space-y-4">
             {top3.length > 0 ? (
               top3.map((item, i) => (
-                <div key={item.id} className="flex items-center gap-4 rounded-2xl border border-white/40 bg-white/80 p-5">
-                  <div className="text-3xl font-black text-emerald-600">#{i + 1}</div>
-                  <div className="flex-1">
-                    <div className="font-semibold">{item.name}</div>
-                    <div className="text-sm text-zinc-600">Due soon</div>
+                <div
+                  key={item.id}
+                  onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                  className="rounded-2xl border border-white/40 bg-white/80 p-5 cursor-pointer hover:bg-white transition"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="text-3xl font-black text-emerald-600">#{i + 1}</div>
+                    <div className="flex-1">
+                      <div className="font-semibold">{item.name}</div>
+                      <div className="text-sm text-zinc-600">Tap for details</div>
+                    </div>
+                    <div className="text-right font-black text-xl">{money(item.amount)}</div>
                   </div>
-                  <div className="text-right font-black text-xl">{money(item.amount)}</div>
+
+                  {expandedId === item.id && (
+                    <div className="mt-4 pt-4 border-t border-white/30 text-sm text-zinc-700">
+                      Due: {item.dueDate || "No date"} • Type: {item.category}
+                    </div>
+                  )}
                 </div>
               ))
             ) : (
               <p className="text-zinc-600">No priority items found yet. Add some bills or debts.</p>
             )}
+          </div>
+        </div>
+
+        {/* Full Ranked List */}
+        <div className={cardClass}>
+          <h2 className="text-2xl font-black mb-6">Everything Ranked by Urgency</h2>
+          <div className="space-y-3">
+            {rankedItems.map((item, i) => (
+              <div
+                key={item.id}
+                onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                className="flex items-center justify-between rounded-2xl border border-white/40 bg-white/80 p-5 cursor-pointer hover:bg-white transition"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="font-mono text-sm text-zinc-500">#{i + 1}</span>
+                  <div>
+                    <div className="font-semibold">{item.name}</div>
+                    <div className="text-xs text-zinc-500">{item.category}</div>
+                  </div>
+                </div>
+                <div className="text-right font-black text-xl">{money(item.amount)}</div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
