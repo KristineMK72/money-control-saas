@@ -5,20 +5,25 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import BenBubble from "@/components/BenBubble";
 import { BenEngine } from "@/lib/ben/engine";
 
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export default function ChatPage() {
   const supabase = createSupabaseBrowserClient();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<ChatMessage[]>([
     {
-      role: "assistant" as const,
+      role: "assistant",
       content: "Hi — I’m Ben, your Money Control AI. How can I help you today?",
     },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Auto-scroll to bottom
+  // Auto-scroll
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -27,7 +32,7 @@ export default function ChatPage() {
     const text = (customText ?? input).trim();
     if (!text || loading) return;
 
-    const userMessage = { role: "user" as const, content: text };
+    const userMessage: ChatMessage = { role: "user", content: text };
     const newMessages = [...messages, userMessage];
 
     setMessages(newMessages);
@@ -35,18 +40,17 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      // Your existing AI call logic goes here
-      // For now, a placeholder response
+      // TODO: Replace with your real AI call
       setTimeout(() => {
         setMessages((prev) => [
           ...prev,
           {
-            role: "assistant" as const,
-            content: "Got it. Let me check your current situation and give you the best next step.",
+            role: "assistant",
+            content: "Understood. Let me review your current situation and give you the best next step.",
           },
         ]);
         setLoading(false);
-      }, 800);
+      }, 1000);
     } catch (err) {
       setLoading(false);
     }
@@ -66,7 +70,7 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Chat Container */}
+        {/* Chat Area */}
         <div className="rounded-3xl border border-white/20 bg-black/70 backdrop-blur-2xl shadow-2xl h-[65vh] flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {messages.map((msg, i) => (
@@ -98,7 +102,7 @@ export default function ChatPage() {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Input */}
+          {/* Input Area */}
           <div className="border-t border-white/20 bg-black/80 p-4">
             <div className="flex gap-3">
               <input
