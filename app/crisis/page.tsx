@@ -5,9 +5,24 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import BenBubble from "@/components/BenBubble";
 import { BenEngine } from "@/lib/ben/engine";
 
-type BillRow = { /* your existing type */ };
-type DebtRow = { /* your existing type */ };
-// ... keep your other types (IncomeRow, SpendRow, etc.)
+type BillRow = {
+  id: string;
+  name: string;
+  target?: number | null;
+  monthly_target?: number | null;
+  due_date?: string | null;
+  category?: string | null;
+};
+
+type DebtRow = {
+  id: string;
+  name: string;
+  balance?: number | null;
+  min_payment?: number | null;
+  monthly_min_payment?: number | null;
+  due_date?: string | null;
+  category?: string | null;
+};
 
 function money(n: number) {
   return n.toLocaleString("en-US", {
@@ -60,17 +75,37 @@ export default function CrisisPage() {
     setLoading(false);
   }
 
-  // Keep all your excellent ranking logic
-  const rankedItems = useMemo(() => { /* your existing rankedItems logic */ }, [bills, debts]);
-  const top3 = rankedItems.slice(0, 3);
-  const criticalNext7Total = /* your existing calculation */;
+  // Placeholder for your ranking logic - replace with your real logic
+  const rankedItems = useMemo(() => {
+    const items = [
+      ...bills.map(b => ({
+        id: `bill-${b.id}`,
+        name: b.name,
+        amount: Number(b.monthly_target || b.target || 0),
+        dueDate: b.due_date,
+        category: b.category,
+        source: "bill" as const,
+      })),
+      ...debts.map(d => ({
+        id: `debt-${d.id}`,
+        name: d.name,
+        amount: Number(d.monthly_min_payment || d.min_payment || 0),
+        dueDate: d.due_date,
+        category: "debt",
+        source: "debt" as const,
+      })),
+    ];
+    return items.sort((a, b) => b.amount - a.amount);
+  }, [bills, debts]);
 
-  // === BEN INSIGHT ===
+  const top3 = rankedItems.slice(0, 3);
+  const criticalNext7Total = rankedItems.reduce((sum, item) => sum + item.amount, 0);
+
   const benInsight = BenEngine.getForecastMessage({
     name: null,
     timeframeLabel: "Crisis Mode",
     totalNeeded: criticalNext7Total,
-    incomeSoFar: /* calculate from incomeEntries */,
+    incomeSoFar: incomeEntries.reduce((sum, i) => sum + Number(i.amount || 0), 0),
     incomeGap: criticalNext7Total,
     dailyIncomeNeeded: Math.ceil(criticalNext7Total / 7),
   });
@@ -87,7 +122,7 @@ export default function CrisisPage() {
           <p className="mt-2 text-lg text-white/80">72-hour triage • Focus on what matters most right now.</p>
         </header>
 
-        {/* Ben's Guidance */}
+        {/* Ben’s Guidance */}
         <div className="rounded-3xl border border-slate-200 bg-slate-950 p-6 shadow-xl">
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </div>
@@ -96,30 +131,28 @@ export default function CrisisPage() {
         <div className="grid gap-4 md:grid-cols-3">
           <StatCard label="Critical Next 7 Days" value={money(criticalNext7Total)} />
           <StatCard label="Top Priority Items" value={top3.length.toString()} />
-          <StatCard label="Total Obligations" value={money(/* calculate total */)} />
+          <StatCard label="Total Obligations" value={money(rankedItems.reduce((sum, i) => sum + i.amount, 0))} />
         </div>
 
         {/* Top Actions */}
         <div className={cardClass}>
           <h2 className="text-2xl font-black mb-6">Top 3 Actions Right Now</h2>
           <div className="space-y-4">
-            {top3.map((item, i) => (
-              <div key={item.id} className="flex items-center gap-4 rounded-2xl border border-white/40 bg-white/80 p-5">
-                <div className="text-3xl font-black text-emerald-600">#{i+1}</div>
-                <div className="flex-1">
-                  <div className="font-semibold">{item.name}</div>
-                  <div className="text-sm text-zinc-600">{formatDueLabel(item.dueDate)}</div>
+            {top3.length > 0 ? (
+              top3.map((item, i) => (
+                <div key={item.id} className="flex items-center gap-4 rounded-2xl border border-white/40 bg-white/80 p-5">
+                  <div className="text-3xl font-black text-emerald-600">#{i + 1}</div>
+                  <div className="flex-1">
+                    <div className="font-semibold">{item.name}</div>
+                    <div className="text-sm text-zinc-600">Due soon</div>
+                  </div>
+                  <div className="text-right font-black text-xl">{money(item.amount)}</div>
                 </div>
-                <div className="text-right font-black text-xl">{money(item.amount)}</div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-zinc-600">No priority items found yet. Add some bills or debts.</p>
+            )}
           </div>
-        </div>
-
-        {/* Full Ranked List */}
-        <div className={cardClass}>
-          <h2 className="text-2xl font-black mb-6">Everything Ranked by Urgency</h2>
-          {/* Your existing ranked list rendering */}
         </div>
       </div>
     </main>
