@@ -17,7 +17,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      content: "Hi — I’m Ben, your Money Control AI. How can I help you today?",
+      content: "Good morrow, friend. I am Benjamin Franklin, at thy service in matters of coin and prudence. How may I assist thee this day?",
     },
   ]);
   const [input, setInput] = useState("");
@@ -40,18 +40,23 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      // TODO: Replace with your real AI call
+      // TODO: Call your real /api/ai endpoint with Franklin-style prompt
+      // For now using a placeholder with Franklin voice
       setTimeout(() => {
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: "Understood. Let me review your current situation and give you the best next step.",
+            content: "Verily, my friend. Thou hast asked a question of great import. Let us examine thy ledger with care. What sums are due in the coming days, and what coin hast thou at hand? I shall advise thee as a prudent man ought.",
           },
         ]);
         setLoading(false);
-      }, 1000);
+      }, 1200);
     } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Forgive me, the wires between us are troubled. Pray ask again." },
+      ]);
       setLoading(false);
     }
   }
@@ -62,11 +67,11 @@ export default function ChatPage() {
         {/* Header */}
         <div className="mb-8 flex items-center gap-4">
           <div className="h-16 w-16 rounded-2xl overflow-hidden border border-white/30 shadow-xl">
-            <img src="/ben.png" alt="Ben" className="object-cover" />
+            <img src="/ben.png" alt="Benjamin Franklin" className="object-cover" />
           </div>
           <div>
             <h1 className="text-4xl font-black text-white">Ask Ben</h1>
-            <p className="text-white/70">Your financial co-pilot</p>
+            <p className="text-white/70">Benjamin Franklin’s Counsel on Money</p>
           </div>
         </div>
 
@@ -96,6 +101,7 @@ export default function ChatPage() {
                   <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400"></div>
                   <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 delay-150"></div>
                   <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 delay-300"></div>
+                  <span className="ml-2 text-sm text-zinc-500">Ben is thinking...</span>
                 </div>
               </div>
             )}
@@ -109,7 +115,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                placeholder="What should I pay first this week?"
+                placeholder="What should I pay first, good sir?"
                 className="flex-1 rounded-2xl bg-white/90 px-6 py-4 text-zinc-950 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-yellow-400"
                 disabled={loading}
               />
@@ -122,6 +128,24 @@ export default function ChatPage() {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Quick Prompts */}
+        <div className="mt-6 flex flex-wrap gap-2">
+          {[
+            "What should I pay first this week?",
+            "Give me a 7-day survival plan, good sir.",
+            "How much coin must I earn daily?",
+            "What is my greatest risk at present?",
+          ].map((prompt) => (
+            <button
+              key={prompt}
+              onClick={() => sendMessage(prompt)}
+              className="rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm hover:bg-white/20 transition"
+            >
+              {prompt}
+            </button>
+          ))}
         </div>
       </div>
     </main>
