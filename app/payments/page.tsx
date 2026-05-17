@@ -1,10 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import {
+  AppShell,
+  DarkPanel,
+  MetricCard,
+  Notice,
+  PageHeader,
+  Panel,
+  inputClass,
+  moneyButtonClass,
+} from "@/components/AppFrame";
+import BenBubble from "@/components/BenBubble";
+import PaperScrollScanner from "@/components/PaperScrollScanner";
+import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
-/* ---------------- TYPES ---------------- */
+import {
+  ocrImageFile,
+  parseTransactionsScreenshot,
+} from "@/lib/money/receiptOcr";
 
 type PaymentRow = {
   id: string;
@@ -30,24 +44,25 @@ type BillRow = {
   target: number;
 };
 
-/* ---------------- HELPERS ---------------- */
-
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-/* ---------------- PAGE ---------------- */
+function money(n: number) {
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  });
+}
 
 export default function PaymentsPage() {
-  const supabase = createSupabaseBrowserClient();
-  const router = useRouter();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [userId, setUserId] = useState<string | null>(null);
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [bills, setBills] = useState<BillRow[]>([]);
@@ -56,49 +71,12 @@ export default function PaymentsPage() {
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
-
   const [payType, setPayType] = useState<"debt" | "bill">("debt");
   const [debtId, setDebtId] = useState("");
   const [billId, setBillId] = useState("");
 
-  /* ---------------- INIT ---------------- */
-
-  useEffect(() => {
-    init();
-  }, []);
-
-  async function init() {
-    setLoading(true);
-    setMessage("");
-
-    const { data, error } = await supabase.auth.getSession();
-
-    if (error) {
-      setMessage(error.message);
-      setLoading(false);
-      return;
-    }
-
-    const user = data.session?.user;
-
-    if (!user) {
-      setMessage("Please log in.");
-      setLoading(false);
-      return;
-    }
-
-    setUserId(user.id);
-
-    await Promise.all([
-      loadPayments(user.id),
-      loadDebts(user.id),
-      loadBills(user.id),
-    ]);
-
-    setLoading(false);
-  }
-
-  /* ---------------- LOADERS ---------------- */
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   async function loadPayments(uid: string) {
     const { data, error } = await supabase
@@ -145,12 +123,66 @@ export default function PaymentsPage() {
     setBills((data as BillRow[]) || []);
   }
 
-  async function refreshPayments() {
-    if (!userId) return;
-    await loadPayments(userId);
-  }
+  useEffect(() => {
+    async function init() {
+      const { data, error } = await supabase.auth.getSession();
 
-  /* ---------------- ADD PAYMENT ---------------- */
+      if (error) {
+        setMessage(error.message);
+        setLoading(false);
+        return;
+      }
+
+      const user = data.session?.user;
+      if (!user) {
+        setMessage("Sign in so Ben can witness the payments.");
+        setLoading(false);
+        return;
+      }
+
+      setUserId(user.id);
+      await Promise.all([
+        loadPayments(user.id),
+        loadDebts(user.id),
+        loadBills(user.id),
+      ]);
+      setLoading(false);
+    }
+
+    void init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
+
+  async function handleScanPayment() {
+    if (!imageFile) return;
+
+    setScanning(true);
+    setMessage("Ben is reading the payment proof.");
+
+    try {
+      const { text } = await ocrImageFile(imageFile);
+      const first = parseTransactionsScreenshot(text)[0];
+
+      if (!first) {
+        setMessage("No clear payment found. Fill it in manually and proceed.");
+        setScanning(false);
+        return;
+      }
+
+      setMerchant(first.merchant || "");
+      if (first.amount) setAmount(String(first.amount));
+      if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
+        setDateISO(first.dateText);
+      }
+      setNote("Scanned payment proof");
+      setMessage("Scanner filled what it could. Review before saving.");
+    } catch (error) {
+      console.error("Payment scanner error:", error);
+      setMessage("Scanner had trouble with that proof. Manual entry still works.");
+    }
+
+    setScanning(false);
+  }
 
   async function handleAddPayment() {
     setMessage("");
@@ -160,7 +192,7 @@ export default function PaymentsPage() {
     const amt = Number(amount);
 
     if (!merchant.trim() || !Number.isFinite(amt) || amt <= 0) {
-      setMessage("Enter valid name + amount.");
+      setMessage("Enter a payment name and amount.");
       return;
     }
 
@@ -174,98 +206,100 @@ export default function PaymentsPage() {
       return;
     }
 
-    try {
-      setSaving(true);
+    setSaving(true);
+    const { error } = await supabase.from("payments").insert({
+      user_id: userId,
+      date_iso: dateISO,
+      amount: amt,
+      merchant: merchant.trim(),
+      note: note.trim() || null,
+      debt_id: payType === "debt" ? debtId : null,
+      bill_id: payType === "bill" ? billId : null,
+    });
 
-      const { error } = await supabase.from("payments").insert({
-        user_id: userId,
-        date_iso: dateISO,
-        amount: amt,
-        merchant: merchant.trim(),
-        note: note.trim() || null,
-        debt_id: payType === "debt" ? debtId : null,
-        bill_id: payType === "bill" ? billId : null,
-      });
-
-      if (error) throw error;
-
-      // reset form
-      setMerchant("");
-      setAmount("");
-      setNote("");
-      setDebtId("");
-      setBillId("");
-      setPayType("debt");
-      setDateISO(todayISO());
-
-      await refreshPayments();
-      setMessage("Payment added.");
-
-    } catch (err: any) {
-      setMessage(err.message || "Failed to add payment.");
-    } finally {
+    if (error) {
+      setMessage(error.message);
       setSaving(false);
+      return;
     }
+
+    setMerchant("");
+    setAmount("");
+    setNote("");
+    setDebtId("");
+    setBillId("");
+    setPayType("debt");
+    setDateISO(todayISO());
+    setImageFile(null);
+
+    await loadPayments(userId);
+    setMessage("Payment added. A fine entry for the ledger.");
+    setSaving(false);
   }
 
-  /* ---------------- TOTAL ---------------- */
-
   const total = useMemo(() => {
-    return payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    return payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   }, [payments]);
-
-  /* ---------------- UI ---------------- */
+  const benInsight = BenEngine.getForecastMessage({
+    name: null,
+    timeframeLabel: "Payments",
+    totalNeeded: total,
+    incomeSoFar: total,
+    incomeGap: 0,
+    dailyIncomeNeeded: 0,
+  });
 
   if (loading) {
-    return <div className="p-6 text-white">Loading...</div>;
+    return (
+      <AppShell max="max-w-5xl">
+        <Panel>Loading payments...</Panel>
+      </AppShell>
+    );
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950/82 backdrop-blur-md text-white">
-      <div className="mx-auto max-w-5xl px-6 py-10">
+    <AppShell max="max-w-5xl">
+      <PageHeader
+        eyebrow="AskBen Payments"
+        title="Payments"
+        subtitle="Record proof that you handled business. Ben respects evidence."
+      />
 
-        <h1 className="text-4xl font-black">Payments</h1>
+      {message && <Notice>{message}</Notice>}
 
-        {message && (
-          <div className="mt-4 rounded-xl bg-emerald-500/10 p-3 text-emerald-300">
-            {message}
-          </div>
-        )}
+      <DarkPanel>
+        <BenBubble message={benInsight.text} mood={benInsight.mood} />
+      </DarkPanel>
 
-        <div className="mt-4 text-2xl font-bold">
-          Total: ${total.toFixed(2)}
-        </div>
+      <section className="grid gap-4 md:grid-cols-3">
+        <MetricCard label="Total paid" value={money(total)} tone="emerald" />
+        <MetricCard label="Payments" value={String(payments.length)} tone="sky" />
+        <MetricCard label="Targets" value={`${debts.length + bills.length}`} tone="zinc" />
+      </section>
 
-        <div className="mt-10 grid gap-6 md:grid-cols-2">
-
-          {/* FORM */}
-          <div className="rounded-2xl bg-white p-5 text-black">
-
-            <h2 className="text-xl font-bold">Add Payment</h2>
-
+      <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
+        <Panel>
+          <h2 className="text-2xl font-black">Add Payment</h2>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
             <input
               type="date"
               value={dateISO}
               onChange={(e) => setDateISO(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
+              className={inputClass}
             />
-
             <input
               placeholder="What did you pay?"
               value={merchant}
               onChange={(e) => setMerchant(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
+              className={inputClass}
             />
-
             <input
               type="number"
               placeholder="Amount"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
+              className={inputClass}
             />
-
-            {/* TYPE */}
             <select
               value={payType}
               onChange={(e) => {
@@ -273,85 +307,92 @@ export default function PaymentsPage() {
                 setDebtId("");
                 setBillId("");
               }}
-              className="mt-3 w-full border p-2 rounded"
+              className={inputClass}
             >
               <option value="debt">Debt</option>
               <option value="bill">Bill</option>
             </select>
-
-            {/* DEBT DROPDOWN */}
-            {payType === "debt" && (
+            {payType === "debt" ? (
               <select
                 value={debtId}
                 onChange={(e) => setDebtId(e.target.value)}
-                className="mt-3 w-full border p-2 rounded"
+                className={`${inputClass} md:col-span-2`}
               >
                 <option value="">Select debt</option>
-                {debts.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
+                {debts.map((debt) => (
+                  <option key={debt.id} value={debt.id}>
+                    {debt.name}
                   </option>
                 ))}
               </select>
-            )}
-
-            {/* BILL DROPDOWN */}
-            {payType === "bill" && (
+            ) : (
               <select
                 value={billId}
                 onChange={(e) => setBillId(e.target.value)}
-                className="mt-3 w-full border p-2 rounded"
+                className={`${inputClass} md:col-span-2`}
               >
                 <option value="">Select bill</option>
-                {bills.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} — ${b.target}
+                {bills.map((bill) => (
+                  <option key={bill.id} value={bill.id}>
+                    {bill.name} - {money(Number(bill.target || 0))}
                   </option>
                 ))}
               </select>
             )}
-
             <textarea
               placeholder="Note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="mt-3 w-full border p-2 rounded"
+              className={`${inputClass} min-h-24 md:col-span-2`}
             />
-
-            <button
-              onClick={handleAddPayment}
-              disabled={saving}
-              className="mt-4 w-full bg-black text-white p-3 rounded"
-            >
-              {saving ? "Saving..." : "Add Payment"}
-            </button>
-
           </div>
+          <button
+            onClick={handleAddPayment}
+            disabled={saving}
+            className={`${moneyButtonClass} mt-5 w-full`}
+          >
+            {saving ? "Saving..." : "Add Payment"}
+          </button>
+        </Panel>
 
-          {/* HISTORY */}
-          <div className="rounded-2xl bg-white p-5 text-black">
+        <PaperScrollScanner
+          title="Scan Payment Proof"
+          description="Upload a receipt, bank screenshot, or confirmation. Ben will fill the draft and await thy approval."
+          file={imageFile}
+          busy={scanning}
+          onFileChange={setImageFile}
+          onScan={() => void handleScanPayment()}
+        />
+      </section>
 
-            <h2 className="text-xl font-bold">History</h2>
-
-            {payments.length === 0 ? (
-              <p className="mt-3">No payments yet.</p>
-            ) : (
-              payments.map((p) => (
-                <div key={p.id} className="border-b py-2">
-                  <div className="font-semibold">
-                    {p.merchant} — ${p.amount}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    {p.date_iso}
-                  </div>
+      <Panel>
+        <h2 className="text-2xl font-black">Payment History</h2>
+        <div className="mt-5 grid gap-3">
+          {payments.length === 0 ? (
+            <p className="text-sm font-semibold text-zinc-600">
+              No payments yet. The ledger awaits its first victory.
+            </p>
+          ) : (
+            payments.map((payment) => (
+              <div
+                key={payment.id}
+                className="flex flex-col gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 md:flex-row md:items-center md:justify-between"
+              >
+                <div>
+                  <p className="font-black">{payment.merchant || "Payment"}</p>
+                  <p className="text-sm font-semibold text-zinc-600">
+                    {payment.date_iso}
+                    {payment.note ? ` - ${payment.note}` : ""}
+                  </p>
                 </div>
-              ))
-            )}
-
-          </div>
-
+                <p className="text-lg font-black">
+                  {money(Number(payment.amount || 0))}
+                </p>
+              </div>
+            ))
+          )}
         </div>
-      </div>
-    </main>
+      </Panel>
+    </AppShell>
   );
 }

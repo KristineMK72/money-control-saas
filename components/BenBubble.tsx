@@ -20,7 +20,7 @@ export default function BenBubble({ message, mood = "encouraging" }: BenBubblePr
       style={{ maxWidth: "600px" }}
     >
       <div className="text-xs uppercase tracking-wider opacity-70 mb-1">
-        Ben says:
+        Ben&apos;s almanack:
       </div>
       <div className="text-base leading-relaxed">{message}</div>
     </div>

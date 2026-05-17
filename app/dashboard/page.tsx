@@ -1,10 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { BenEngine } from "@/lib/ben/engine";
+import {
+  AppShell,
+  DarkPanel,
+  MetricCard,
+  Notice,
+  PageHeader,
+  Panel,
+} from "@/components/AppFrame";
 import BenBubble from "@/components/BenBubble";
 import XpBar from "@/components/XpBar";
+import { BenEngine } from "@/lib/ben/engine";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type SpendRow = {
   id: string;
@@ -14,7 +22,6 @@ type SpendRow = {
 
 type BenMasterRow = {
   user_id: string;
-  date?: string;
   total_income?: number | string | null;
   total_spend?: number | string | null;
   bills?: number | string | null;
@@ -36,20 +43,13 @@ function num(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function formatUSD(value: number): string {
+function money(value: number): string {
   return value.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 2,
   });
 }
-
-// === MAXIMUM READABILITY FIX ===
-const cardClass = 
-  "rounded-2xl border border-white/60 bg-white/98 p-6 shadow-2xl backdrop-blur-2xl transition hover:-translate-y-0.5 hover:bg-white";
-
-const sectionClass = 
-  "rounded-[2rem] border border-white/25 bg-slate-950/85 p-6 shadow-2xl backdrop-blur-md md:p-8";
 
 export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -66,9 +66,13 @@ export default function DashboardPage() {
       setLoading(true);
       setNotice("");
 
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
       if (sessionError || !session?.user) {
-        setNotice("Please sign in to view your dashboard.");
+        setNotice("Sign in to see your dashboard.");
         setLoading(false);
         return;
       }
@@ -76,16 +80,25 @@ export default function DashboardPage() {
       const uid = session.user.id;
 
       const [spendRes, masterRes, profileRes] = await Promise.all([
-        supabase.from("spend_entries").select("id, amount, category").eq("user_id", uid),
+        supabase
+          .from("spend_entries")
+          .select("id, amount, category")
+          .eq("user_id", uid),
         supabase.from("ben_master").select("*").eq("user_id", uid).maybeSingle(),
         supabase.from("profiles").select("xp, level").eq("user_id", uid).maybeSingle(),
       ]);
+
+      if (spendRes.error) setNotice(spendRes.error.message);
+      if (masterRes.error) setNotice(masterRes.error.message);
 
       setSpend((spendRes.data || []) as SpendRow[]);
       setMaster((masterRes.data || null) as BenMasterRow | null);
       setProfile((profileRes.data || null) as ProfileRow | null);
 
-      setNotice(!masterRes.data ? "Add income, bills, or spending to see your full picture." : "");
+      if (!masterRes.data) {
+        setNotice("Add income, bills, or spending to wake up the full picture.");
+      }
+
       setLoading(false);
     }
 
@@ -100,14 +113,13 @@ export default function DashboardPage() {
   const payments = num(master?.payments);
   const net = num(master?.leftover);
   const pressurePct = num(master?.pressure_pct);
-
   const totalObligations = totalSpend + bills + totalDebtMinimums;
   const incomeGap = Math.max(0, totalObligations - totalIncome);
 
   const topCategory = useMemo(() => {
     const totals: Record<string, number> = {};
     spend.forEach((row) => {
-      const cat = (row.category || "misc").toLowerCase();
+      const cat = (row.category || "misc").replaceAll("_", " ");
       totals[cat] = (totals[cat] || 0) + num(row.amount);
     });
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0] || null;
@@ -124,85 +136,124 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-transparent p-4 md:p-6">
-        <div className={`${sectionClass} mx-auto max-w-6xl`}>
-          <div className="rounded-2xl bg-white/95 p-8 text-center font-bold text-zinc-900">
-            Loading your AskBen dashboard...
-          </div>
-        </div>
-      </main>
+      <AppShell>
+        <Panel>Loading your AskBen dashboard...</Panel>
+      </AppShell>
     );
   }
 
   return (
-    <main className="min-h-screen bg-transparent p-4 md:p-6">
-      <div className={`${sectionClass} mx-auto max-w-6xl`}>
-        {/* Header */}
-        <header className="rounded-[1.5rem] border border-white/70 bg-white/95 p-6 shadow-2xl backdrop-blur-md">
-          {/* Your header content (keep as is) */}
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-700">AskBen Command Center</p>
-              <h1 className="mt-1 text-3xl font-black text-zinc-950 md:text-4xl">Dashboard</h1>
-              <p className="mt-2 text-sm font-medium text-zinc-700">Real-time financial triage with judgment.</p>
-            </div>
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-right shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Level</p>
-              <p className="text-3xl font-black text-emerald-950">{profile?.level ?? 1}</p>
+    <AppShell>
+      <PageHeader
+        eyebrow="AskBen Command Center"
+        title="Dashboard"
+        subtitle="Your money situation, translated from panic spreadsheet into a plan Ben can judge gently."
+        action={
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-right shadow-sm">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+              Level
+            </p>
+            <p className="text-4xl font-black text-emerald-950">
+              {profile?.level ?? 1}
+            </p>
+          </div>
+        }
+      />
+
+      {notice && <Notice>{notice}</Notice>}
+
+      <DarkPanel>
+        <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
+          <BenBubble message={ben.text} mood={ben.mood} />
+          <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-white/60">
+              Ben XP
+            </p>
+            <div className="mt-3">
+              <XpBar xp={profile?.xp ?? 0} level={profile?.level ?? 1} />
             </div>
           </div>
+        </div>
+      </DarkPanel>
 
-          {/* Toggle + BenBubble + XpBar (keep as before) */}
-          {/* ... */}
-        </header>
+      <Panel>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-2xl font-black">Money Snapshot</h2>
+            <p className="mt-1 text-sm font-semibold text-zinc-600">
+              Toggle the lens without losing the plot.
+            </p>
+          </div>
+          <div className="inline-flex rounded-2xl border border-zinc-200 bg-zinc-100 p-1">
+            {(["month", "cumulative"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`rounded-xl px-4 py-2 text-sm font-black capitalize transition ${
+                  viewMode === mode
+                    ? "bg-zinc-950 text-white shadow"
+                    : "text-zinc-600 hover:text-zinc-950"
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Panel>
 
-        {/* Cards - Now much brighter */}
-        <section className="mt-8 grid gap-4 md:grid-cols-4">
-          <MoneyCard label="Income" value={formatUSD(totalIncome)} tone="good" />
-          <MoneyCard label="Spend" value={formatUSD(totalSpend)} tone="warn" />
-          <MoneyCard label="Debt" value={formatUSD(totalDebt)} tone="danger" />
-          <MoneyCard label="Net" value={formatUSD(net)} tone={net >= 0 ? "good" : "danger"} />
-        </section>
+      <section className="grid gap-4 md:grid-cols-4">
+        <MetricCard label="Income" value={money(totalIncome)} tone="emerald" />
+        <MetricCard label="Spend" value={money(totalSpend)} tone="amber" />
+        <MetricCard label="Debt" value={money(totalDebt)} tone="rose" />
+        <MetricCard
+          label="Net"
+          value={money(net)}
+          tone={net >= 0 ? "emerald" : "rose"}
+        />
+      </section>
 
-        <section className="mt-6 grid gap-4 md:grid-cols-3">
-          <InfoCard title="Bills" value={formatUSD(bills)} text="Total bill targets this period" />
-          <InfoCard title="Debt Minimums" value={formatUSD(totalDebtMinimums)} text="Required payments this period" />
-          <InfoCard title="Payments Made" value={formatUSD(payments)} text="Actual payments recorded" />
-        </section>
+      <section className="grid gap-4 md:grid-cols-3">
+        <MetricCard
+          label="Bills"
+          value={money(bills)}
+          helper="Bill targets this period"
+          tone="sky"
+        />
+        <MetricCard
+          label="Debt minimums"
+          value={money(totalDebtMinimums)}
+          helper="Required payments"
+          tone="amber"
+        />
+        <MetricCard
+          label="Payments made"
+          value={money(payments)}
+          helper="Actual payments recorded"
+          tone="emerald"
+        />
+      </section>
 
-        <section className="mt-6 grid gap-4 md:grid-cols-3">
-          <InfoCard
-            title="Top Spending"
-            value={topCategory?.[0] || "—"}
-            text={topCategory ? `${formatUSD(topCategory[1])} this period` : "No spending yet"}
-          />
-          <InfoCard title="Income Gap" value={formatUSD(incomeGap)} text="Extra income needed to stay on track" />
-          <InfoCard title="Pressure" value={pressurePct ? `${pressurePct.toFixed(1)}%` : "—"} text="Debt pressure vs income" />
-        </section>
-      </div>
-    </main>
-  );
-}
-
-function MoneyCard({ label, value, tone }: { label: string; value: string; tone: "good" | "warn" | "danger" }) {
-  const toneClass = tone === "good" ? "from-emerald-50 to-white border-emerald-200" 
-                 : tone === "warn" ? "from-amber-50 to-white border-amber-200" 
-                 : "from-rose-50 to-white border-rose-200";
-
-  return (
-    <div className={`${cardClass} bg-gradient-to-br ${toneClass}`}>
-      <div className="text-sm font-black uppercase tracking-widest text-zinc-800">{label}</div>
-      <div className="mt-4 text-4xl font-black text-zinc-950 tracking-tight">{value}</div>
-    </div>
-  );
-}
-
-function InfoCard({ title, value, text }: { title: string; value: string; text: string }) {
-  return (
-    <div className={cardClass}>
-      <h3 className="text-sm font-black uppercase tracking-widest text-zinc-800">{title}</h3>
-      <p className="mt-4 text-4xl font-black text-zinc-950 tracking-tight">{value}</p>
-      <p className="mt-5 text-sm leading-relaxed text-zinc-700">{text}</p>
-    </div>
+      <section className="grid gap-4 md:grid-cols-3">
+        <MetricCard
+          label="Top spending"
+          value={topCategory ? topCategory[0] : "None yet"}
+          helper={topCategory ? money(topCategory[1]) : "No spending logged"}
+          tone="zinc"
+        />
+        <MetricCard
+          label="Income gap"
+          value={money(incomeGap)}
+          helper="Extra income needed to stay on track"
+          tone={incomeGap > 0 ? "rose" : "emerald"}
+        />
+        <MetricCard
+          label="Pressure"
+          value={pressurePct ? `${pressurePct.toFixed(1)}%` : "None yet"}
+          helper="Debt pressure vs income"
+          tone={pressurePct > 50 ? "rose" : "sky"}
+        />
+      </section>
+    </AppShell>
   );
 }

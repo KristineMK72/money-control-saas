@@ -49,8 +49,8 @@ export default function SubscriptionOptions({
               key={plan.id}
               className={`rounded-2xl border p-4 shadow-xl ${
                 selected
-                  ? "border-cyan-300 bg-cyan-300/12"
-                  : "border-white/20 bg-white/8"
+                  ? "border-cyan-300 bg-cyan-300/10"
+                  : "border-white/20 bg-white/10"
               }`}
             >
               <div className="flex items-start justify-between gap-3">

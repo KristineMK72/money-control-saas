@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --bg: #0a0a0a;
+  --bg: #080807;
   --fg: #fafafa;
 }
 
@@ -13,28 +13,16 @@ body {
   padding: 0;
 }
 
-/* Full-screen backdrop on <html> so it isn’t covered by opaque <main> blocks. */
-html.app-shell {
+body.app-shell {
   min-height: 100%;
-  background-color: #f8fafc;
-  background-image:
-    url("/backgrounds/grain.svg"),
-    url("/backgrounds/benworld.svg"),
-    url("/backgrounds/wash.svg");
-  background-repeat: repeat, no-repeat, no-repeat;
-  background-size:
-    240px 240px,
-    cover,
-    cover;
-  background-position:
-    0 0,
-    center bottom,
-    center top;
-  background-attachment: fixed, fixed, fixed;
+  color: var(--fg);
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.16), transparent 32rem),
+    radial-gradient(circle at top right, rgba(245, 158, 11, 0.14), transparent 30rem),
+    linear-gradient(180deg, rgba(8, 8, 7, 0.18), rgba(8, 8, 7, 0.72));
 }
 
 body {
-  color: #111827;
   font-family: Arial, Helvetica, sans-serif;
   background: transparent;
 }
@@ -46,4 +34,11 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
 }

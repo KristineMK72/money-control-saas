@@ -34,8 +34,8 @@ function money(n: number) {
   });
 }
 
-const shellClass = "rounded-[2rem] border border-white/20 bg-slate-950/75 p-6 shadow-2xl backdrop-blur-md md:p-8";
-const cardClass = "rounded-2xl border border-white/60 bg-white/97 p-6 shadow-2xl backdrop-blur-xl";
+const shellClass = "rounded-2xl border border-white/40 bg-slate-950/70 p-6 shadow-2xl backdrop-blur-xl md:p-8";
+const cardClass = "rounded-2xl border border-white/80 bg-white/95 p-6 text-zinc-950 shadow-2xl shadow-zinc-950/10 backdrop-blur-xl";
 
 export default function DebtPage() {
   const supabase = createSupabaseBrowserClient();
@@ -150,11 +150,11 @@ export default function DebtPage() {
       <div className={`${shellClass} mx-auto max-w-5xl space-y-8`}>
         <header>
           <h1 className="text-5xl font-black text-white">Debt</h1>
-          <p className="mt-2 text-lg text-white/80">Track what you owe and stay in control.</p>
+          <p className="mt-2 text-lg font-semibold text-white/90">Track what you owe and stay in control.</p>
         </header>
 
         {/* Ben Insight */}
-        <div className="rounded-3xl border border-slate-200 bg-slate-950 p-6 shadow-xl">
+        <div className="rounded-2xl border border-white/20 bg-slate-950/80 p-6 shadow-xl backdrop-blur-xl">
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </div>
 
@@ -166,16 +166,16 @@ export default function DebtPage() {
         </div>
 
         {/* Paper Scroll Scanner */}
-        <section className="rounded-3xl border border-white/20 bg-black/50 p-8 shadow-2xl backdrop-blur-xl">
+        <section className={cardClass}>
           <div className="flex items-start gap-4 mb-6">
             <div className="text-5xl">📜</div>
             <div>
               <h2 className="text-2xl font-black">Scan Debt Statement</h2>
-              <p className="text-white/75">Upload a credit card statement, loan summary, or screenshot</p>
+              <p className="text-sm font-semibold text-zinc-700">Upload a credit card statement, loan summary, or screenshot</p>
             </div>
           </div>
 
-          <label className="block cursor-pointer rounded-3xl border border-dashed border-amber-400/50 bg-gradient-to-br from-amber-950/70 to-black/60 p-12 text-center hover:border-amber-400 transition">
+          <label className="block cursor-pointer rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/90 p-8 text-center shadow-inner transition hover:bg-amber-50">
             <input
               type="file"
               accept="image/*"
@@ -183,7 +183,7 @@ export default function DebtPage() {
               onChange={(e) => setImageFile(e.target.files?.[0] || null)}
             />
             <div className="mx-auto mb-4 text-7xl">📜</div>
-            <p className="text-xl font-black text-amber-100">
+            <p className="text-xl font-black text-amber-950">
               {imageFile ? imageFile.name : "Tap to upload statement or screenshot"}
             </p>
           </label>
@@ -201,14 +201,14 @@ export default function DebtPage() {
         <section className={cardClass}>
           <h2 className="text-2xl font-black mb-6">Add New Debt</h2>
           <div className="grid gap-4 md:grid-cols-2">
-            <input placeholder="Debt name (Chase Visa, Car Loan...)" value={name} onChange={(e) => setName(e.target.value)} className="rounded-2xl border border-white/40 bg-white/95 px-5 py-3.5 text-zinc-950" />
-            <input placeholder="Current Balance" inputMode="decimal" value={balance} onChange={(e) => setBalance(e.target.value)} className="rounded-2xl border border-white/40 bg-white/95 px-5 py-3.5 text-zinc-950" />
-            <input placeholder="Monthly Minimum" inputMode="decimal" value={minPayment} onChange={(e) => setMinPayment(e.target.value)} className="rounded-2xl border border-white/40 bg-white/95 px-5 py-3.5 text-zinc-950" />
-            <select value={kind} onChange={(e) => setKind(e.target.value as "credit" | "loan")} className="rounded-2xl border border-white/40 bg-white/95 px-5 py-3.5 text-zinc-950">
+            <input placeholder="Debt name (Chase Visa, Car Loan...)" value={name} onChange={(e) => setName(e.target.value)} className="rounded-2xl border border-zinc-300 bg-white/95 px-5 py-3.5 text-zinc-950 shadow-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" />
+            <input placeholder="Current Balance" inputMode="decimal" value={balance} onChange={(e) => setBalance(e.target.value)} className="rounded-2xl border border-zinc-300 bg-white/95 px-5 py-3.5 text-zinc-950 shadow-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" />
+            <input placeholder="Monthly Minimum" inputMode="decimal" value={minPayment} onChange={(e) => setMinPayment(e.target.value)} className="rounded-2xl border border-zinc-300 bg-white/95 px-5 py-3.5 text-zinc-950 shadow-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" />
+            <select value={kind} onChange={(e) => setKind(e.target.value as "credit" | "loan")} className="rounded-2xl border border-zinc-300 bg-white/95 px-5 py-3.5 text-zinc-950 shadow-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
               <option value="credit">Credit Card</option>
               <option value="loan">Loan</option>
             </select>
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="rounded-2xl border border-white/40 bg-white/95 px-5 py-3.5 text-zinc-950 md:col-span-2" />
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="rounded-2xl border border-zinc-300 bg-white/95 px-5 py-3.5 text-zinc-950 shadow-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 md:col-span-2" />
           </div>
           <button onClick={addDebt} className="mt-6 w-full rounded-2xl bg-emerald-600 py-4 text-lg font-black text-white hover:bg-emerald-700">
             Add Debt

@@ -9,10 +9,10 @@ import type { BenMasterRow } from "@/lib/ben/viewTypes";
 type BenMasterAny = BenMasterRow & Record<string, unknown>;
 
 const cardClass =
-  "rounded-2xl border border-zinc-300 bg-white/96 p-5 text-zinc-950 shadow-xl backdrop-blur";
+  "rounded-2xl border border-white/80 bg-white/95 p-5 text-zinc-950 shadow-2xl shadow-zinc-950/10 backdrop-blur-xl";
 
 const darkCardClass =
-  "rounded-2xl border border-zinc-700 bg-zinc-950/90 p-5 text-white shadow-xl backdrop-blur";
+  "rounded-2xl border border-white/20 bg-zinc-950/80 p-5 text-white shadow-2xl shadow-zinc-950/20 backdrop-blur-xl";
 
 function num(value: unknown) {
   const n = Number(value ?? 0);
@@ -295,22 +295,22 @@ export default function ForecastPage() {
           </p>
 
           <div className="mt-4 grid gap-3 text-sm font-semibold text-zinc-200 md:grid-cols-3">
-            <div className="rounded-xl border border-white/10 bg-white/10 p-3">
-              <p className="text-zinc-400">Days elapsed</p>
+            <div className="rounded-xl border border-white/25 bg-white/15 p-3">
+              <p className="font-bold text-zinc-200">Days elapsed</p>
               <p className="mt-1 text-2xl font-black text-white">
                 {breakdown.daysElapsed}
               </p>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-white/10 p-3">
-              <p className="text-zinc-400">Days left</p>
+            <div className="rounded-xl border border-white/25 bg-white/15 p-3">
+              <p className="font-bold text-zinc-200">Days left</p>
               <p className="mt-1 text-2xl font-black text-white">
                 {breakdown.daysLeft}
               </p>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-white/10 p-3">
-              <p className="text-zinc-400">Days in month</p>
+            <div className="rounded-xl border border-white/25 bg-white/15 p-3">
+              <p className="font-bold text-zinc-200">Days in month</p>
               <p className="mt-1 text-2xl font-black text-white">
                 {breakdown.daysTotal}
               </p>
@@ -360,7 +360,7 @@ function ForecastCard({
     <div
       className={
         featured
-          ? "rounded-2xl border border-orange-300 bg-orange-50/95 p-5 text-zinc-950 shadow-xl backdrop-blur"
+          ? "rounded-2xl border border-orange-200 bg-orange-50/95 p-5 text-zinc-950 shadow-2xl shadow-zinc-950/10 backdrop-blur-xl"
           : cardClass
       }
     >

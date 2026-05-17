@@ -120,7 +120,7 @@ function formatUSD(n: number) {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-white/80 bg-white/95 p-5 text-zinc-950 shadow-xl shadow-zinc-950/10 backdrop-blur-xl">
       <div className="text-sm text-zinc-500">{label}</div>
       <div className="mt-2 text-3xl font-black text-zinc-950">{value}</div>
     </div>
@@ -350,9 +350,9 @@ export default function IncomePlanPage() {
   const overGoal = Math.max(0, plannedIncome - gapThisWeek);
 
   return (
-    <main className="min-h-screen bg-zinc-950/82 backdrop-blur-md text-white">
+    <main className="min-h-screen bg-zinc-950/80 backdrop-blur-md text-white">
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 md:p-8 shadow-2xl">
+        <div className="rounded-2xl border border-white/40 bg-zinc-950/70 p-6 shadow-2xl backdrop-blur-xl md:p-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
@@ -361,7 +361,7 @@ export default function IncomePlanPage() {
               <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
                 Close the Gap
               </h1>
-              <p className="mt-3 max-w-2xl text-lg text-zinc-300">
+              <p className="mt-3 max-w-2xl text-lg font-semibold text-zinc-200">
                 Add side hustle options and see whether your plan covers this week’s shortfall.
               </p>
             </div>
@@ -377,7 +377,7 @@ export default function IncomePlanPage() {
           </div>
 
           {message ? (
-            <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
+            <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/95 p-4 text-sm font-bold text-emerald-950">
               {message}
             </div>
           ) : null}
@@ -394,7 +394,7 @@ export default function IncomePlanPage() {
           </div>
 
           <div className="mt-8 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+            <div className="rounded-2xl border border-white/80 bg-white/95 p-6 text-zinc-950 shadow-2xl shadow-zinc-950/10 backdrop-blur-xl">
               <h2 className="text-2xl font-black">Add income option</h2>
               <p className="mt-1 text-sm text-zinc-500">
                 Examples: DoorDash, tutoring, consulting, online sales, babysitting.
@@ -471,18 +471,18 @@ export default function IncomePlanPage() {
             </div>
 
             <div className="grid gap-6">
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+              <div className="rounded-2xl border border-white/80 bg-white/95 p-6 text-zinc-950 shadow-2xl shadow-zinc-950/10 backdrop-blur-xl">
                 <h2 className="text-2xl font-black">Progress</h2>
                 <div className="mt-5">
                   <ProgressBar current={plannedIncome} goal={gapThisWeek} />
                 </div>
 
                 <div className="mt-6 grid gap-3">
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
+                  <div className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white/90 p-4 shadow-sm">
                     <span className="text-zinc-500">Gap this week</span>
                     <span className="font-bold">{formatUSD(gapThisWeek)}</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
+                  <div className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white/90 p-4 shadow-sm">
                     <span className="text-zinc-500">Planned income</span>
                     <span className="font-bold">{formatUSD(plannedIncome)}</span>
                   </div>
@@ -492,7 +492,7 @@ export default function IncomePlanPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 rounded-2xl bg-zinc-50 p-4 text-sm leading-6 text-zinc-700">
+                <div className="mt-6 rounded-2xl border border-zinc-200 bg-white/90 p-4 text-sm font-semibold leading-6 text-zinc-700 shadow-sm">
                   {gapThisWeek === 0
                     ? "You currently have no weekly gap based on your entries."
                     : remainingGap === 0
@@ -501,15 +501,15 @@ export default function IncomePlanPage() {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
+              <div className="rounded-2xl border border-white/80 bg-white/95 p-6 text-zinc-950 shadow-2xl shadow-zinc-950/10 backdrop-blur-xl">
                 <h2 className="text-2xl font-black">Income plan</h2>
                 <div className="mt-5 grid gap-3">
                   {loading ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                    <div className="rounded-2xl border border-zinc-200 bg-white/90 p-4 text-sm font-semibold text-zinc-600 shadow-sm">
                       Loading income options...
                     </div>
                   ) : sideHustles.length === 0 ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                    <div className="rounded-2xl border border-zinc-200 bg-white/90 p-4 text-sm font-semibold text-zinc-600 shadow-sm">
                       No income options added yet.
                     </div>
                   ) : (
@@ -519,7 +519,7 @@ export default function IncomePlanPage() {
                       return (
                         <div
                           key={row.id}
-                          className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
+                          className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white/90 p-4 shadow-sm"
                         >
                           <div>
                             <div className="font-semibold">{row.name}</div>

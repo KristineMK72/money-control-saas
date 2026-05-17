@@ -27,7 +27,7 @@ const imFell = IM_Fell_English({
 });
 
 export const metadata: Metadata = {
-  title: "AskBen — Financial Triage",
+  title: "AskBen - Financial Triage",
   description: "Stop financial chaos. See exactly what to pay first.",
   metadataBase: new URL("https://www.askben.buzz"),
   manifest: "/manifest.json",
@@ -77,6 +77,7 @@ export const viewport: Viewport = {
 
 const navLinks = [
   { href: "/", label: "Home" },
+  { href: "/world", label: "BenWorld" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/spend", label: "Spend" },
   { href: "/income", label: "Income" },
@@ -92,7 +93,8 @@ const navLinks = [
   { href: "/dispute-letter", label: "Dispute Letter" },
   { href: "/goodwill-letter", label: "Goodwill Letter" },
   { href: "/chat", label: "Ask Ben" },
-  { href: "/signup", label: "Signup / Login" },
+  { href: "/signup", label: "Signup" },
+  { href: "/login", label: "Login" },
 ];
 
 function NavLink({

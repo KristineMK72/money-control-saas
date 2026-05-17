@@ -32,8 +32,8 @@ function money(n: number) {
   });
 }
 
-const shellClass = "rounded-[2rem] border border-white/20 bg-slate-950/75 p-6 shadow-2xl backdrop-blur-md md:p-8";
-const cardClass = "rounded-2xl border border-white/60 bg-white/97 p-6 shadow-2xl backdrop-blur-xl cursor-pointer transition hover:bg-white";
+const shellClass = "rounded-2xl border border-white/40 bg-slate-950/70 p-6 shadow-2xl backdrop-blur-xl md:p-8";
+const cardClass = "rounded-2xl border border-white/80 bg-white/95 p-6 text-zinc-950 shadow-2xl shadow-zinc-950/10 backdrop-blur-xl transition hover:bg-white";
 
 export default function CrisisPage() {
   const supabase = createSupabaseBrowserClient();
@@ -113,11 +113,11 @@ export default function CrisisPage() {
       <div className={`${shellClass} mx-auto max-w-6xl space-y-10`}>
         <header>
           <h1 className="text-5xl font-black text-white">Crisis Mode</h1>
-          <p className="mt-2 text-lg text-white/80">72-hour triage — Focus on what matters most right now.</p>
+          <p className="mt-2 text-lg font-semibold text-white/90">72-hour triage - focus on what matters most right now.</p>
         </header>
 
         {/* Ben’s Guidance */}
-        <div className="rounded-3xl border border-slate-200 bg-slate-950 p-6 shadow-xl">
+        <div className="rounded-2xl border border-white/20 bg-slate-950/80 p-6 shadow-xl backdrop-blur-xl">
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </div>
 
@@ -137,7 +137,7 @@ export default function CrisisPage() {
                 <div
                   key={item.id}
                   onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                  className="rounded-2xl border border-white/40 bg-white/80 p-5 cursor-pointer hover:bg-white transition"
+                  className="cursor-pointer rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-sm transition hover:bg-white"
                 >
                   <div className="flex items-center gap-4">
                     <div className="text-3xl font-black text-emerald-600">#{i + 1}</div>
@@ -149,8 +149,8 @@ export default function CrisisPage() {
                   </div>
 
                   {expandedId === item.id && (
-                    <div className="mt-4 pt-4 border-t border-white/30 text-sm text-zinc-700">
-                      Due: {item.dueDate || "No date"} • Type: {item.category}
+                    <div className="mt-4 border-t border-zinc-200 pt-4 text-sm font-semibold text-zinc-700">
+                      Due: {item.dueDate || "No date"} - Type: {item.category}
                     </div>
                   )}
                 </div>
@@ -169,7 +169,7 @@ export default function CrisisPage() {
               <div
                 key={item.id}
                 onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                className="flex items-center justify-between rounded-2xl border border-white/40 bg-white/80 p-5 cursor-pointer hover:bg-white transition"
+                className="flex cursor-pointer items-center justify-between rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-sm transition hover:bg-white"
               >
                 <div className="flex items-center gap-4">
                   <span className="font-mono text-sm text-zinc-500">#{i + 1}</span>

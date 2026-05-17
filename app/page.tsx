@@ -7,7 +7,7 @@ export default function HomePage() {
     <main className="min-h-screen bg-transparent text-white">
       <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="max-w-3xl rounded-3xl border border-white/25 bg-slate-950/78 p-8 shadow-2xl">
+          <div className="max-w-3xl rounded-2xl border border-white/40 bg-slate-950/70 p-8 shadow-2xl backdrop-blur-xl">
             <div className="mb-4 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-1 text-xs uppercase tracking-[0.2em] text-cyan-100">
               Financial Triage
             </div>
@@ -19,7 +19,7 @@ export default function HomePage() {
               </span>
             </h1>
 
-            <p className="mt-6 max-w-2xl text-lg text-white/80">
+            <p className="mt-6 max-w-2xl text-lg font-semibold text-white/90">
               Upload bills, track spending, and get a calm, clear action plan
               for what matters most today.
             </p>
@@ -47,7 +47,7 @@ export default function HomePage() {
               </a>
             </div>
 
-            <p className="mt-4 text-sm text-white/70">
+            <p className="mt-4 text-sm font-semibold text-white/80">
               Free trial feel. Upgrade later when you want smarter planning
               tools.
             </p>
@@ -56,7 +56,7 @@ export default function HomePage() {
           </div>
 
           <div className="flex justify-center lg:justify-end">
-            <div className="w-full max-w-md rounded-3xl border border-white/25 bg-slate-950/80 p-6 shadow-2xl shadow-cyan-500/10">
+            <div className="w-full max-w-md rounded-2xl border border-white/40 bg-slate-950/70 p-6 shadow-2xl shadow-cyan-500/10 backdrop-blur-xl">
               <div className="overflow-hidden rounded-2xl border border-white/15 bg-slate-900">
                 <Image
                   src="/ben.png"
@@ -149,9 +149,9 @@ export default function HomePage() {
 
 function FeatureCard({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-2xl border border-white/25 bg-slate-950/78 p-5 shadow-xl">
-      <h2 className="text-lg font-bold text-white">{title}</h2>
-      <p className="mt-2 text-sm text-white/75">{text}</p>
+    <div className="rounded-2xl border border-white/80 bg-white/95 p-5 text-zinc-950 shadow-xl shadow-zinc-950/10 backdrop-blur-xl">
+      <h2 className="text-lg font-black text-zinc-950">{title}</h2>
+      <p className="mt-2 text-sm font-semibold leading-6 text-zinc-700">{text}</p>
     </div>
   );
 }
@@ -179,28 +179,28 @@ function PricingCard({
     <div
       className={
         highlighted
-          ? "rounded-3xl border border-cyan-300/40 bg-slate-950/82 p-8 shadow-2xl shadow-cyan-500/10"
-          : "rounded-3xl border border-white/25 bg-slate-950/78 p-8 shadow-xl"
+          ? "rounded-2xl border border-cyan-200 bg-white/95 p-8 text-zinc-950 shadow-2xl shadow-cyan-500/10 backdrop-blur-xl"
+          : "rounded-2xl border border-white/80 bg-white/95 p-8 text-zinc-950 shadow-xl shadow-zinc-950/10 backdrop-blur-xl"
       }
     >
       <div
         className={
           highlighted
-            ? "text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200"
-            : "text-sm font-semibold uppercase tracking-[0.2em] text-white/60"
+            ? "text-sm font-black uppercase tracking-[0.2em] text-cyan-700"
+            : "text-sm font-black uppercase tracking-[0.2em] text-zinc-500"
         }
       >
         {eyebrow}
       </div>
 
-      <div className="mt-3 text-4xl font-black text-white">
+      <div className="mt-3 text-4xl font-black text-zinc-950">
         {price}
-        <span className="text-lg text-white/60">{suffix}</span>
+        <span className="text-lg text-zinc-500">{suffix}</span>
       </div>
 
-      <p className="mt-4 text-sm leading-6 text-white/75">{text}</p>
+      <p className="mt-4 text-sm font-semibold leading-6 text-zinc-700">{text}</p>
 
-      <ul className="mt-6 space-y-2 text-sm text-white/75">
+      <ul className="mt-6 space-y-2 text-sm font-semibold text-zinc-700">
         {items.map((item) => (
           <li key={item}>- {item}</li>
         ))}
@@ -211,8 +211,8 @@ function PricingCard({
           href={href}
           className={
             highlighted
-              ? "inline-flex rounded-xl border border-white/20 bg-white/10 px-5 py-3 font-semibold text-white transition hover:bg-white/15"
-              : "inline-flex rounded-xl border border-white/25 bg-white/10 px-5 py-3 font-semibold text-white transition hover:bg-white/15"
+              ? "inline-flex rounded-xl border border-zinc-200 bg-white px-5 py-3 font-semibold text-zinc-950 transition hover:bg-zinc-100"
+              : "inline-flex rounded-xl border border-zinc-200 bg-white px-5 py-3 font-semibold text-zinc-950 transition hover:bg-zinc-100"
           }
         >
           Create account

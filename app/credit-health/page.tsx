@@ -32,8 +32,8 @@ function pct(n: number) {
   return `${Number(n || 0).toFixed(0)}%`;
 }
 
-const cardClass = "rounded-2xl border border-white/60 bg-white/97 p-6 shadow-2xl backdrop-blur-xl";
-const shellClass = "rounded-[2rem] border border-white/20 bg-slate-950/75 p-6 shadow-2xl backdrop-blur-md md:p-8";
+const cardClass = "rounded-2xl border border-white/80 bg-white/95 p-6 text-zinc-950 shadow-2xl shadow-zinc-950/10 backdrop-blur-xl";
+const shellClass = "rounded-2xl border border-white/40 bg-slate-950/70 p-6 shadow-2xl backdrop-blur-xl md:p-8";
 
 export default function CreditHealthPage() {
   const supabase = createSupabaseBrowserClient();
@@ -108,11 +108,11 @@ export default function CreditHealthPage() {
       <div className={`${shellClass} mx-auto max-w-6xl space-y-10`}>
         <header>
           <h1 className="text-5xl font-black text-white">Credit Health</h1>
-          <p className="text-white/80 mt-2">Understand your score pressure and fastest improvement moves.</p>
+          <p className="mt-2 text-lg font-semibold text-white/90">Understand your score pressure and fastest improvement moves.</p>
         </header>
 
         {/* Ben's Insight */}
-        <div className="rounded-3xl border border-slate-200 bg-slate-950 p-6 shadow-xl">
+        <div className="rounded-2xl border border-white/20 bg-slate-950/80 p-6 shadow-xl backdrop-blur-xl">
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </div>
 
@@ -136,7 +136,7 @@ export default function CreditHealthPage() {
                   <div>
                     <div className="font-semibold text-lg">{card.name}</div>
                     <div className="text-sm text-zinc-600">
-                      Balance {formatUSD(card.balance)} • Limit {formatUSD(card.credit_limit || 0)}
+                      Balance {formatUSD(card.balance)} - Limit {formatUSD(card.credit_limit || 0)}
                     </div>
                   </div>
                   <div className={`px-4 py-1 rounded-full text-sm font-bold ${card.utilization >= 80 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>

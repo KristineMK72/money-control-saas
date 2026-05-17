@@ -128,10 +128,10 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950/88 backdrop-blur-md text-white">
+    <main className="min-h-screen bg-zinc-950/90 backdrop-blur-md text-white">
       <div className="mx-auto flex min-h-screen max-w-6xl items-center px-6 py-16">
         <div className="grid w-full gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-8 shadow-2xl">
+          <div className="rounded-2xl border border-white/40 bg-zinc-950/70 p-8 shadow-2xl backdrop-blur-xl">
             <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
               Get started
             </div>
@@ -146,8 +146,8 @@ export default function SignupPage() {
                 : "Log in to continue with your bills, forecast, payments, and crisis planning."}
             </p>
 
-            <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
-              <div className="text-sm text-white/50">Selected plan</div>
+            <div className="mt-8 rounded-2xl border border-white/25 bg-white/10 p-5 shadow-xl backdrop-blur">
+              <div className="text-sm font-semibold text-white/70">Selected plan</div>
               <div className="mt-2 text-2xl font-black">{planLabel}</div>
               <div className="mt-2 text-sm text-white/60">
                 {plan === "free"
@@ -204,7 +204,7 @@ export default function SignupPage() {
             </div>
           </div>
 
-          <div className="rounded-[32px] border border-white/10 bg-white p-8 text-zinc-950 shadow-2xl">
+          <div className="rounded-2xl border border-white/80 bg-white/95 p-8 text-zinc-950 shadow-2xl shadow-zinc-950/10 backdrop-blur-xl">
             <h2 className="text-2xl font-black">
               {mode === "signup" ? "Create account" : "Login"}
             </h2>

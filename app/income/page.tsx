@@ -3,6 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
+  AppShell,
+  DarkPanel,
+  MetricCard,
+  Notice,
+  PageHeader,
+  Panel,
+  inputClass,
+  moneyButtonClass,
+} from "@/components/AppFrame";
+import BenBubble from "@/components/BenBubble";
+import PaperScrollScanner from "@/components/PaperScrollScanner";
+import { BenEngine } from "@/lib/ben/engine";
+import {
   ocrImageFile,
   parseTransactionsScreenshot,
 } from "@/lib/money/receiptOcr";
@@ -32,15 +45,6 @@ function money(n: number) {
   });
 }
 
-const shellClass =
-  "rounded-[2rem] border border-white/25 bg-slate-950/45 p-4 shadow-2xl backdrop-blur-sm md:p-6";
-
-const cardClass =
-  "rounded-2xl border border-white/45 bg-white/80 p-5 shadow-xl backdrop-blur-md";
-
-const inputClass =
-  "w-full rounded-xl border border-zinc-300 bg-white/95 px-4 py-3 text-zinc-950 outline-none focus:border-emerald-500";
-
 export default function IncomePage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
@@ -50,6 +54,7 @@ export default function IncomePage() {
   const [message, setMessage] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
   const [openPanel, setOpenPanel] = useState<string | null>("add");
+  const [imageFile, setImageFile] = useState<File | null>(null);
 
   const [sources, setSources] = useState<IncomeSourceRow[]>([]);
   const [entries, setEntries] = useState<IncomeEntryRow[]>([]);
@@ -139,6 +144,7 @@ export default function IncomePage() {
       }
 
       setOpenPanel("add");
+      setImageFile(null);
       setMessage("Scanner filled what it could. Check it, then tap Add Income.");
     } catch (error) {
       console.error("Income scanner error:", error);
@@ -242,59 +248,57 @@ export default function IncomePage() {
   }, [entries]);
 
   const latestIncome = entries[0];
+  const benInsight = BenEngine.getForecastMessage({
+    name: null,
+    timeframeLabel: "Income",
+    totalNeeded: 0,
+    incomeSoFar: totalIncome,
+    incomeGap: 0,
+    dailyIncomeNeeded: 0,
+  });
 
   return (
-    <main className="min-h-screen bg-transparent p-4 text-zinc-900 md:p-6">
-      <div className={`${shellClass} mx-auto max-w-5xl space-y-5`}>
-        <header className={cardClass}>
-          <div className="text-xs font-black uppercase tracking-[0.25em] text-emerald-700">
-            AskBen Income
-          </div>
+    <AppShell max="max-w-5xl">
+      <PageHeader
+        eyebrow="AskBen Income"
+        title="Income"
+        subtitle="Track money coming in without burying the whole page in forms."
+      />
 
-          <h1 className="mt-2 text-3xl font-black text-zinc-950 md:text-4xl">
-            Income
-          </h1>
+      {message && <Notice>{message}</Notice>}
 
-          <p className="mt-2 max-w-2xl text-sm font-semibold text-zinc-700">
-            Track money coming in without burying the whole page in forms.
-          </p>
+      <DarkPanel>
+        <BenBubble message={benInsight.text} mood={benInsight.mood} />
+      </DarkPanel>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <MiniStat label="Total Income" value={money(totalIncome)} />
-            <MiniStat label="Sources" value={String(sources.length)} />
-            <MiniStat label="Entries" value={String(entries.length)} />
-          </div>
+      <section className="grid gap-4 md:grid-cols-3">
+        <MetricCard
+          label="Total income"
+          value={money(totalIncome)}
+          tone="emerald"
+        />
+        <MetricCard label="Sources" value={String(sources.length)} tone="sky" />
+        <MetricCard label="Entries" value={String(entries.length)} tone="zinc" />
+      </section>
 
-          {message && (
-            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50/95 p-3 text-sm font-semibold text-amber-900">
-              {message}
-            </div>
-          )}
-        </header>
-
-        <DropdownCard
+      <DropdownCard
           id="scanner"
           title="Scan income"
           value={scanning ? "Scanning..." : "Use camera/photo"}
           openPanel={openPanel}
           setOpenPanel={setOpenPanel}
         >
-          <p className="text-sm font-semibold text-zinc-700">
-            Upload a paycheck screenshot, deposit screenshot, or receipt-style
-            income image. AskBen will try to fill in the source and amount.
-          </p>
-
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            disabled={scanning}
-            onChange={(e) => void scanIncomeImage(e.target.files?.[0] || null)}
-            className="mt-4 block w-full rounded-xl border border-dashed border-emerald-300 bg-emerald-50/80 p-4 text-sm font-bold text-emerald-900"
+          <PaperScrollScanner
+            title="Scan Income"
+            description="Upload a paycheck, deposit screenshot, or income proof. Ben will attempt the source and amount for thy review."
+            file={imageFile}
+            busy={scanning}
+            onFileChange={setImageFile}
+            onScan={() => void scanIncomeImage(imageFile)}
           />
-        </DropdownCard>
+      </DropdownCard>
 
-        <DropdownCard
+      <DropdownCard
           id="add"
           title="Add Income"
           value={sourceName || amount ? "Draft ready" : "Manual entry"}
@@ -342,19 +346,19 @@ export default function IncomePage() {
             <button
               onClick={handleAddIncome}
               disabled={saving || !userId}
-              className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white shadow-lg transition hover:bg-emerald-700 disabled:opacity-60"
+              className={moneyButtonClass}
             >
               {saving ? "Saving..." : "Add Income"}
             </button>
           </div>
-        </DropdownCard>
+      </DropdownCard>
 
-        <DropdownCard
+      <DropdownCard
           id="entries"
           title="Income Entries"
           value={
             latestIncome
-              ? `${latestIncome.source_name} · ${money(Number(latestIncome.amount || 0))}`
+              ? `${latestIncome.source_name} - ${money(Number(latestIncome.amount || 0))}`
               : "No income yet"
           }
           openPanel={openPanel}
@@ -371,7 +375,7 @@ export default function IncomePage() {
               entries.map((e) => (
                 <div
                   key={e.id}
-                  className="flex flex-col gap-3 rounded-2xl border border-white/60 bg-white/85 p-4 shadow-sm md:flex-row md:items-center md:justify-between"
+                  className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between"
                 >
                   <div>
                     <div className="text-base font-black text-zinc-950">
@@ -380,7 +384,7 @@ export default function IncomePage() {
 
                     <div className="text-sm font-semibold text-zinc-600">
                       {e.date_iso}
-                      {e.note ? ` · ${e.note}` : ""}
+                      {e.note ? ` - ${e.note}` : ""}
                     </div>
                   </div>
 
@@ -400,9 +404,8 @@ export default function IncomePage() {
               ))
             )}
           </div>
-        </DropdownCard>
-      </div>
-    </main>
+      </DropdownCard>
+    </AppShell>
   );
 }
 
@@ -424,7 +427,7 @@ function DropdownCard({
   const open = openPanel === id;
 
   return (
-    <article className={cardClass}>
+    <Panel>
       <button
         type="button"
         onClick={() => setOpenPanel(open ? null : id)}
@@ -439,28 +442,17 @@ function DropdownCard({
             <p className="mt-1 text-2xl font-black text-zinc-950">{value}</p>
           </div>
 
-          <span className="rounded-full bg-zinc-950 px-3 py-1 text-xs font-black text-white">
+          <span className="shrink-0 rounded-full bg-zinc-950 px-3 py-1 text-xs font-black text-white">
             {open ? "Hide" : "Open"}
           </span>
         </div>
       </button>
 
       {open && (
-        <div className="mt-4 rounded-2xl border border-white/70 bg-white/82 p-4 backdrop-blur-md">
+        <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
           {children}
         </div>
       )}
-    </article>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-white/60 bg-white/75 p-4 shadow-sm backdrop-blur-sm">
-      <div className="text-xs font-black uppercase tracking-wide text-zinc-600">
-        {label}
-      </div>
-      <div className="mt-1 text-xl font-black text-zinc-950">{value}</div>
-    </div>
+    </Panel>
   );
 }

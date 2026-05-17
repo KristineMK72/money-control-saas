@@ -47,16 +47,16 @@ ${name}
     navigator.clipboard.writeText(letter);
   }
   return (
-    <main className="min-h-screen bg-zinc-950/82 backdrop-blur-md text-white">
+    <main className="min-h-screen bg-zinc-950/80 backdrop-blur-md text-white">
       <div className="mx-auto max-w-4xl px-6 py-10">
 
-        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-8 shadow-2xl">
+        <div className="rounded-2xl border border-white/40 bg-zinc-950/70 p-8 shadow-2xl backdrop-blur-xl">
 
           <h1 className="text-4xl font-black">
             Goodwill Letter Generator
           </h1>
 
-          <p className="mt-3 text-zinc-300">
+          <p className="mt-3 text-lg font-semibold text-zinc-200">
             AskBen helps you generate a respectful goodwill request to remove a late payment.
           </p>
 
@@ -66,42 +66,42 @@ ${name}
               placeholder="Your name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="rounded-xl bg-white/10 px-4 py-3"
+              className="rounded-xl border border-white/80 bg-white/95 px-4 py-3 text-zinc-950 shadow-sm outline-none placeholder:text-zinc-500"
             />
 
             <input
               placeholder="Creditor (ex: Capital One)"
               value={creditor}
               onChange={(e) => setCreditor(e.target.value)}
-              className="rounded-xl bg-white/10 px-4 py-3"
+              className="rounded-xl border border-white/80 bg-white/95 px-4 py-3 text-zinc-950 shadow-sm outline-none placeholder:text-zinc-500"
             />
 
             <input
               placeholder="Account name or number"
               value={account}
               onChange={(e) => setAccount(e.target.value)}
-              className="rounded-xl bg-white/10 px-4 py-3"
+              className="rounded-xl border border-white/80 bg-white/95 px-4 py-3 text-zinc-950 shadow-sm outline-none placeholder:text-zinc-500"
             />
 
             <input
               placeholder="Late payment date"
               value={lateDate}
               onChange={(e) => setLateDate(e.target.value)}
-              className="rounded-xl bg-white/10 px-4 py-3"
+              className="rounded-xl border border-white/80 bg-white/95 px-4 py-3 text-zinc-950 shadow-sm outline-none placeholder:text-zinc-500"
             />
 
             <textarea
               placeholder="What caused the late payment?"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="rounded-xl bg-white/10 px-4 py-3"
+              className="rounded-xl border border-white/80 bg-white/95 px-4 py-3 text-zinc-950 shadow-sm outline-none placeholder:text-zinc-500"
             />
 
             <textarea
               placeholder="What has improved since then?"
               value={improvement}
               onChange={(e) => setImprovement(e.target.value)}
-              className="rounded-xl bg-white/10 px-4 py-3"
+              className="rounded-xl border border-white/80 bg-white/95 px-4 py-3 text-zinc-950 shadow-sm outline-none placeholder:text-zinc-500"
             />
 
             <button
@@ -120,7 +120,7 @@ ${name}
                 Your Letter
               </h2>
 
-              <pre className="mt-4 whitespace-pre-wrap rounded-xl bg-white p-6 text-black">
+              <pre className="mt-4 whitespace-pre-wrap rounded-2xl border border-white/80 bg-white/95 p-6 text-zinc-950 shadow-xl">
                 {letter}
               </pre>
 
