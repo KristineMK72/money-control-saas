@@ -148,9 +148,6 @@ export default function CreditHealthPage() {
           )}
         </div>
 
-        {/* Improvement Plan & Tools */}
-        {/* (Keep or expand your existing great plan sections here) */}
-
       </div>
     </main>
   );

@@ -219,7 +219,6 @@ export default function DebtPage() {
         <section className="space-y-4">
           {debts.map((debt) => (
             <div key={debt.id} className={cardClass}>
-              {/* Your existing debt card content - I can expand this further if you want */}
               <div className="flex justify-between">
                 <div>
                   <h3 className="font-black text-xl">{debt.name}</h3>
