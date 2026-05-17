@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import StripeCheckoutButton from "@/components/StripeCheckoutButton";
+import SubscriptionOptions from "@/components/SubscriptionOptions";
 
 type Mode = "signup" | "login";
 
@@ -29,6 +31,14 @@ export default function SignupPage() {
     const incomingMode = params.get("mode");
     if (incomingMode === "login" || incomingMode === "signup") {
       setMode(incomingMode);
+    }
+
+    const checkout = params.get("checkout");
+    if (checkout === "success") {
+      setMessage("Stripe checkout complete. Create or log into your account to finish setup.");
+    }
+    if (checkout === "cancelled") {
+      setMessage("Checkout was cancelled. Your selected plan is still here.");
     }
   }, []);
 
@@ -81,7 +91,11 @@ export default function SignupPage() {
       return;
     }
 
-    setMessage("Account created. Check your email for confirmation, then log in.");
+    setMessage(
+      plan === "free"
+        ? "Account created. Check your email for confirmation, then log in."
+        : "Account created. Check your email, then continue to Stripe for your subscription."
+    );
     setMode("login");
     setPassword("");
     setConfirmPassword("");
@@ -138,9 +152,24 @@ export default function SignupPage() {
               <div className="mt-2 text-sm text-white/60">
                 {plan === "free"
                   ? "You can start free now and upgrade later."
-                  : "You selected a paid plan. Billing can be connected next with Stripe."}
+                  : "You selected a paid plan. Stripe checkout is ready when you are."}
               </div>
+              {plan !== "free" ? (
+                <StripeCheckoutButton
+                  plan={plan === "yearly" ? "yearly" : "monthly"}
+                  className="mt-4 w-full rounded-xl bg-white px-5 py-3 font-black text-zinc-950 transition hover:bg-zinc-100 disabled:opacity-60"
+                >
+                  Continue to Stripe
+                </StripeCheckoutButton>
+              ) : null}
             </div>
+
+            <SubscriptionOptions
+              selectedPlan={plan}
+              onSelectPlan={setPlan}
+              compact
+              className="mt-5"
+            />
 
             <div className="mt-8 flex flex-wrap gap-3">
               <button

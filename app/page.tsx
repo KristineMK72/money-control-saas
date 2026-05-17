@@ -1,4 +1,6 @@
 import Image from "next/image";
+import StripeCheckoutButton from "@/components/StripeCheckoutButton";
+import SubscriptionOptions from "@/components/SubscriptionOptions";
 
 export default function HomePage() {
   return (
@@ -49,6 +51,8 @@ export default function HomePage() {
               Free trial feel. Upgrade later when you want smarter planning
               tools.
             </p>
+
+            <SubscriptionOptions compact className="mt-6" />
           </div>
 
           <div className="flex justify-center lg:justify-end">
@@ -70,9 +74,9 @@ export default function HomePage() {
                 </div>
 
                 <p className="mt-3 text-lg font-semibold leading-7 text-white">
-                  “America trusted me with the $100 bill.
+                  &quot;America trusted me with the $100 bill.
                   <br />
-                  I can probably help you with your electric bill too.”
+                  I can probably help you with your electric bill too.&quot;
                 </p>
 
                 <p className="mt-3 text-sm text-white/75">
@@ -84,7 +88,7 @@ export default function HomePage() {
                   href="/chat"
                   className="mt-5 inline-flex rounded-xl bg-white px-5 py-3 font-semibold text-black transition hover:bg-zinc-100"
                 >
-                  Ask Ben 💰
+                  Ask Ben
                 </a>
               </div>
             </div>
@@ -198,20 +202,32 @@ function PricingCard({
 
       <ul className="mt-6 space-y-2 text-sm text-white/75">
         {items.map((item) => (
-          <li key={item}>• {item}</li>
+          <li key={item}>- {item}</li>
         ))}
       </ul>
 
-      <a
-        href={href}
-        className={
-          highlighted
-            ? "mt-8 inline-flex rounded-xl bg-white px-5 py-3 font-semibold text-black transition hover:bg-zinc-100"
-            : "mt-8 inline-flex rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black transition hover:opacity-90"
-        }
-      >
-        {cta}
-      </a>
+      <div className="mt-8 flex flex-wrap gap-3">
+        <a
+          href={href}
+          className={
+            highlighted
+              ? "inline-flex rounded-xl border border-white/20 bg-white/10 px-5 py-3 font-semibold text-white transition hover:bg-white/15"
+              : "inline-flex rounded-xl border border-white/25 bg-white/10 px-5 py-3 font-semibold text-white transition hover:bg-white/15"
+          }
+        >
+          Create account
+        </a>
+        <StripeCheckoutButton
+          plan={href.includes("yearly") ? "yearly" : "monthly"}
+          className={
+            highlighted
+              ? "inline-flex rounded-xl bg-white px-5 py-3 font-semibold text-black transition hover:bg-zinc-100 disabled:opacity-60"
+              : "inline-flex rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black transition hover:opacity-90 disabled:opacity-60"
+          }
+        >
+          {cta}
+        </StripeCheckoutButton>
+      </div>
     </div>
   );
 }

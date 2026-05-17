@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import SubscriptionOptions from "@/components/SubscriptionOptions";
 
 export default function LoginPage() {
   const supabase = createSupabaseBrowserClient();
@@ -104,10 +105,14 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <a
-        href="/signup"
-        style={{ marginTop: 20, color: "#60a5fa" }}
-      >
+      <section style={{ width: "100%", maxWidth: 720, marginTop: 28 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 12 }}>
+          Premium options
+        </h2>
+        <SubscriptionOptions />
+      </section>
+
+      <a href="/signup" style={{ marginTop: 20, color: "#60a5fa" }}>
         Go to Signup
       </a>
     </main>
