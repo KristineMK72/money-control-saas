@@ -1,124 +1,152 @@
-"use client";
-
-import Image from "next/image";
 import Link from "next/link";
 
-type MapLocation = {
-  name: string;
+type BuildingLink = {
+  label: string;
   href: string;
   top: string;
   left: string;
-  tone: "emerald" | "amber" | "cyan" | "rose" | "sky" | "yellow";
 };
 
-const locations: MapLocation[] = [
+const buildings: BuildingLink[] = [
   {
-    name: "Income",
+    label: "Income",
     href: "/income",
-    top: "24%",
-    left: "48%",
-    tone: "emerald",
+    top: "20%",
+    left: "52%",
   },
   {
-    name: "Spend",
+    label: "Spend",
     href: "/spend",
-    top: "27%",
-    left: "68%",
-    tone: "amber",
+    top: "23%",
+    left: "72%",
   },
   {
-    name: "Dashboard",
+    label: "Dashboard",
     href: "/dashboard",
-    top: "47%",
-    left: "49%",
-    tone: "cyan",
+    top: "43%",
+    left: "50%",
   },
   {
-    name: "Bills",
+    label: "Bills",
     href: "/bills",
-    top: "47%",
-    left: "78%",
-    tone: "amber",
+    top: "43%",
+    left: "82%",
   },
   {
-    name: "Debt",
+    label: "Debt",
     href: "/debt",
-    top: "63%",
+    top: "64%",
     left: "24%",
-    tone: "rose",
   },
   {
-    name: "Forecast",
+    label: "Achievements",
+    href: "/achievements",
+    top: "69%",
+    left: "71%",
+  },
+  {
+    label: "Forecast",
     href: "/forecast",
     top: "84%",
     left: "50%",
-    tone: "sky",
-  },
-  {
-    name: "Achievements",
-    href: "/achievements",
-    top: "69%",
-    left: "69%",
-    tone: "yellow",
   },
 ];
 
-function toneClass(tone: MapLocation["tone"]) {
-  if (tone === "emerald") return "text-emerald-100 border-emerald-200/50";
-  if (tone === "amber") return "text-amber-100 border-amber-200/50";
-  if (tone === "cyan") return "text-cyan-100 border-cyan-200/50";
-  if (tone === "rose") return "text-rose-100 border-rose-200/50";
-  if (tone === "sky") return "text-sky-100 border-sky-200/50";
-  return "text-yellow-100 border-yellow-200/50";
-}
-
 export default function BenWorldMap() {
   return (
-    <section className="rounded-2xl border border-white/40 bg-zinc-950/80 p-5 shadow-2xl backdrop-blur-xl md:p-8">
-      <div className="mb-6 rounded-2xl border border-white/80 bg-white/95 p-6 text-zinc-950 shadow-2xl">
-        <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-700">
-          BenWorld
-        </p>
+    <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#120d08] shadow-2xl">
+      {/* HEADER CARD */}
 
-        <h1 className="mt-2 text-4xl font-black tracking-tight md:text-5xl">
-          Choose a building
-        </h1>
+      <div className="border-b border-white/10 bg-black/30 p-5 md:p-8">
+        <div className="rounded-[1.5rem] bg-white/95 p-5 text-zinc-950 shadow-2xl md:p-8">
+          <p className="text-xs font-black uppercase tracking-[0.35em] text-emerald-700">
+            BenWorld
+          </p>
 
-        <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-zinc-700 md:text-base">
-          Explore your financial kingdom. Each building opens a working part of
-          AskBen.
-        </p>
+          <h1 className="mt-3 text-4xl font-black leading-none md:text-6xl">
+            Choose a building
+          </h1>
+
+          <p className="mt-4 max-w-2xl text-lg font-bold leading-relaxed text-zinc-700 md:text-2xl">
+            Explore your financial kingdom. Each building opens a working part
+            of AskBen.
+          </p>
+        </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-3xl border border-amber-900/40 bg-[#1a1207] shadow-2xl">
-        <Image
+      {/* MAP */}
+
+      <div className="relative">
+        <img
           src="/E318B394-AE7B-4031-8666-ADFF7BAF610C.png"
-          alt="BenWorld Map"
-          width={1600}
-          height={1000}
-          priority
-          className="h-auto w-full select-none"
+          alt="BenWorld financial kingdom map"
+          className="block w-full select-none"
+          draggable={false}
         />
 
-        {locations.map((location) => (
+        {/* subtle dark overlay */}
+
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/15" />
+
+        {/* BUILDING BUTTONS */}
+
+        {buildings.map((building) => (
           <Link
-            key={location.name}
-            href={location.href}
-            className="absolute -translate-x-1/2 -translate-y-1/2"
+            key={building.href}
+            href={building.href}
+            className="
+              absolute
+              z-10
+              -translate-x-1/2
+              -translate-y-1/2
+              rounded-full
+              border
+              border-amber-100/60
+              bg-black/82
+              px-2
+              py-1
+              text-[9px]
+              font-black
+              uppercase
+              tracking-[0.14em]
+              text-cyan-100
+              shadow-xl
+              backdrop-blur-md
+              transition-all
+              duration-200
+              hover:scale-105
+              hover:bg-black/92
+              md:px-4
+              md:py-2
+              md:text-xs
+            "
             style={{
-              top: location.top,
-              left: location.left,
+              top: building.top,
+              left: building.left,
             }}
           >
-            <div
-              className={`rounded-full border bg-black/80 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] shadow-2xl backdrop-blur-md transition hover:scale-110 hover:bg-amber-950/90 md:px-4 md:text-xs ${toneClass(
-                location.tone
-              )}`}
-            >
-              {location.name}
-            </div>
+            {building.label}
           </Link>
         ))}
+      </div>
+
+      {/* FOOTER */}
+
+      <div className="grid gap-3 border-t border-white/10 bg-black/25 p-4 text-sm font-semibold text-white/70 md:grid-cols-3 md:p-6">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          Income, spend, bills, debt, and forecast all connect together inside
+          your financial kingdom.
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          BenWorld transforms budgeting into an interactive experience instead
+          of spreadsheets and stress.
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          Future updates can unlock achievements, premium buildings, streaks,
+          and XP progression.
+        </div>
       </div>
     </section>
   );
