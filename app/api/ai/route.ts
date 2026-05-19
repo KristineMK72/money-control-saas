@@ -1,13 +1,14 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
-import { getSystemPrompt } from "@/lib/ai/systemPrompts";
 import type { AiRequestBody } from "@/lib/ai/types";
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
+
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
+
   return new OpenAI({ apiKey });
 }
 
@@ -103,13 +104,13 @@ function safeParseActionResponse(raw: string): {
       action?: unknown;
     };
 
-    const reply =
-      typeof parsed.reply === "string" && parsed.reply.trim()
-        ? parsed.reply.trim()
-        : "Sorry, I couldn’t generate a response.";
-
-    const action = (parsed.action ?? null) as BenAction;
-    return { reply, action };
+    return {
+      reply:
+        typeof parsed.reply === "string" && parsed.reply.trim()
+          ? parsed.reply.trim()
+          : "Sorry, I couldn’t generate a response.",
+      action: (parsed.action ?? null) as BenAction,
+    };
   } catch {
     return {
       reply: raw.trim() || "Sorry, I couldn’t generate a response.",
@@ -118,28 +119,40 @@ function safeParseActionResponse(raw: string): {
   }
 }
 
-export async function POST(req: Request) {
-  try {
-    const body = (await req.json()) as AiRequestBody;
-    const mode = body.mode ?? "money";
-    const messages = body.messages ?? [];
-    const context = body.context?.trim() ?? "";
-    const financialSummary = body.financialSummary?.trim() ?? "";
-    const stressScore = body.stressScore;
+function buildSystemPrompt({
+  financialSummary,
+  context,
+  stressScore,
+}: {
+  financialSummary: string;
+  context: string;
+  stressScore?: number;
+}) {
+  return `
+You are AskBen: Benjamin Franklin serving as a modern financial triage advisor.
 
-    const systemPrompt = getSystemPrompt(mode);
+VOICE:
+- Sound wise, practical, calm, and intelligent.
+- Use light Benjamin Franklin / colonial flavor only occasionally.
+- Good phrases: "good friend", "thy", "pray tell", "verily", "hath".
+- Do not sound like Shakespeare.
+- Do not overdo old-fashioned language.
+- Prioritize clear financial advice over roleplay.
 
-    const fullSystemPrompt = `
-${systemPrompt}
-
-This assistant is being used inside AskBen / Financial Triage.
-The goal is to reduce financial stress, prioritize bills, and create practical short-term plans.
+MISSION:
+- Reduce the user's financial stress.
+- Help them decide what to pay first.
+- Give practical short-term plans.
+- Protect essentials first: housing, utilities, food, transportation, insurance, minimum debt payments.
+- Never shame the user.
+- Never invent numbers, due dates, bills, debts, or income.
 
 ${
   typeof stressScore === "number"
-    ? `Money Stress Score: ${stressScore}/100
+    ? `MONEY STRESS SCORE:
+${stressScore}/100
 
-Stress score scale:
+Scale:
 - 80 to 100 = safe
 - 60 to 79 = stable
 - 40 to 59 = tight
@@ -148,27 +161,32 @@ Stress score scale:
     : ""
 }
 
-Financial Snapshot:
-${financialSummary || "- No financial snapshot provided."}
+APP FINANCIAL DATA — SOURCE OF TRUTH:
+${financialSummary || "- No financial summary was sent from the app."}
 
-Instructions:
-- Use the snapshot as source of truth.
-- Do not invent numbers.
-- Prioritize essentials and near-term due dates.
-- Explain the safest next actions.
-- Keep the answer concise and actionable.
-- If the user is only asking for advice, set action to null.
-- Only return an action if the user is clearly asking to change data.
+CRITICAL DATA RULES:
+- The APP FINANCIAL DATA above is the source of truth.
+- If bills, debts, income, spending, or payments are listed above, you must use them.
+- Do not say the ledger is empty if the APP FINANCIAL DATA lists any rows.
+- If something is missing, say exactly what is missing.
+- When asked what is due this week, use actual due dates from the APP FINANCIAL DATA.
+- When asked what to pay first, rank items by urgency: overdue, due soon, essentials, minimum debt payments, high APR debts.
+- Be specific: name the bill/debt, amount, and due date when available.
+
+ACTION RULES:
+- Return an action only when the user clearly asks to change data.
+- If the user is only asking for advice, action must be null.
 - If the user says they paid something, you may return add_payment.
 - If the user says add a bill, you may return add_bill.
 - If the user says delete/remove a payment, you may return delete_payment.
 - If the user says delete/remove a bill, you may return delete_bill.
 - If the user says add a debt, credit card, loan, or account, you may return add_debt.
 - If the user says delete/remove a debt, credit card, loan, or account, you may return delete_debt.
-- Prefer requiresConfirmation = true for destructive actions or if there is any ambiguity.
+- Prefer requiresConfirmation = true for destructive actions or ambiguity.
 - Never invent IDs.
-- If you do not know an id, return the best identifying fields you do know.
-${context ? `\nAdditional context:\n${context}` : ""}
+- If you do not know an ID, return the best identifying fields you do know.
+
+${context ? `ADDITIONAL PAGE CONTEXT:\n${context}` : ""}
 
 Return valid JSON only with this exact shape:
 {
@@ -180,10 +198,29 @@ Return valid JSON only with this exact shape:
   }
 }
 `.trim();
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json()) as AiRequestBody;
+
+    const messages = body.messages ?? [];
+    const context = body.context?.trim() ?? "";
+    const financialSummary = body.financialSummary?.trim() ?? "";
+    const stressScore = body.stressScore;
+
+    console.log("ASKBEN financialSummary sent to AI:", financialSummary);
+
+    const fullSystemPrompt = buildSystemPrompt({
+      financialSummary,
+      context,
+      stressScore,
+    });
 
     const completion = await getOpenAIClient().chat.completions.create({
       model: "gpt-4.1-mini",
       temperature: 0.2,
+      response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
@@ -205,8 +242,11 @@ Return valid JSON only with this exact shape:
     });
   } catch (error) {
     console.error("AI route error:", error);
+
     return NextResponse.json(
-      { error: "Failed to generate AI response." },
+      {
+        error: "Failed to generate AI response.",
+      },
       { status: 500 }
     );
   }
