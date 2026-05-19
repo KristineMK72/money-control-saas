@@ -8,11 +8,9 @@ import UserGreeting from "@/components/UserGreeting";
 import InstallBanner from "@/components/InstallBanner";
 import AppInitializer from "@/components/AppInitializer";
 import BenWorldBackground from "@/components/BenWorldBackground";
+import MobileMenu from "@/components/MobileMenu";
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-});
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
@@ -31,38 +29,22 @@ export const metadata: Metadata = {
   description: "Stop financial chaos. See exactly what to pay first.",
   metadataBase: new URL("https://www.askben.buzz"),
   manifest: "/manifest.json",
-
   icons: {
     icon: [
       { url: "/ben-head.png", sizes: "192x192", type: "image/png" },
       { url: "/ben-head.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [
-      {
-        url: "/apple-touch-icon.png",
-        sizes: "180x180",
-        type: "image/png",
-      },
-    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
     shortcut: "/ben-head.png",
   },
-
   openGraph: {
     title: "AskBen",
     description: "AI financial triage. Know what bill to pay first.",
     url: "https://www.askben.buzz/",
     siteName: "AskBen",
     type: "website",
-    images: [
-      {
-        url: "/askben-social.jpeg",
-        width: 1200,
-        height: 630,
-        alt: "AskBen",
-      },
-    ],
+    images: [{ url: "/askben-social.jpeg", width: 1200, height: 630, alt: "AskBen" }],
   },
-
   twitter: {
     card: "summary_large_image",
     title: "AskBen",
@@ -157,7 +139,8 @@ export default function RootLayout({
               position: "sticky",
               top: 0,
               zIndex: 100,
-              background: "linear-gradient(180deg, rgba(5,5,8,0.78), rgba(5,5,8,0.32))",
+              background:
+                "linear-gradient(180deg, rgba(5,5,8,0.78), rgba(5,5,8,0.32))",
               backdropFilter: "blur(14px)",
               WebkitBackdropFilter: "blur(14px)",
               borderBottom: "1px solid rgba(255,255,255,0.1)",
@@ -172,6 +155,7 @@ export default function RootLayout({
                 display: "flex",
                 flexDirection: "column",
                 gap: 12,
+                position: "relative",
               }}
             >
               <div
@@ -192,7 +176,6 @@ export default function RootLayout({
                     minWidth: 0,
                   }}
                 >
-                  {/* Logo Section */}
                   <div
                     style={{
                       width: 56,
@@ -254,13 +237,7 @@ export default function RootLayout({
                       }}
                     >
                       <span>AskBen</span>
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          fontSize: 22,
-                          filter: "drop-shadow(0 2px 8px rgba(251,191,36,0.45))",
-                        }}
-                      >
+                      <span aria-hidden="true" style={{ fontSize: 22 }}>
                         🕯️
                       </span>
                     </div>
@@ -288,16 +265,18 @@ export default function RootLayout({
                     flexShrink: 0,
                   }}
                 >
-                  <UserGreeting />
+                  <MobileMenu />
+                  <div className="hidden sm:block">
+                    <UserGreeting />
+                  </div>
                   <LogoutButton />
                 </div>
               </div>
 
-              {/* === NAVBAR === */}
               <nav
                 aria-label="AskBen navigation"
+                className="hidden md:flex"
                 style={{
-                  display: "flex",
                   gap: 10,
                   alignItems: "center",
                   overflowX: "auto",
@@ -319,22 +298,14 @@ export default function RootLayout({
             <BenPersona />
           </header>
 
-          <main
-            style={{
-              position: "relative",
-              zIndex: 1,
-              minHeight: "70vh",
-            }}
-          >
+          <main style={{ position: "relative", zIndex: 1, minHeight: "70vh" }}>
             {children}
           </main>
 
-          {/* === INLINE INSTALL BANNER === */}
           <div className="max-w-4xl mx-auto px-4">
             <InstallBanner />
           </div>
 
-          {/* Floating Ask Ben Button */}
           <a
             href="/chat"
             aria-label="Ask Ben"
