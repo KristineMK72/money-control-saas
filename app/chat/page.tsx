@@ -31,17 +31,19 @@ type BillRow = {
   name: string | null;
   kind?: string | null;
   category?: string | null;
-  amount?: number | string | null;
   target?: number | string | null;
   saved?: number | string | null;
   due_date?: string | null;
   due?: string | null;
-  due_day?: number | string | null;
   priority?: number | string | null;
   focus?: boolean | null;
   balance?: number | string | null;
   apr?: number | string | null;
   min_payment?: number | string | null;
+  credit_limit?: number | string | null;
+  is_monthly?: boolean | null;
+  monthly_target?: number | string | null;
+  due_day?: number | string | null;
   created_at?: string | null;
 };
 
@@ -62,48 +64,10 @@ type DebtRow = {
   created_at?: string | null;
 };
 
-type IncomeRow = {
-  id: string;
-  user_id?: string;
-  source?: string | null;
-  name?: string | null;
-  amount?: number | string | null;
-  date_iso?: string | null;
-  date?: string | null;
-  created_at?: string | null;
-};
-
-type SpendRow = {
-  id: string;
-  user_id?: string;
-  merchant?: string | null;
-  name?: string | null;
-  amount?: number | string | null;
-  category?: string | null;
-  date_iso?: string | null;
-  date?: string | null;
-  note?: string | null;
-  created_at?: string | null;
-};
-
-type PaymentRow = {
-  id: string;
-  user_id?: string;
-  name?: string | null;
-  debt_name?: string | null;
-  amount?: number | string | null;
-  date_iso?: string | null;
-  date?: string | null;
-  created_at?: string | null;
-};
-
 type MoneyContext = {
   master: BenMasterRow | null;
   bills: BillRow[];
   debts: DebtRow[];
-  income: IncomeRow[];
-  spend: SpendRow[];
-  payments: PaymentRow[];
 };
 
 function num(value: unknown) {
@@ -175,7 +139,7 @@ function dueText(value?: string | null) {
 }
 
 function billAmount(bill: BillRow) {
-  return num(bill.amount ?? bill.target ?? bill.balance);
+  return num(bill.target ?? bill.monthly_target ?? bill.balance ?? bill.min_payment);
 }
 
 function debtMinimum(debt: DebtRow) {
@@ -183,21 +147,16 @@ function debtMinimum(debt: DebtRow) {
 }
 
 function buildFinancialSummary(context: MoneyContext) {
-  const { master, bills, debts, income, spend, payments } = context;
+  const { master, bills, debts } = context;
 
-  const incomeTotal =
-    num(master?.total_income) || income.reduce((sum, row) => sum + num(row.amount), 0);
-
-  const spendTotal =
-    num(master?.total_spend) || spend.reduce((sum, row) => sum + num(row.amount), 0);
+  const incomeTotal = num(master?.total_income);
+  const spendTotal = num(master?.total_spend);
 
   const billsTotal =
     num(master?.total_bills ?? master?.bills) ||
     bills.reduce((sum, row) => sum + billAmount(row), 0);
 
-  const paymentsTotal =
-    num(master?.payments) ||
-    payments.reduce((sum, row) => sum + num(row.amount), 0);
+  const paymentsTotal = num(master?.payments);
 
   const debtBalance =
     num(master?.total_debt_balance ?? master?.total_debt) ||
@@ -213,21 +172,9 @@ function buildFinancialSummary(context: MoneyContext) {
 
   const pressure = num(master?.pressure_pct);
 
-  const sortedBills = [...bills].sort((a, b) => {
-    const ad = a.due_date ?? a.due ?? "";
-    const bd = b.due_date ?? b.due ?? "";
-    return ad.localeCompare(bd);
-  });
-
-  const sortedDebts = [...debts].sort((a, b) => {
-    const ad = a.due_date ?? "";
-    const bd = b.due_date ?? "";
-    return ad.localeCompare(bd);
-  });
-
   const billLines =
-    sortedBills.length > 0
-      ? sortedBills
+    bills.length > 0
+      ? bills
           .map((bill) => {
             const due = bill.due_date ?? bill.due;
             return `- ${bill.name ?? "Unnamed bill"}: ${money(
@@ -242,8 +189,8 @@ function buildFinancialSummary(context: MoneyContext) {
       : "- No bill rows found.";
 
   const debtLines =
-    sortedDebts.length > 0
-      ? sortedDebts
+    debts.length > 0
+      ? debts
           .map((debt) => {
             return `- ${debt.name ?? "Unnamed debt"}: balance ${money(
               num(debt.balance)
@@ -254,53 +201,12 @@ function buildFinancialSummary(context: MoneyContext) {
           .join("\n")
       : "- No debt rows found.";
 
-  const incomeLines =
-    income.length > 0
-      ? income
-          .slice(0, 10)
-          .map(
-            (row) =>
-              `- ${row.source ?? row.name ?? "Income"}: ${money(
-                num(row.amount)
-              )}; date: ${formatDate(row.date_iso ?? row.date)}`
-          )
-          .join("\n")
-      : "- No income rows found.";
-
-  const spendLines =
-    spend.length > 0
-      ? spend
-          .slice(0, 12)
-          .map(
-            (row) =>
-              `- ${row.merchant ?? row.name ?? "Spend"}: ${money(
-                num(row.amount)
-              )}; category: ${row.category ?? "uncategorized"}; date: ${formatDate(
-                row.date_iso ?? row.date
-              )}`
-          )
-          .join("\n")
-      : "- No spending rows found.";
-
-  const paymentLines =
-    payments.length > 0
-      ? payments
-          .slice(0, 10)
-          .map(
-            (row) =>
-              `- ${row.name ?? row.debt_name ?? "Payment"}: ${money(
-                num(row.amount)
-              )}; date: ${formatDate(row.date_iso ?? row.date)}`
-          )
-          .join("\n")
-      : "- No payment rows found.";
-
   return `
 ASKBEN FINANCIAL CONTEXT
 Today: ${formatDate(todayLocalISO())}
 Current month starts: ${formatDate(currentMonthStartISO())}
 
-MONTHLY SNAPSHOT
+MONTHLY SNAPSHOT FROM ben_master_monthly
 - Income logged this month: ${money(incomeTotal)}
 - Spending logged this month: ${money(spendTotal)}
 - Bills total: ${money(billsTotal)}
@@ -310,20 +216,11 @@ MONTHLY SNAPSHOT
 - Estimated net after spending, bills, and debt minimums: ${money(net)}
 - Debt pressure: ${pressure.toFixed(1)}%
 
-BILLS
+BILLS FROM bills TABLE
 ${billLines}
 
-DEBTS
+DEBTS FROM debts TABLE
 ${debtLines}
-
-RECENT INCOME
-${incomeLines}
-
-RECENT SPENDING
-${spendLines}
-
-RECENT PAYMENTS
-${paymentLines}
 
 RULES FOR BEN
 - This financial context is the source of truth.
@@ -374,9 +271,6 @@ export default function ChatPage() {
     master: null,
     bills: [],
     debts: [],
-    income: [],
-    spend: [],
-    payments: [],
   });
 
   useEffect(() => {
@@ -404,50 +298,35 @@ export default function ChatPage() {
         return;
       }
 
+      console.log("ASKBEN SESSION USER:", {
+        id: user.id,
+        email: user.email,
+      });
+
       const monthStart = currentMonthStartISO();
 
-      const [masterResult, billsResult, debtsResult, incomeResult, spendResult, paymentsResult] =
-        await Promise.all([
-          supabase
-            .from("ben_master_monthly")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("month", monthStart)
-            .maybeSingle(),
+      const [masterResult, billsResult, debtsResult] = await Promise.all([
+        supabase
+          .from("ben_master_monthly")
+          .select("*")
+          .eq("user_id", user.id)
+          .gte("month", monthStart)
+          .order("month", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
 
-          supabase
-            .from("bills")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("due_date", { ascending: true, nullsFirst: false }),
+        supabase
+          .from("bills")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("due_date", { ascending: true, nullsFirst: false }),
 
-          supabase
-            .from("debts")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("due_date", { ascending: true, nullsFirst: false }),
-
-          supabase
-            .from("income")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("date_iso", { ascending: false, nullsFirst: false })
-            .limit(20),
-
-          supabase
-            .from("spend")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("date_iso", { ascending: false, nullsFirst: false })
-            .limit(30),
-
-          supabase
-            .from("payments")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("date_iso", { ascending: false, nullsFirst: false })
-            .limit(20),
-        ]);
+        supabase
+          .from("debts")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("due_date", { ascending: true, nullsFirst: false }),
+      ]);
 
       if (masterResult.error) {
         setNotice(`ben_master_monthly: ${masterResult.error.message}`);
@@ -464,28 +343,14 @@ export default function ChatPage() {
         return;
       }
 
-      if (incomeResult.error) {
-        setNotice(`income: ${incomeResult.error.message}`);
-        return;
-      }
-
-      if (spendResult.error) {
-        setNotice(`spend: ${spendResult.error.message}`);
-        return;
-      }
-
-      if (paymentsResult.error) {
-        setNotice(`payments: ${paymentsResult.error.message}`);
-        return;
-      }
+      console.log("ASKBEN MASTER:", masterResult.data);
+      console.log("ASKBEN BILLS:", billsResult.data);
+      console.log("ASKBEN DEBTS:", debtsResult.data);
 
       setMoneyContext({
         master: (masterResult.data || null) as BenMasterRow | null,
         bills: (billsResult.data || []) as BillRow[],
         debts: (debtsResult.data || []) as DebtRow[],
-        income: (incomeResult.data || []) as IncomeRow[],
-        spend: (spendResult.data || []) as SpendRow[],
-        payments: (paymentsResult.data || []) as PaymentRow[],
       });
     }
 
@@ -556,12 +421,9 @@ export default function ChatPage() {
   }
 
   const hasData =
-    moneyContext.master ||
+    !!moneyContext.master ||
     moneyContext.bills.length > 0 ||
-    moneyContext.debts.length > 0 ||
-    moneyContext.income.length > 0 ||
-    moneyContext.spend.length > 0 ||
-    moneyContext.payments.length > 0;
+    moneyContext.debts.length > 0;
 
   return (
     <main className="min-h-screen bg-transparent p-4 pb-24">
@@ -592,7 +454,9 @@ export default function ChatPage() {
         {!notice && (
           <div className="mb-4 rounded-2xl border border-white/15 bg-black/45 p-4 text-sm font-semibold text-white/80 shadow-xl backdrop-blur-xl">
             {hasData
-              ? `Ben can currently see ${moneyContext.bills.length} bill(s), ${moneyContext.debts.length} debt(s), ${moneyContext.income.length} income row(s), ${moneyContext.spend.length} spending row(s), and ${moneyContext.payments.length} payment row(s).`
+              ? `Ben can currently see ${moneyContext.bills.length} bill(s), ${moneyContext.debts.length} debt(s), and ${
+                  moneyContext.master ? "the monthly master snapshot" : "no monthly master snapshot"
+                }.`
               : "Ben is connected, but no money rows were found yet."}
           </div>
         )}
