@@ -95,6 +95,10 @@ function sameOrAfter(a: Date, b: Date) {
   return a.getTime() >= b.getTime();
 }
 
+function dayName(date: Date) {
+  return date.toLocaleDateString("en-US", { weekday: "short" });
+}
+
 export default function CalendarPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const now = new Date();
@@ -105,7 +109,9 @@ export default function CalendarPage() {
   const [message, setMessage] = useState("");
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
-  const [expandedWeeks, setExpandedWeeks] = useState<Record<number, boolean>>({});
+  const [expandedWeeks, setExpandedWeeks] = useState<Record<number, boolean>>(
+    {}
+  );
 
   useEffect(() => {
     async function loadData() {
@@ -143,7 +149,7 @@ export default function CalendarPage() {
     }
 
     void loadData();
-  }, [supabase, viewYear, viewMonth]);
+  }, [supabase]);
 
   const items = useMemo(() => {
     const billItems: CalendarItem[] = bills
@@ -154,7 +160,9 @@ export default function CalendarPage() {
           viewYear,
           viewMonth
         );
+
         if (!date) return null;
+
         return {
           id: `bill-${bill.id}`,
           name: bill.name,
@@ -173,7 +181,9 @@ export default function CalendarPage() {
           viewYear,
           viewMonth
         );
+
         if (!date) return null;
+
         return {
           id: `debt-${debt.id}`,
           name: debt.name,
@@ -188,6 +198,31 @@ export default function CalendarPage() {
       .filter((item) => item.amount > 0)
       .sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [bills, debts, viewMonth, viewYear]);
+
+  const calendarCells = useMemo(() => {
+    const firstDay = new Date(viewYear, viewMonth, 1);
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const startOffset = firstDay.getDay();
+
+    return Array.from({ length: startOffset + daysInMonth }, (_, index) => {
+      const dayNumber = index - startOffset + 1;
+
+      if (dayNumber <= 0) {
+        return null;
+      }
+
+      const date = new Date(viewYear, viewMonth, dayNumber);
+      const dayItems = items.filter((item) => iso(item.date) === iso(date));
+      const total = dayItems.reduce((sum, item) => sum + item.amount, 0);
+
+      return {
+        dayNumber,
+        date,
+        items: dayItems,
+        total,
+      };
+    });
+  }, [items, viewMonth, viewYear]);
 
   const weekSummaries = useMemo<WeekSummary[]>(() => {
     const first = new Date(viewYear, viewMonth, 1);
@@ -222,7 +257,11 @@ export default function CalendarPage() {
   }, [items, viewMonth, viewYear]);
 
   const monthTotal = items.reduce((sum, item) => sum + item.amount, 0);
-  const heaviestWeek = [...weekSummaries].sort((a, b) => b.total - a.total)[0];
+
+  const heaviestWeek = [...weekSummaries].sort(
+    (a, b) => b.total - a.total
+  )[0];
+
   const monthLabel = new Date(viewYear, viewMonth).toLocaleString("en-US", {
     month: "long",
     year: "numeric",
@@ -243,6 +282,11 @@ export default function CalendarPage() {
     setViewMonth(next.getMonth());
   }
 
+  function goToCurrentMonth() {
+    setViewYear(now.getFullYear());
+    setViewMonth(now.getMonth());
+  }
+
   if (loading) {
     return (
       <AppShell>
@@ -258,9 +302,12 @@ export default function CalendarPage() {
         title="Calendar"
         subtitle="A weekly map of bills and minimums, because surprise due dates are rude."
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => shiftMonth(-1)} className={primaryButtonClass}>
               Prev
+            </button>
+            <button onClick={goToCurrentMonth} className={primaryButtonClass}>
+              Today
             </button>
             <button onClick={() => shiftMonth(1)} className={primaryButtonClass}>
               Next
@@ -287,7 +334,99 @@ export default function CalendarPage() {
       </section>
 
       <Panel>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500">
+              Monthly View
+            </p>
+            <h2 className="mt-1 text-2xl font-black text-zinc-950">
+              {monthLabel}
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs font-black uppercase tracking-wide">
+            <span className="rounded-full bg-sky-100 px-3 py-1 text-sky-800">
+              Bills
+            </span>
+            <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-800">
+              Debts
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-7 gap-2 text-center text-xs font-black uppercase tracking-wide text-zinc-500">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+            <div key={day}>{day}</div>
+          ))}
+        </div>
+
+        <div className="mt-2 grid grid-cols-7 gap-2">
+          {calendarCells.map((cell, index) => {
+            if (!cell) {
+              return <div key={`blank-${index}`} className="min-h-[96px]" />;
+            }
+
+            const isToday =
+              cell.date.getFullYear() === now.getFullYear() &&
+              cell.date.getMonth() === now.getMonth() &&
+              cell.date.getDate() === now.getDate();
+
+            return (
+              <div
+                key={iso(cell.date)}
+                className={`min-h-[96px] rounded-2xl border p-2 text-left ${
+                  isToday
+                    ? "border-amber-300 bg-amber-50"
+                    : "border-zinc-200 bg-zinc-50"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-black text-zinc-950">
+                      {cell.dayNumber}
+                    </p>
+                    <p className="text-[10px] font-bold uppercase text-zinc-400 md:hidden">
+                      {dayName(cell.date)}
+                    </p>
+                  </div>
+
+                  {cell.total > 0 && (
+                    <p className="rounded-full bg-zinc-950 px-2 py-0.5 text-[10px] font-black text-white">
+                      {money(cell.total)}
+                    </p>
+                  )}
+                </div>
+
+                <div className="mt-2 space-y-1">
+                  {cell.items.slice(0, 3).map((item) => (
+                    <div
+                      key={item.id}
+                      className={`truncate rounded-lg px-2 py-1 text-[11px] font-black ${
+                        item.type === "bill"
+                          ? "bg-sky-100 text-sky-800"
+                          : "bg-rose-100 text-rose-800"
+                      }`}
+                      title={`${item.name} - ${money(item.amount)}`}
+                    >
+                      {item.name}
+                    </div>
+                  ))}
+
+                  {cell.items.length > 3 && (
+                    <p className="text-[11px] font-bold text-zinc-500">
+                      +{cell.items.length - 3} more
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Panel>
+
+      <Panel>
         <h2 className="text-2xl font-black">Weekly Income Targets</h2>
+
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {weekSummaries.map((week) => {
             const open = expandedWeeks[week.weekNumber] ?? week.total > 0;
@@ -309,9 +448,11 @@ export default function CalendarPage() {
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">
                     {week.label}
                   </p>
+
                   <p className="mt-1 text-sm font-semibold text-zinc-600">
                     {iso(week.start)} to {iso(week.end)}
                   </p>
+
                   <p className="mt-4 text-3xl font-black text-zinc-950">
                     {money(week.total)}
                   </p>
@@ -331,12 +472,18 @@ export default function CalendarPage() {
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="font-black">{item.name}</p>
+                              <p className="font-black text-zinc-950">
+                                {item.name}
+                              </p>
+
                               <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
                                 {item.type} - {iso(item.date)}
                               </p>
                             </div>
-                            <p className="font-black">{money(item.amount)}</p>
+
+                            <p className="font-black text-zinc-950">
+                              {money(item.amount)}
+                            </p>
                           </div>
                         </div>
                       ))
