@@ -331,47 +331,105 @@ export default function RootLayout({
           >
             Ask Ben 💰
           </a>
+<footer
+  style={{
+    position: "relative",
+    zIndex: 1,
+    marginTop: 60,
+    padding: "24px 20px 34px",
+    textAlign: "center",
+    fontSize: 13,
+    color: "rgba(255,255,255,0.62)",
+    textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+    fontFamily: "var(--font-inter), system-ui, sans-serif",
+  }}
+>
+  <div
+    style={{
+      fontFamily: "var(--font-cormorant), Georgia, serif",
+      fontSize: 18,
+      fontWeight: 800,
+      color: "#fff7ed",
+    }}
+  >
+    AskBen 🖋️
+  </div>
 
-          <footer
-            style={{
-              position: "relative",
-              zIndex: 1,
-              marginTop: 60,
-              padding: "24px 20px 34px",
-              textAlign: "center",
-              fontSize: 13,
-              color: "rgba(255,255,255,0.62)",
-              textShadow: "0 2px 12px rgba(0,0,0,0.8)",
-              fontFamily: "var(--font-inter), system-ui, sans-serif",
-            }}
-          >
-            <div
-              style={{
-                fontFamily: "var(--font-cormorant), Georgia, serif",
-                fontSize: 18,
-                fontWeight: 800,
-                color: "#fff7ed",
-              }}
-            >
-              AskBen 🖋️
-            </div>
+  <div style={{ marginTop: 4 }}>
+    © 2026 Spatialytics — Built with ❤️ in Minnesota
+  </div>
 
-            <div style={{ marginTop: 4 }}>
-              © 2026 Spatialytics — Built with ❤️ in Minnesota
-            </div>
+  <div
+    style={{
+      marginTop: 6,
+      fontFamily: "var(--font-im-fell), Georgia, serif",
+      letterSpacing: "0.18em",
+      textTransform: "uppercase",
+      color: "rgba(255,255,255,0.5)",
+    }}
+  >
+    Spend wisely.
+  </div>
 
-            <div
-              style={{
-                marginTop: 6,
-                fontFamily: "var(--font-im-fell), Georgia, serif",
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
-                color: "rgba(255,255,255,0.5)",
-              }}
-            >
-              Spend wisely.
-            </div>
-          </footer>
+  {/* TRUST LINE */}
+  <div
+    style={{
+      marginTop: 14,
+      fontSize: 12,
+      opacity: 0.82,
+      lineHeight: 1.6,
+    }}
+  >
+    Secure login • Encrypted connection • No bank login required
+  </div>
+
+  {/* LEGAL LINKS */}
+  <div
+    style={{
+      marginTop: 14,
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      gap: 10,
+      flexWrap: "wrap",
+      fontSize: 12,
+    }}
+  >
+    <a
+      href="/privacy"
+      style={{
+        color: "#fff7ed",
+        textDecoration: "none",
+      }}
+    >
+      Privacy
+    </a>
+
+    <span style={{ opacity: 0.5 }}>•</span>
+
+    <a
+      href="/security"
+      style={{
+        color: "#fff7ed",
+        textDecoration: "none",
+      }}
+    >
+      Security
+    </a>
+
+    <span style={{ opacity: 0.5 }}>•</span>
+
+    <a
+      href="/terms"
+      style={{
+        color: "#fff7ed",
+        textDecoration: "none",
+      }}
+    >
+      Terms
+    </a>
+    </div> 
+      </footer>
         </AppInitializer>
       </body>
     </html>
