@@ -33,6 +33,7 @@ type EditDebt = {
   apr: string;
   kind: "credit" | "loan";
   dueDate: string;
+  dueDay: string;
   creditLimit: string;
   note: string;
 };
@@ -56,13 +57,18 @@ function percent(value: unknown) {
   return `${n.toFixed(2)}% APR`;
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "No due date";
-  const date = new Date(`${value}T00:00:00`);
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+function formatDate(value: string | null, dueDay?: number | null) {
+  if (value) {
+    const date = new Date(`${value}T00:00:00`);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  if (dueDay) return `Day ${dueDay} monthly`;
+
+  return "No due date";
 }
 
 const shellClass =
@@ -78,7 +84,7 @@ const smallButtonClass =
   "rounded-xl px-4 py-2 text-sm font-black transition";
 
 export default function DebtPage() {
-  const supabase = createSupabaseBrowserClient();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
@@ -93,6 +99,7 @@ export default function DebtPage() {
   const [note, setNote] = useState("");
   const [kind, setKind] = useState<"credit" | "loan">("credit");
   const [dueDate, setDueDate] = useState("");
+  const [dueDay, setDueDay] = useState("");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDebt, setEditDebt] = useState<EditDebt | null>(null);
@@ -183,13 +190,20 @@ export default function DebtPage() {
     const min = num(minPayment);
     const aprValue = num(apr);
     const limit = num(creditLimit);
+    const day = num(dueDay);
 
     if (!name.trim() || bal <= 0) {
       setMessage("Name and valid balance required.");
       return;
     }
 
+    if (day > 31) {
+      setMessage("Due day must be between 1 and 31.");
+      return;
+    }
+
     setSaving(true);
+    setMessage("");
 
     const { error } = await supabase.from("debts").insert({
       user_id: userId,
@@ -203,7 +217,12 @@ export default function DebtPage() {
       note: note.trim() || null,
       due_date: dueDate || null,
       is_monthly: true,
-      due_day: dueDate ? new Date(`${dueDate}T00:00:00`).getDate() : null,
+      due_day:
+        day > 0
+          ? day
+          : dueDate
+          ? new Date(`${dueDate}T00:00:00`).getDate()
+          : null,
     });
 
     setSaving(false);
@@ -221,6 +240,7 @@ export default function DebtPage() {
     setCreditLimit("");
     setNote("");
     setDueDate("");
+    setDueDay("");
 
     await loadDebts(userId);
   }
@@ -234,6 +254,7 @@ export default function DebtPage() {
       apr: String(debt.apr ?? ""),
       kind: debt.kind,
       dueDate: debt.due_date || "",
+      dueDay: String(debt.due_day ?? ""),
       creditLimit: String(debt.credit_limit ?? ""),
       note: debt.note || "",
     });
@@ -246,13 +267,20 @@ export default function DebtPage() {
     const min = num(editDebt.minPayment);
     const aprValue = num(editDebt.apr);
     const limit = num(editDebt.creditLimit);
+    const day = num(editDebt.dueDay);
 
     if (!editDebt.name.trim() || bal <= 0) {
       setMessage("Name and valid balance required.");
       return;
     }
 
+    if (day > 31) {
+      setMessage("Due day must be between 1 and 31.");
+      return;
+    }
+
     setSaving(true);
+    setMessage("");
 
     const { error } = await supabase
       .from("debts")
@@ -266,17 +294,21 @@ export default function DebtPage() {
         credit_limit: limit > 0 ? limit : null,
         note: editDebt.note.trim() || null,
         due_date: editDebt.dueDate || null,
-        due_day: editDebt.dueDate
-          ? new Date(`${editDebt.dueDate}T00:00:00`).getDate()
-          : null,
+        due_day:
+          day > 0
+            ? day
+            : editDebt.dueDate
+            ? new Date(`${editDebt.dueDate}T00:00:00`).getDate()
+            : null,
       })
       .eq("id", id)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .select();
 
     setSaving(false);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(`Could not save changes: ${error.message}`);
       return;
     }
 
@@ -292,6 +324,8 @@ export default function DebtPage() {
     const confirmed = window.confirm("Delete this debt?");
     if (!confirmed) return;
 
+    setMessage("");
+
     const { error } = await supabase
       .from("debts")
       .delete()
@@ -299,7 +333,7 @@ export default function DebtPage() {
       .eq("user_id", userId);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(`Could not delete debt: ${error.message}`);
       return;
     }
 
@@ -407,7 +441,11 @@ export default function DebtPage() {
           <StatCard label="Monthly Minimums" value={totals.totalMin} />
           <StatCard
             label="Avg APR"
-            value={totals.weightedApr > 0 ? `${totals.weightedApr.toFixed(2)}%` : "Add APR"}
+            value={
+              totals.weightedApr > 0
+                ? `${totals.weightedApr.toFixed(2)}%`
+                : "Add APR"
+            }
             plain
           />
           <StatCard label="Accounts" value={totals.accountCount} plain />
@@ -529,7 +567,21 @@ export default function DebtPage() {
             <input
               type="date"
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setDueDate(value);
+                if (value) {
+                  setDueDay(String(new Date(`${value}T00:00:00`).getDate()));
+                }
+              }}
+              className={inputClass}
+            />
+
+            <input
+              placeholder="Due day, example: 15"
+              inputMode="numeric"
+              value={dueDay}
+              onChange={(e) => setDueDay(e.target.value)}
               className={inputClass}
             />
 
@@ -545,7 +597,7 @@ export default function DebtPage() {
               placeholder="Note optional"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className={inputClass}
+              className={`${inputClass} md:col-span-2`}
             />
           </div>
 
@@ -576,6 +628,15 @@ export default function DebtPage() {
                 <div key={debt.id} className={cardClass}>
                   {isEditing ? (
                     <div className="space-y-4">
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                        <p className="text-sm font-black uppercase tracking-widest text-emerald-800">
+                          Editing Debt
+                        </p>
+                        <p className="mt-1 text-sm font-bold text-emerald-950">
+                          Change the fields below, then tap Save Changes.
+                        </p>
+                      </div>
+
                       <div className="grid gap-4 md:grid-cols-2">
                         <input
                           value={editDebt.name}
@@ -636,10 +697,30 @@ export default function DebtPage() {
                         <input
                           type="date"
                           value={editDebt.dueDate}
+                          onChange={(e) => {
+                            const value = e.target.value;
+
+                            setEditDebt({
+                              ...editDebt,
+                              dueDate: value,
+                              dueDay: value
+                                ? String(
+                                    new Date(`${value}T00:00:00`).getDate()
+                                  )
+                                : editDebt.dueDay,
+                            });
+                          }}
+                          className={inputClass}
+                        />
+
+                        <input
+                          value={editDebt.dueDay}
+                          inputMode="numeric"
+                          placeholder="Due day, example: 15"
                           onChange={(e) =>
                             setEditDebt({
                               ...editDebt,
-                              dueDate: e.target.value,
+                              dueDay: e.target.value,
                             })
                           }
                           className={inputClass}
@@ -664,90 +745,92 @@ export default function DebtPage() {
                           onChange={(e) =>
                             setEditDebt({ ...editDebt, note: e.target.value })
                           }
-                          className={inputClass}
+                          className={`${inputClass} md:col-span-2`}
                         />
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-3 pt-2">
                         <button
                           onClick={() => void saveEdit(debt.id)}
-                          className={`${smallButtonClass} bg-emerald-600 text-white hover:bg-emerald-700`}
+                          disabled={saving}
+                          className="rounded-2xl bg-emerald-600 px-6 py-3 font-black text-white hover:bg-emerald-700 disabled:opacity-50"
                         >
-                          Save
+                          {saving ? "Saving..." : "Save Changes"}
                         </button>
+
                         <button
                           onClick={() => {
                             setEditingId(null);
                             setEditDebt(null);
                           }}
-                          className={`${smallButtonClass} bg-zinc-200 text-zinc-900 hover:bg-zinc-300`}
+                          className="rounded-2xl bg-zinc-200 px-6 py-3 font-black text-zinc-950 hover:bg-zinc-300"
                         >
                           Cancel
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <>
-                      <div className="flex flex-col justify-between gap-5 md:flex-row">
-                        <div>
-                          <h3 className="text-2xl font-black text-zinc-950">
-                            {debt.name}
-                          </h3>
+                    <div className="flex flex-col justify-between gap-5 md:flex-row">
+                      <div>
+                        <h3 className="text-2xl font-black text-zinc-950">
+                          {debt.name}
+                        </h3>
 
-                          <p className="mt-1 text-sm font-bold capitalize text-zinc-600">
-                            {debt.kind} • Due {formatDate(debt.due_date)}
-                          </p>
+                        <p className="mt-1 text-sm font-bold capitalize text-zinc-600">
+                          {debt.kind} • Due{" "}
+                          {formatDate(debt.due_date, debt.due_day)}
+                        </p>
 
-                          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                            <MiniStat
-                              label="Minimum"
-                              value={money(
-                                debt.monthly_min_payment ?? debt.min_payment
-                              )}
-                            />
-                            <MiniStat label="APR" value={percent(debt.apr)} />
-                            <MiniStat
-                              label="Credit limit"
-                              value={
-                                num(debt.credit_limit) > 0
-                                  ? money(debt.credit_limit)
-                                  : "Not added"
-                              }
-                            />
-                          </div>
-
-                          {debt.note ? (
-                            <p className="mt-4 rounded-xl bg-zinc-100 p-3 text-sm font-semibold text-zinc-700">
-                              {debt.note}
-                            </p>
-                          ) : null}
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                          <MiniStat
+                            label="Minimum"
+                            value={money(
+                              debt.monthly_min_payment ?? debt.min_payment
+                            )}
+                          />
+                          <MiniStat label="APR" value={percent(debt.apr)} />
+                          <MiniStat
+                            label="Credit limit"
+                            value={
+                              num(debt.credit_limit) > 0
+                                ? money(debt.credit_limit)
+                                : "Not added"
+                            }
+                          />
                         </div>
 
-                        <div className="md:text-right">
-                          <p className="text-sm font-black uppercase tracking-widest text-zinc-500">
-                            Balance
+                        {debt.note ? (
+                          <p className="mt-4 rounded-xl bg-zinc-100 p-3 text-sm font-semibold text-zinc-700">
+                            {debt.note}
                           </p>
-                          <p className="text-3xl font-black text-zinc-950">
-                            {money(debt.balance)}
-                          </p>
+                        ) : null}
+                      </div>
 
-                          <div className="mt-4 flex flex-wrap gap-2 md:justify-end">
-                            <button
-                              onClick={() => startEdit(debt)}
-                              className={`${smallButtonClass} bg-sky-100 text-sky-900 hover:bg-sky-200`}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => void deleteDebt(debt.id)}
-                              className={`${smallButtonClass} bg-rose-100 text-rose-900 hover:bg-rose-200`}
-                            >
-                              Delete
-                            </button>
-                          </div>
+                      <div className="md:text-right">
+                        <p className="text-sm font-black uppercase tracking-widest text-zinc-500">
+                          Balance
+                        </p>
+                        <p className="text-3xl font-black text-zinc-950">
+                          {money(debt.balance)}
+                        </p>
+
+                        <div className="mt-4 flex flex-wrap gap-2 md:justify-end">
+                          <button
+                            onClick={() => startEdit(debt)}
+                            className={`${smallButtonClass} bg-sky-100 text-sky-900 hover:bg-sky-200`}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            onClick={() => void deleteDebt(debt.id)}
+                            className={`${smallButtonClass} bg-rose-100 text-rose-900 hover:bg-rose-200`}
+                          >
+                            Delete
+                          </button>
                         </div>
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
               );
