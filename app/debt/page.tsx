@@ -67,18 +67,20 @@ function formatDate(value: string | null, dueDay?: number | null) {
   }
 
   if (dueDay) return `Day ${dueDay} monthly`;
-
   return "No due date";
 }
 
 const shellClass =
-  "rounded-2xl border border-white/40 bg-slate-950/75 p-4 shadow-2xl backdrop-blur-xl md:p-8";
+  "rounded-3xl border border-white/25 bg-black/55 p-4 shadow-2xl backdrop-blur-xl md:p-8";
 
 const cardClass =
-  "rounded-2xl border border-white/80 bg-white p-5 text-zinc-950 shadow-2xl shadow-zinc-950/10 md:p-6";
+  "rounded-3xl border border-white/20 bg-black/55 p-5 text-white shadow-2xl backdrop-blur-xl md:p-6";
+
+const lightCardClass =
+  "rounded-3xl border border-white/80 bg-white/95 p-5 text-zinc-950 shadow-2xl md:p-6";
 
 const inputClass =
-  "rounded-2xl border border-zinc-300 bg-white px-5 py-3.5 text-zinc-950 shadow-sm outline-none placeholder:text-zinc-500 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100";
+  "w-full rounded-2xl border border-zinc-300 bg-white px-5 py-3.5 text-zinc-950 shadow-sm outline-none placeholder:text-zinc-500 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100";
 
 const smallButtonClass =
   "rounded-xl px-4 py-2 text-sm font-black transition";
@@ -89,7 +91,9 @@ export default function DebtPage() {
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const [name, setName] = useState("");
   const [balance, setBalance] = useState("");
@@ -106,7 +110,6 @@ export default function DebtPage() {
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     void init();
@@ -154,6 +157,35 @@ export default function DebtPage() {
     setDebts((data || []) as DebtRow[]);
   }
 
+  function clearAddForm() {
+    setName("");
+    setBalance("");
+    setMinPayment("");
+    setApr("");
+    setCreditLimit("");
+    setNote("");
+    setDueDate("");
+    setDueDay("");
+    setKind("credit");
+  }
+
+  function buildDueDay(dateValue: string, dayValue: string) {
+    const day = num(dayValue);
+
+    if (day > 0) return day;
+
+    if (dateValue) {
+      return new Date(`${dateValue}T00:00:00`).getDate();
+    }
+
+    return null;
+  }
+
+  function validateDueDay(dayValue: string) {
+    const day = num(dayValue);
+    return day === 0 || (day >= 1 && day <= 31);
+  }
+
   async function scanDebtImage(file: File | null) {
     if (!file) return;
 
@@ -172,7 +204,9 @@ export default function DebtPage() {
           setBalance(String(first.amount));
         }
 
-        setMessage("Ben auto-filled what he could. Review APR, minimum, and due date.");
+        setMessage(
+          "Ben auto-filled what he could. Review APR, minimum, and due date."
+        );
       } else {
         setMessage("Ben could not find debt details. You can still enter manually.");
       }
@@ -190,14 +224,13 @@ export default function DebtPage() {
     const min = num(minPayment);
     const aprValue = num(apr);
     const limit = num(creditLimit);
-    const day = num(dueDay);
 
     if (!name.trim() || bal <= 0) {
       setMessage("Name and valid balance required.");
       return;
     }
 
-    if (day > 31) {
+    if (!validateDueDay(dueDay)) {
       setMessage("Due day must be between 1 and 31.");
       return;
     }
@@ -205,7 +238,7 @@ export default function DebtPage() {
     setSaving(true);
     setMessage("");
 
-    const { error } = await supabase.from("debts").insert({
+    const payload = {
       user_id: userId,
       name: name.trim(),
       kind,
@@ -217,32 +250,30 @@ export default function DebtPage() {
       note: note.trim() || null,
       due_date: dueDate || null,
       is_monthly: true,
-      due_day:
-        day > 0
-          ? day
-          : dueDate
-          ? new Date(`${dueDate}T00:00:00`).getDate()
-          : null,
-    });
+      due_day: buildDueDay(dueDate, dueDay),
+    };
+
+    const { data, error } = await supabase
+      .from("debts")
+      .insert(payload)
+      .select("*")
+      .maybeSingle();
 
     setSaving(false);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(`Could not add debt: ${error.message}`);
       return;
     }
 
-    setMessage("Debt added successfully.");
-    setName("");
-    setBalance("");
-    setMinPayment("");
-    setApr("");
-    setCreditLimit("");
-    setNote("");
-    setDueDate("");
-    setDueDay("");
+    if (!data) {
+      setMessage("Debt was not added. Check Supabase insert/RLS policy.");
+      return;
+    }
 
-    await loadDebts(userId);
+    setDebts((prev) => [data as DebtRow, ...prev]);
+    clearAddForm();
+    setMessage("Debt added successfully.");
   }
 
   function startEdit(debt: DebtRow) {
@@ -252,12 +283,17 @@ export default function DebtPage() {
       balance: String(debt.balance ?? ""),
       minPayment: String(debt.monthly_min_payment ?? debt.min_payment ?? ""),
       apr: String(debt.apr ?? ""),
-      kind: debt.kind,
+      kind: debt.kind || "credit",
       dueDate: debt.due_date || "",
       dueDay: String(debt.due_day ?? ""),
       creditLimit: String(debt.credit_limit ?? ""),
       note: debt.note || "",
     });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditDebt(null);
   }
 
   async function saveEdit(id: string) {
@@ -267,14 +303,13 @@ export default function DebtPage() {
     const min = num(editDebt.minPayment);
     const aprValue = num(editDebt.apr);
     const limit = num(editDebt.creditLimit);
-    const day = num(editDebt.dueDay);
 
     if (!editDebt.name.trim() || bal <= 0) {
       setMessage("Name and valid balance required.");
       return;
     }
 
-    if (day > 31) {
+    if (!validateDueDay(editDebt.dueDay)) {
       setMessage("Due day must be between 1 and 31.");
       return;
     }
@@ -282,28 +317,26 @@ export default function DebtPage() {
     setSaving(true);
     setMessage("");
 
-    const { error } = await supabase
+    const payload = {
+      name: editDebt.name.trim(),
+      kind: editDebt.kind,
+      balance: bal,
+      min_payment: min > 0 ? min : null,
+      monthly_min_payment: min > 0 ? min : null,
+      apr: aprValue > 0 ? aprValue : null,
+      credit_limit: limit > 0 ? limit : null,
+      note: editDebt.note.trim() || null,
+      due_date: editDebt.dueDate || null,
+      due_day: buildDueDay(editDebt.dueDate, editDebt.dueDay),
+    };
+
+    const { data, error } = await supabase
       .from("debts")
-      .update({
-        name: editDebt.name.trim(),
-        kind: editDebt.kind,
-        balance: bal,
-        min_payment: min > 0 ? min : null,
-        monthly_min_payment: min > 0 ? min : null,
-        apr: aprValue > 0 ? aprValue : null,
-        credit_limit: limit > 0 ? limit : null,
-        note: editDebt.note.trim() || null,
-        due_date: editDebt.dueDate || null,
-        due_day:
-          day > 0
-            ? day
-            : editDebt.dueDate
-            ? new Date(`${editDebt.dueDate}T00:00:00`).getDate()
-            : null,
-      })
+      .update(payload)
       .eq("id", id)
       .eq("user_id", userId)
-      .select();
+      .select("*")
+      .maybeSingle();
 
     setSaving(false);
 
@@ -312,10 +345,20 @@ export default function DebtPage() {
       return;
     }
 
-    setMessage("Debt updated.");
+    if (!data) {
+      setMessage(
+        "Nothing was updated. This usually means Supabase RLS is blocking updates on debts."
+      );
+      return;
+    }
+
+    setDebts((prev) =>
+      prev.map((debt) => (debt.id === id ? (data as DebtRow) : debt))
+    );
+
     setEditingId(null);
     setEditDebt(null);
-    await loadDebts(userId);
+    setMessage("Debt updated.");
   }
 
   async function deleteDebt(id: string) {
@@ -337,8 +380,8 @@ export default function DebtPage() {
       return;
     }
 
+    setDebts((prev) => prev.filter((debt) => debt.id !== id));
     setMessage("Debt deleted.");
-    await loadDebts(userId);
   }
 
   const totals = useMemo(() => {
@@ -381,7 +424,7 @@ export default function DebtPage() {
 
   const customInsight = useMemo(() => {
     if (debts.length === 0) {
-      return "Add a debt and Ben will build a payoff strategy. Avalanche attacks interest. Snowball attacks momentum. Both beat ignoring it like it owes thee money.";
+      return "Add a debt and Ben will build a payoff strategy. Avalanche attacks interest. Snowball attacks momentum.";
     }
 
     if (highestAprDebt && num(highestAprDebt.apr) > 0) {
@@ -413,13 +456,16 @@ export default function DebtPage() {
   }
 
   return (
-    <main className="min-h-screen bg-transparent p-4 md:p-6">
+    <main className="min-h-screen bg-transparent p-4 text-white md:p-6">
       <div className={`${shellClass} mx-auto max-w-6xl space-y-8`}>
         <header>
-          <h1 className="text-4xl font-black text-white md:text-5xl">Debt</h1>
-          <p className="mt-2 max-w-2xl text-base font-semibold text-white/95 md:text-lg">
-            Track what you owe, see APR clearly, and pick a payoff strategy that
-            actually makes sense.
+          <h1 className="text-5xl font-black drop-shadow-2xl md:text-6xl">
+            Debt
+          </h1>
+          <p className="mt-2 max-w-2xl text-base font-semibold text-white/90 md:text-lg">
+            Track what you owe, edit every account, see APR clearly, and choose
+            snowball or avalanche without squinting at numbers like a colonial
+            tax ledger.
           </p>
         </header>
 
@@ -429,7 +475,7 @@ export default function DebtPage() {
           </div>
         ) : null}
 
-        <div className="rounded-2xl border border-white/20 bg-slate-950 p-6 shadow-xl">
+        <div className="rounded-3xl border border-white/20 bg-black/55 p-5 shadow-xl backdrop-blur-xl">
           <BenBubble
             message={`${benInsight.text} ${customInsight}`}
             mood={benInsight.mood}
@@ -483,13 +529,14 @@ export default function DebtPage() {
           </div>
         </section>
 
-        <section className={cardClass}>
+        <section className={lightCardClass}>
           <div className="mb-6 flex items-start gap-4">
             <div className="text-5xl">📜</div>
             <div>
               <h2 className="text-2xl font-black">Scan Debt Statement</h2>
               <p className="text-sm font-semibold text-zinc-700">
-                Upload a credit card statement, loan summary, or screenshot.
+                Upload a credit card statement, loan summary, screenshot, photo,
+                or PDF.
               </p>
             </div>
           </div>
@@ -497,7 +544,7 @@ export default function DebtPage() {
           <label className="block cursor-pointer rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50 p-8 text-center shadow-inner transition hover:bg-amber-100">
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,.pdf,application/pdf"
               className="hidden"
               onChange={(e) => setImageFile(e.target.files?.[0] || null)}
             />
@@ -507,20 +554,24 @@ export default function DebtPage() {
             <p className="break-words text-xl font-black text-amber-950">
               {imageFile
                 ? imageFile.name
-                : "Tap to upload statement or screenshot"}
+                : "Tap to upload statement, screenshot, photo, or file"}
+            </p>
+
+            <p className="mt-2 text-sm font-bold text-amber-800">
+              JPG • PNG • Screenshot • Photo • PDF
             </p>
           </label>
 
           <button
             onClick={() => void scanDebtImage(imageFile)}
             disabled={!imageFile || scanning}
-            className="mt-6 w-full rounded-2xl bg-emerald-600 py-4 text-lg font-black text-white disabled:opacity-50"
+            className="mt-6 w-full rounded-2xl bg-emerald-600 py-4 text-lg font-black text-white shadow-xl disabled:opacity-50"
           >
             {scanning ? "Scanning..." : "Scan with Ben"}
           </button>
         </section>
 
-        <section className={cardClass}>
+        <section className={lightCardClass}>
           <h2 className="mb-6 text-2xl font-black">Add New Debt</h2>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -604,7 +655,7 @@ export default function DebtPage() {
           <button
             onClick={() => void addDebt()}
             disabled={saving}
-            className="mt-6 w-full rounded-2xl bg-emerald-600 py-4 text-lg font-black text-white hover:bg-emerald-700 disabled:opacity-50"
+            className="mt-6 w-full rounded-2xl bg-emerald-600 py-4 text-lg font-black text-white shadow-xl hover:bg-emerald-700 disabled:opacity-50"
           >
             {saving ? "Saving..." : "Add Debt"}
           </button>
@@ -614,7 +665,7 @@ export default function DebtPage() {
           <h2 className="text-2xl font-black text-white">Your Debts</h2>
 
           {debts.length === 0 ? (
-            <div className={cardClass}>
+            <div className={lightCardClass}>
               <p className="font-bold text-zinc-700">
                 No debts added yet. Add one above and Ben will build your payoff
                 plan.
@@ -622,11 +673,11 @@ export default function DebtPage() {
             </div>
           ) : (
             debts.map((debt) => {
-              const isEditing = editingId === debt.id && editDebt;
+              const isEditing = editingId === debt.id && editDebt !== null;
 
               return (
-                <div key={debt.id} className={cardClass}>
-                  {isEditing ? (
+                <div key={debt.id} className={lightCardClass}>
+                  {isEditing && editDebt ? (
                     <div className="space-y-4">
                       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                         <p className="text-sm font-black uppercase tracking-widest text-emerald-800">
@@ -640,6 +691,7 @@ export default function DebtPage() {
                       <div className="grid gap-4 md:grid-cols-2">
                         <input
                           value={editDebt.name}
+                          placeholder="Debt name"
                           onChange={(e) =>
                             setEditDebt({ ...editDebt, name: e.target.value })
                           }
@@ -649,6 +701,7 @@ export default function DebtPage() {
                         <input
                           value={editDebt.balance}
                           inputMode="decimal"
+                          placeholder="Current balance"
                           onChange={(e) =>
                             setEditDebt({
                               ...editDebt,
@@ -661,6 +714,7 @@ export default function DebtPage() {
                         <input
                           value={editDebt.minPayment}
                           inputMode="decimal"
+                          placeholder="Monthly minimum"
                           onChange={(e) =>
                             setEditDebt({
                               ...editDebt,
@@ -753,17 +807,15 @@ export default function DebtPage() {
                         <button
                           onClick={() => void saveEdit(debt.id)}
                           disabled={saving}
-                          className="rounded-2xl bg-emerald-600 px-6 py-3 font-black text-white hover:bg-emerald-700 disabled:opacity-50"
+                          className="rounded-2xl bg-emerald-600 px-6 py-3 font-black text-white shadow-xl hover:bg-emerald-700 disabled:opacity-50"
                         >
                           {saving ? "Saving..." : "Save Changes"}
                         </button>
 
                         <button
-                          onClick={() => {
-                            setEditingId(null);
-                            setEditDebt(null);
-                          }}
-                          className="rounded-2xl bg-zinc-200 px-6 py-3 font-black text-zinc-950 hover:bg-zinc-300"
+                          onClick={cancelEdit}
+                          disabled={saving}
+                          className="rounded-2xl bg-zinc-200 px-6 py-3 font-black text-zinc-950 hover:bg-zinc-300 disabled:opacity-50"
                         >
                           Cancel
                         </button>
@@ -816,6 +868,7 @@ export default function DebtPage() {
 
                         <div className="mt-4 flex flex-wrap gap-2 md:justify-end">
                           <button
+                            type="button"
                             onClick={() => startEdit(debt)}
                             className={`${smallButtonClass} bg-sky-100 text-sky-900 hover:bg-sky-200`}
                           >
@@ -823,6 +876,7 @@ export default function DebtPage() {
                           </button>
 
                           <button
+                            type="button"
                             onClick={() => void deleteDebt(debt.id)}
                             className={`${smallButtonClass} bg-rose-100 text-rose-900 hover:bg-rose-200`}
                           >
@@ -852,7 +906,7 @@ function StatCard({
   plain?: boolean;
 }) {
   return (
-    <div className={cardClass}>
+    <div className={lightCardClass}>
       <div className="text-sm font-black uppercase tracking-widest text-zinc-600">
         {label}
       </div>
@@ -889,7 +943,7 @@ function StrategyCard({
   debt?: DebtRow;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
+    <div className="rounded-2xl border border-white/20 bg-white/95 p-5 text-zinc-950">
       <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500">
         {subtitle}
       </p>
@@ -897,7 +951,7 @@ function StrategyCard({
       <p className="mt-3 text-sm font-bold leading-6 text-zinc-700">{detail}</p>
 
       {debt ? (
-        <div className="mt-4 rounded-xl bg-white p-3">
+        <div className="mt-4 rounded-xl bg-zinc-100 p-3">
           <p className="font-black text-zinc-950">{debt.name}</p>
           <p className="text-sm font-bold text-zinc-600">
             {money(debt.balance)} balance • {percent(debt.apr)}
