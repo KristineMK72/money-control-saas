@@ -1,3 +1,4 @@
+```tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -10,6 +11,7 @@ import {
   Panel,
 } from "@/components/AppFrame";
 import BenBubble from "@/components/BenBubble";
+import GovernorsOrders from "@/components/GovernorsOrders";
 import XpBar from "@/components/XpBar";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -85,11 +87,16 @@ export default function DashboardPage() {
           .select("id, amount, category")
           .eq("user_id", uid),
         supabase.from("ben_master").select("*").eq("user_id", uid).maybeSingle(),
-        supabase.from("profiles").select("xp, level").eq("user_id", uid).maybeSingle(),
+        supabase
+          .from("profiles")
+          .select("xp, level")
+          .eq("user_id", uid)
+          .maybeSingle(),
       ]);
 
       if (spendRes.error) setNotice(spendRes.error.message);
       if (masterRes.error) setNotice(masterRes.error.message);
+      if (profileRes.error) setNotice(profileRes.error.message);
 
       setSpend((spendRes.data || []) as SpendRow[]);
       setMaster((masterRes.data || null) as BenMasterRow | null);
@@ -118,10 +125,12 @@ export default function DashboardPage() {
 
   const topCategory = useMemo(() => {
     const totals: Record<string, number> = {};
+
     spend.forEach((row) => {
       const cat = (row.category || "misc").replaceAll("_", " ");
       totals[cat] = (totals[cat] || 0) + num(row.amount);
     });
+
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0] || null;
   }, [spend]);
 
@@ -146,8 +155,8 @@ export default function DashboardPage() {
     <AppShell>
       <PageHeader
         eyebrow="AskBen Command Center"
-        title="Dashboard"
-        subtitle="Your money situation, translated from panic spreadsheet into a plan Ben can judge gently."
+        title="Governor's Office"
+        subtitle="Good morrow, Governor. The Treasury awaits thy guidance."
         action={
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-right shadow-sm">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
@@ -165,10 +174,12 @@ export default function DashboardPage() {
       <DarkPanel>
         <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
           <BenBubble message={ben.text} mood={ben.mood} />
+
           <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-white/60">
               Ben XP
             </p>
+
             <div className="mt-3">
               <XpBar xp={profile?.xp ?? 0} level={profile?.level ?? 1} />
             </div>
@@ -176,14 +187,17 @@ export default function DashboardPage() {
         </div>
       </DarkPanel>
 
+      <GovernorsOrders />
+
       <Panel>
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-2xl font-black">Money Snapshot</h2>
+            <h2 className="text-2xl font-black">Treasury Snapshot</h2>
             <p className="mt-1 text-sm font-semibold text-zinc-600">
               Toggle the lens without losing the plot.
             </p>
           </div>
+
           <div className="inline-flex rounded-2xl border border-zinc-200 bg-zinc-100 p-1">
             {(["month", "cumulative"] as const).map((mode) => (
               <button
@@ -220,12 +234,14 @@ export default function DashboardPage() {
           helper="Bill targets this period"
           tone="sky"
         />
+
         <MetricCard
           label="Debt minimums"
           value={money(totalDebtMinimums)}
           helper="Required payments"
           tone="amber"
         />
+
         <MetricCard
           label="Payments made"
           value={money(payments)}
@@ -241,12 +257,14 @@ export default function DashboardPage() {
           helper={topCategory ? money(topCategory[1]) : "No spending logged"}
           tone="zinc"
         />
+
         <MetricCard
           label="Income gap"
           value={money(incomeGap)}
           helper="Extra income needed to stay on track"
           tone={incomeGap > 0 ? "rose" : "emerald"}
         />
+
         <MetricCard
           label="Pressure"
           value={pressurePct ? `${pressurePct.toFixed(1)}%` : "None yet"}
@@ -257,3 +275,4 @@ export default function DashboardPage() {
     </AppShell>
   );
 }
+```
