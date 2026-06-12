@@ -94,9 +94,17 @@ export default function DashboardPage() {
           .maybeSingle(),
       ]);
 
-      if (spendRes.error) setNotice(spendRes.error.message);
-      if (masterRes.error) setNotice(masterRes.error.message);
-      if (profileRes.error) setNotice(profileRes.error.message);
+      if (spendRes.error) {
+        setNotice(spendRes.error.message);
+      }
+
+      if (masterRes.error) {
+        setNotice(masterRes.error.message);
+      }
+
+      if (profileRes.error) {
+        setNotice(profileRes.error.message);
+      }
 
       setSpend((spendRes.data || []) as SpendRow[]);
       setMaster((masterRes.data || null) as BenMasterRow | null);
@@ -155,7 +163,7 @@ export default function DashboardPage() {
     <AppShell>
       <PageHeader
         eyebrow="AskBen Command Center"
-        title="Governor's Office"
+        title="Governor&apos;s Office"
         subtitle="Good morrow, Governor. The Treasury awaits thy guidance."
         action={
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-right shadow-sm">
@@ -169,7 +177,7 @@ export default function DashboardPage() {
         }
       />
 
-      {notice && <Notice>{notice}</Notice>}
+      {notice ? <Notice>{notice}</Notice> : null}
 
       <DarkPanel>
         <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
@@ -202,12 +210,13 @@ export default function DashboardPage() {
             {(["month", "cumulative"] as const).map((mode) => (
               <button
                 key={mode}
+                type="button"
                 onClick={() => setViewMode(mode)}
-                className={`rounded-xl px-4 py-2 text-sm font-black capitalize transition ${
+                className={
                   viewMode === mode
-                    ? "bg-zinc-950 text-white shadow"
-                    : "text-zinc-600 hover:text-zinc-950"
-                }`}
+                    ? "rounded-xl bg-zinc-950 px-4 py-2 text-sm font-black capitalize text-white shadow transition"
+                    : "rounded-xl px-4 py-2 text-sm font-black capitalize text-zinc-600 transition hover:text-zinc-950"
+                }
               >
                 {mode}
               </button>
