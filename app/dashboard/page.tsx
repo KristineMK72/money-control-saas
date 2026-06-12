@@ -1,3 +1,4 @@
+```tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -32,11 +33,13 @@ type BenMasterRow = {
   payments?: number | string | null;
   leftover?: number | string | null;
   pressure_pct?: number | string | null;
+  month_start?: string | null;
 };
 
 type ProfileRow = {
   xp?: number | null;
   level?: number | null;
+  reputation?: number | null;
 };
 
 function num(value: unknown): number {
@@ -52,12 +55,25 @@ function money(value: number): string {
   });
 }
 
+function getColonialRank(reputation: number) {
+  if (reputation >= 5000) return "Defender of the Treasury";
+  if (reputation >= 2500) return "Founding Financier";
+  if (reputation >= 1000) return "Governor";
+  if (reputation >= 500) return "Colonial Magistrate";
+  if (reputation >= 250) return "Treasury Keeper";
+  if (reputation >= 100) return "Town Recorder";
+  return "Apprentice Clerk";
+}
+
 export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [viewMode, setViewMode] = useState<"month" | "cumulative">("month");
 
   const [spend, setSpend] = useState<SpendRow[]>([]);
-  const [master, setMaster] = useState<BenMasterRow | null>(null);
+  const [cumulativeMaster, setCumulativeMaster] = useState<BenMasterRow | null>(
+    null
+  );
+  const [monthlyMaster, setMonthlyMaster] = useState<BenMasterRow | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
@@ -80,36 +96,47 @@ export default function DashboardPage() {
 
       const uid = session.user.id;
 
-      const [spendRes, masterRes, profileRes] = await Promise.all([
-        supabase
-          .from("spend_entries")
-          .select("id, amount, category")
-          .eq("user_id", uid),
-        supabase.from("ben_master").select("*").eq("user_id", uid).maybeSingle(),
-        supabase
-          .from("profiles")
-          .select("xp, level")
-          .eq("user_id", uid)
-          .maybeSingle(),
-      ]);
+      const [spendRes, cumulativeRes, monthlyRes, profileRes] =
+        await Promise.all([
+          supabase
+            .from("spend_entries")
+            .select("id, amount, category")
+            .eq("user_id", uid),
 
-      if (spendRes.error) {
-        setNotice(spendRes.error.message);
-      }
+          supabase
+            .from("ben_master")
+            .select("*")
+            .eq("user_id", uid)
+            .maybeSingle(),
 
-      if (masterRes.error) {
-        setNotice(masterRes.error.message);
-      }
+          supabase
+            .from("ben_master_monthly")
+            .select("*")
+            .eq("user_id", uid)
+            .order("month_start", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
 
-      if (profileRes.error) {
-        setNotice(profileRes.error.message);
+          supabase
+            .from("profiles")
+            .select("xp, level, reputation")
+            .eq("user_id", uid)
+            .maybeSingle(),
+        ]);
+
+      if (spendRes.error) setNotice(spendRes.error.message);
+      if (cumulativeRes.error) setNotice(cumulativeRes.error.message);
+      if (monthlyRes.error) {
+        console.warn("Monthly dashboard view unavailable:", monthlyRes.error);
       }
+      if (profileRes.error) setNotice(profileRes.error.message);
 
       setSpend((spendRes.data || []) as SpendRow[]);
-      setMaster((masterRes.data || null) as BenMasterRow | null);
+      setCumulativeMaster((cumulativeRes.data || null) as BenMasterRow | null);
+      setMonthlyMaster((monthlyRes.data || null) as BenMasterRow | null);
       setProfile((profileRes.data || null) as ProfileRow | null);
 
-      if (!masterRes.data) {
+      if (!cumulativeRes.data) {
         setNotice("Add income, bills, or spending to wake up the full picture.");
       }
 
@@ -118,6 +145,11 @@ export default function DashboardPage() {
 
     void loadDashboard();
   }, [supabase]);
+
+  const master =
+    viewMode === "month"
+      ? monthlyMaster ?? cumulativeMaster
+      : cumulativeMaster ?? monthlyMaster;
 
   const totalIncome = num(master?.total_income);
   const totalSpend = num(master?.total_spend);
@@ -129,6 +161,9 @@ export default function DashboardPage() {
   const pressurePct = num(master?.pressure_pct);
   const totalObligations = totalSpend + bills + totalDebtMinimums;
   const incomeGap = Math.max(0, totalObligations - totalIncome);
+
+  const reputation = profile?.reputation ?? 0;
+  const rank = getColonialRank(reputation);
 
   const topCategory = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -143,7 +178,7 @@ export default function DashboardPage() {
 
   const ben = BenEngine.getForecastMessage({
     name: null,
-    timeframeLabel: viewMode === "month" ? "This Month" : "Overall",
+    timeframeLabel: viewMode === "month" ? "This Month" : "Cumulative",
     totalNeeded: totalObligations,
     incomeSoFar: totalIncome,
     incomeGap,
@@ -162,16 +197,15 @@ export default function DashboardPage() {
     <AppShell>
       <PageHeader
         eyebrow="AskBen Command Center"
-        title="Governor&apos;s Office"
+        title="Governor's Office"
         subtitle="Good morrow, Governor. The Treasury awaits thy guidance."
         action={
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-right shadow-sm">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
-              Level
+              Reputation
             </p>
-            <p className="text-4xl font-black text-emerald-950">
-              {profile?.level ?? 1}
-            </p>
+            <p className="text-4xl font-black text-emerald-950">{reputation}</p>
+            <p className="mt-1 text-xs font-black text-emerald-800">{rank}</p>
           </div>
         }
       />
@@ -201,7 +235,7 @@ export default function DashboardPage() {
           <div>
             <h2 className="text-2xl font-black">Treasury Snapshot</h2>
             <p className="mt-1 text-sm font-semibold text-zinc-600">
-              Toggle the lens without losing the plot.
+              Viewing: {viewMode === "month" ? "This Month" : "Cumulative"}
             </p>
           </div>
 
@@ -283,4 +317,4 @@ export default function DashboardPage() {
     </AppShell>
   );
 }
-
+```
