@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Order = {
   id: number;
@@ -8,7 +9,11 @@ type Order = {
   complete: boolean;
 };
 
+const REWARD_AMOUNT = 75;
+
 export default function GovernorsOrders() {
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+
   const [orders, setOrders] = useState<Order[]>([
     {
       id: 1,
@@ -27,14 +32,73 @@ export default function GovernorsOrders() {
     },
   ]);
 
+  const [rewardGiven, setRewardGiven] = useState(false);
+  const [savingReward, setSavingReward] = useState(false);
+  const [rewardMessage, setRewardMessage] = useState("");
+
   const completed = orders.filter((order) => order.complete).length;
   const allComplete = completed === orders.length;
+
+  useEffect(() => {
+    if (allComplete && !rewardGiven && !savingReward) {
+      void awardReputation();
+    }
+  }, [allComplete, rewardGiven, savingReward]);
 
   function toggleOrder(id: number) {
     setOrders((prev) =>
       prev.map((order) =>
         order.id === id ? { ...order, complete: !order.complete } : order
       )
+    );
+  }
+
+  async function awardReputation() {
+    setSavingReward(true);
+    setRewardMessage("");
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setSavingReward(false);
+      setRewardMessage("Sign in again so the Treasury can record thy reward.");
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("reputation")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      setSavingReward(false);
+      setRewardMessage(`Could not read reputation: ${profileError.message}`);
+      return;
+    }
+
+    const currentReputation = Number(profile?.reputation ?? 0);
+
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({
+        reputation: currentReputation + REWARD_AMOUNT,
+      })
+      .eq("user_id", user.id);
+
+    setSavingReward(false);
+
+    if (updateError) {
+      setRewardMessage(`Could not save reward: ${updateError.message}`);
+      return;
+    }
+
+    setRewardGiven(true);
+    setRewardMessage(
+      `The Treasury recorded thy reward: +${REWARD_AMOUNT} Reputation. Refresh the page to see the new total.`
     );
   }
 
@@ -60,7 +124,7 @@ export default function GovernorsOrders() {
             Reward
           </p>
           <p className="mt-1 text-lg font-black text-zinc-950">
-            🏅 +75 Reputation
+            🏅 +{REWARD_AMOUNT} Reputation
           </p>
         </div>
       </div>
@@ -69,11 +133,11 @@ export default function GovernorsOrders() {
         {orders.map((order) => (
           <label
             key={order.id}
-            className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-4 text-sm font-black transition ${
+            className={
               order.complete
-                ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                : "border-zinc-200 bg-white text-zinc-900 hover:bg-amber-100"
-            }`}
+                ? "flex cursor-pointer items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-black text-emerald-950 transition"
+                : "flex cursor-pointer items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-4 text-sm font-black text-zinc-900 transition hover:bg-amber-100"
+            }
           >
             <input
               type="checkbox"
@@ -118,11 +182,12 @@ export default function GovernorsOrders() {
           </p>
 
           <p className="mt-1 text-sm font-bold">
-            Reputation shall rise throughout the colony.
+            {savingReward
+              ? "Recording thy reputation..."
+              : rewardMessage || "Reputation shall rise throughout the colony."}
           </p>
         </div>
       ) : null}
     </section>
   );
 }
-
