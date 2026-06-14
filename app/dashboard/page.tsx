@@ -69,7 +69,9 @@ export default function DashboardPage() {
   const [viewMode, setViewMode] = useState<"month" | "cumulative">("month");
 
   const [spend, setSpend] = useState<SpendRow[]>([]);
-  const [master, setMaster] = useState<BenMasterRow | null>(null);
+  const [monthlyMaster, setMonthlyMaster] = useState<BenMasterRow | null>(null);
+  const [cumulativeMaster, setCumulativeMaster] =
+    useState<BenMasterRow | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
@@ -92,67 +94,58 @@ export default function DashboardPage() {
 
       const uid = session.user.id;
 
-      const spendQuery = supabase
-        .from("spend_entries")
-        .select("id, amount, category")
-        .eq("user_id", uid);
+      const [spendRes, monthlyRes, cumulativeRes, profileRes] =
+        await Promise.all([
+          supabase
+            .from("spend_entries")
+            .select("id, amount, category")
+            .eq("user_id", uid),
 
-      const masterQuery =
-        viewMode === "month"
-          ? supabase
-              .from("ben_master_monthly")
-              .select("*")
-              .eq("user_id", uid)
-              .order("month", { ascending: false })
-              .limit(1)
-              .maybeSingle()
-          : supabase
-              .from("ben_master")
-              .select("*")
-              .eq("user_id", uid)
-              .maybeSingle();
+          supabase
+            .from("ben_master_monthly")
+            .select("*")
+            .eq("user_id", uid)
+            .order("month", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
 
-      const profileQuery = supabase
-        .from("profiles")
-        .select("xp, level, reputation")
-        .eq("user_id", uid)
-        .maybeSingle();
+          supabase
+            .from("ben_master")
+            .select("*")
+            .eq("user_id", uid)
+            .maybeSingle(),
 
-      const [spendRes, masterRes, profileRes] = await Promise.all([
-        spendQuery,
-        masterQuery,
-        profileQuery,
-      ]);
+          supabase
+            .from("profiles")
+            .select("xp, level, reputation")
+            .eq("user_id", uid)
+            .maybeSingle(),
+        ]);
 
-      if (spendRes.error) {
-        setNotice(spendRes.error.message);
-      }
-
-      if (masterRes.error) {
-        setNotice(masterRes.error.message);
-      }
-
-      if (profileRes.error) {
-        setNotice(profileRes.error.message);
-      }
+      if (spendRes.error) setNotice(spendRes.error.message);
+      if (monthlyRes.error) setNotice(monthlyRes.error.message);
+      if (cumulativeRes.error) setNotice(cumulativeRes.error.message);
+      if (profileRes.error) setNotice(profileRes.error.message);
 
       setSpend((spendRes.data || []) as SpendRow[]);
-      setMaster((masterRes.data || null) as BenMasterRow | null);
+      setMonthlyMaster((monthlyRes.data || null) as BenMasterRow | null);
+      setCumulativeMaster((cumulativeRes.data || null) as BenMasterRow | null);
       setProfile((profileRes.data || null) as ProfileRow | null);
 
-      if (!masterRes.data) {
-        setNotice(
-          viewMode === "month"
-            ? "No monthly treasury data yet. Add income, spend, or payments this month."
-            : "Add income, bills, or spending to wake up the full picture."
-        );
+      if (!monthlyRes.data && !cumulativeRes.data) {
+        setNotice("Add income, bills, spending, or payments to wake up the full picture.");
       }
 
       setLoading(false);
     }
 
     void loadDashboard();
-  }, [supabase, viewMode]);
+  }, [supabase]);
+
+  const master =
+    viewMode === "month"
+      ? monthlyMaster ?? cumulativeMaster
+      : cumulativeMaster ?? monthlyMaster;
 
   const totalIncome = num(master?.total_income);
   const totalSpend = num(master?.total_spend);
