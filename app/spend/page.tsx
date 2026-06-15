@@ -31,8 +31,15 @@ type SpendRow = {
   merchant: string | null;
   amount: number;
   category: SpendCategory;
+  payment_method: string | null;
   note: string | null;
   created_at: string;
+};
+
+type DebtOption = {
+  id: string;
+  name: string | null;
+  kind: "credit" | "loan" | null;
 };
 
 const categories: SpendCategory[] = [
@@ -59,6 +66,8 @@ const categoryLabel: Record<SpendCategory, string> = {
   misc: "Misc",
 };
 
+const basePaymentMethods = ["Debit", "Cash", "Checking", "Savings"];
+
 function money(n: number) {
   return n.toLocaleString("en-US", {
     style: "currency",
@@ -72,6 +81,7 @@ export default function SpendPage() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [entries, setEntries] = useState<SpendRow[]>([]);
+  const [creditCards, setCreditCards] = useState<DebtOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -80,6 +90,7 @@ export default function SpendPage() {
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<SpendCategory>("misc");
+  const [paymentMethod, setPaymentMethod] = useState("Debit");
   const [note, setNote] = useState("");
 
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -104,6 +115,24 @@ export default function SpendPage() {
     setEntries((data || []) as SpendRow[]);
   }
 
+  async function reloadPaymentMethods(uid = userId) {
+    if (!uid) return;
+
+    const { data, error } = await supabase
+      .from("debts")
+      .select("id, name, kind")
+      .eq("user_id", uid)
+      .eq("kind", "credit")
+      .order("name", { ascending: true });
+
+    if (error) {
+      console.error("Payment method load error:", error);
+      return;
+    }
+
+    setCreditCards((data || []) as DebtOption[]);
+  }
+
   useEffect(() => {
     async function init() {
       const { data, error } = await supabase.auth.getSession();
@@ -122,12 +151,11 @@ export default function SpendPage() {
       }
 
       setUserId(user.id);
-      await reloadRows(user.id);
+      await Promise.all([reloadRows(user.id), reloadPaymentMethods(user.id)]);
       setLoading(false);
     }
 
     void init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
   async function handleAddSpend() {
@@ -145,12 +173,14 @@ export default function SpendPage() {
     }
 
     setSaving(true);
+
     const { error } = await supabase.from("spend_entries").insert({
       user_id: userId,
       date_iso: dateISO,
       merchant: merchant.trim(),
       amount: amt,
       category,
+      payment_method: paymentMethod,
       note: note.trim() || null,
     });
 
@@ -163,6 +193,7 @@ export default function SpendPage() {
     setMerchant("");
     setAmount("");
     setCategory("misc");
+    setPaymentMethod("Debit");
     setNote("");
     setDateISO(todayISO());
     await reloadRows(userId);
@@ -197,6 +228,7 @@ export default function SpendPage() {
     try {
       const result = await ocrImageFile(imageFile);
       const parsed = parseTransactionsScreenshot(result.text);
+
       setFoundTxns(parsed);
       setSelectedTxns(
         parsed.reduce<Record<number, boolean>>((acc, _txn, index) => {
@@ -233,7 +265,8 @@ export default function SpendPage() {
         merchant: txn.merchant || "Imported transaction",
         amount: Number(txn.amount || 0),
         category: guessCategoryFromMerchant(txn.merchant || ""),
-        note: "Imported from screenshot",
+        payment_method: paymentMethod,
+        note: `Imported from screenshot${paymentMethod ? ` • ${paymentMethod}` : ""}`,
       }))
       .filter((row) => Number.isFinite(row.amount) && row.amount > 0);
 
@@ -243,6 +276,7 @@ export default function SpendPage() {
     }
 
     setSaving(true);
+
     const { error } = await supabase.from("spend_entries").insert(rows);
 
     if (error) {
@@ -259,7 +293,15 @@ export default function SpendPage() {
     setSaving(false);
   }
 
+  const paymentOptions = [
+    ...basePaymentMethods,
+    ...creditCards
+      .map((card) => card.name?.trim())
+      .filter((name): name is string => !!name),
+  ];
+
   const totalSpend = entries.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
   const topCategory = useMemo(() => {
     const totals: Record<string, number> = {};
     entries.forEach((entry) => {
@@ -268,6 +310,16 @@ export default function SpendPage() {
     });
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
   }, [entries]);
+
+  const topPaymentMethod = useMemo(() => {
+    const totals: Record<string, number> = {};
+    entries.forEach((entry) => {
+      const key = entry.payment_method || "Unknown";
+      totals[key] = (totals[key] || 0) + Number(entry.amount || 0);
+    });
+    return Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+  }, [entries]);
+
   const benInsight = BenEngine.getForecastMessage({
     name: null,
     timeframeLabel: "Spend",
@@ -290,7 +342,7 @@ export default function SpendPage() {
       <PageHeader
         eyebrow="AskBen Spend"
         title="Spend"
-        subtitle="Track every dollar leaving the building, then let Ben point at the suspicious ones."
+        subtitle="Track every dollar leaving the building, including how thou paid for it."
       />
 
       {message && <Notice>{message}</Notice>}
@@ -307,12 +359,18 @@ export default function SpendPage() {
           helper={topCategory ? money(topCategory[1]) : "No spend logged"}
           tone="sky"
         />
-        <MetricCard label="Entries" value={String(entries.length)} tone="zinc" />
+        <MetricCard
+          label="Top payment"
+          value={topPaymentMethod ? topPaymentMethod[0] : "None yet"}
+          helper={topPaymentMethod ? money(topPaymentMethod[1]) : "No method logged"}
+          tone="zinc"
+        />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
         <Panel>
           <h2 className="text-2xl font-black">Add Spending</h2>
+
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <input
               value={merchant}
@@ -320,6 +378,7 @@ export default function SpendPage() {
               placeholder="Merchant or place"
               className={inputClass}
             />
+
             <input
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
@@ -327,12 +386,14 @@ export default function SpendPage() {
               inputMode="decimal"
               className={inputClass}
             />
+
             <input
               type="date"
               value={dateISO}
               onChange={(e) => setDateISO(e.target.value)}
               className={inputClass}
             />
+
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as SpendCategory)}
@@ -344,6 +405,19 @@ export default function SpendPage() {
                 </option>
               ))}
             </select>
+
+            <select
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              className={inputClass}
+            >
+              {paymentOptions.map((method) => (
+                <option key={method} value={method}>
+                  {method}
+                </option>
+              ))}
+            </select>
+
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -351,6 +425,7 @@ export default function SpendPage() {
               className={`${inputClass} min-h-24 md:col-span-2`}
             />
           </div>
+
           <button
             onClick={handleAddSpend}
             disabled={saving || !userId}
@@ -362,7 +437,7 @@ export default function SpendPage() {
 
         <PaperScrollScanner
           title="Scan Receipt"
-          description="Upload a bank screenshot, receipt, or photo. Review Ben's findings before they touch the ledger."
+          description="Upload a bank screenshot, receipt, or photo. Choose the payment method, then import."
           file={imageFile}
           busy={ocrBusy}
           onFileChange={(file) => {
@@ -381,9 +456,11 @@ export default function SpendPage() {
             <div>
               <h2 className="text-2xl font-black">Review imports</h2>
               <p className="text-sm font-semibold text-zinc-600">
-                Ben guessed. You approve. A very healthy division of labor.
+                Imported transactions will use payment method:{" "}
+                <span className="font-black">{paymentMethod}</span>
               </p>
             </div>
+
             <button
               onClick={importSelected}
               disabled={saving}
@@ -392,6 +469,7 @@ export default function SpendPage() {
               Import selected
             </button>
           </div>
+
           <div className="mt-5 grid gap-3">
             {foundTxns.map((txn, index) => (
               <label
@@ -409,13 +487,15 @@ export default function SpendPage() {
                       }))
                     }
                   />
+
                   <div>
                     <p className="font-black">{txn.merchant || "Transaction"}</p>
                     <p className="text-sm font-semibold text-zinc-600">
-                      {txn.dateText || dateISO}
+                      {txn.dateText || dateISO} • {paymentMethod}
                     </p>
                   </div>
                 </div>
+
                 <p className="text-lg font-black">{money(Number(txn.amount || 0))}</p>
               </label>
             ))}
@@ -425,6 +505,7 @@ export default function SpendPage() {
 
       <Panel>
         <h2 className="text-2xl font-black">Recent Spending</h2>
+
         <div className="mt-5 grid gap-3">
           {entries.length === 0 ? (
             <p className="text-sm font-semibold text-zinc-600">
@@ -439,12 +520,15 @@ export default function SpendPage() {
                 <div>
                   <p className="font-black">{entry.merchant || "Spending"}</p>
                   <p className="text-sm font-semibold text-zinc-600">
-                    {entry.date_iso} - {categoryLabel[entry.category] || entry.category}
-                    {entry.note ? ` - ${entry.note}` : ""}
+                    {entry.date_iso} • {categoryLabel[entry.category] || entry.category}
+                    {entry.payment_method ? ` • ${entry.payment_method}` : ""}
+                    {entry.note ? ` • ${entry.note}` : ""}
                   </p>
                 </div>
+
                 <div className="flex items-center gap-3">
                   <p className="text-lg font-black">{money(Number(entry.amount || 0))}</p>
+
                   <button
                     onClick={() => void handleDelete(entry.id)}
                     className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700"
