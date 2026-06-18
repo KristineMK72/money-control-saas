@@ -13,6 +13,7 @@ import {
 } from "@/components/AppFrame";
 import BenBubble from "@/components/BenBubble";
 import PaperScrollScanner from "@/components/PaperScrollScanner";
+import ScrollRevealCard from "@/components/ScrollRevealCard";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
@@ -174,6 +175,7 @@ export default function PaymentsPage() {
       if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
         setDateISO(first.dateText);
       }
+
       setNote("Scanned payment proof");
       setMessage("Scanner filled what it could. Review before saving.");
     } catch (error) {
@@ -207,6 +209,7 @@ export default function PaymentsPage() {
     }
 
     setSaving(true);
+
     const { error } = await supabase.from("payments").insert({
       user_id: userId,
       date_iso: dateISO,
@@ -238,8 +241,17 @@ export default function PaymentsPage() {
   }
 
   const total = useMemo(() => {
-    return payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    return payments.reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
+      0
+    );
   }, [payments]);
+
+  const latestPayment = payments[0];
+
+  const debtPayments = payments.filter((p) => p.debt_id).length;
+  const billPayments = payments.filter((p) => p.bill_id).length;
+
   const benInsight = BenEngine.getForecastMessage({
     name: null,
     timeframeLabel: "Payments",
@@ -248,6 +260,8 @@ export default function PaymentsPage() {
     incomeGap: 0,
     dailyIncomeNeeded: 0,
   });
+
+  const paymentMood = total > 0 ? "/ben-winning.png" : "/ben-thinking.png";
 
   if (loading) {
     return (
@@ -267,94 +281,50 @@ export default function PaymentsPage() {
 
       {message && <Notice>{message}</Notice>}
 
-      <DarkPanel>
-        <BenBubble message={benInsight.text} mood={benInsight.mood} />
-      </DarkPanel>
+      <ScrollRevealCard
+        title="Payment Victory Briefing"
+        subtitle="Total paid, payment count, and Ben's read on the ledger"
+        image={paymentMood}
+        defaultOpen
+      >
+        <DarkPanel>
+          <BenBubble message={benInsight.text} mood={benInsight.mood} />
+        </DarkPanel>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Total paid" value={money(total)} tone="emerald" />
-        <MetricCard label="Payments" value={String(payments.length)} tone="sky" />
-        <MetricCard label="Targets" value={`${debts.length + bills.length}`} tone="zinc" />
-      </section>
+        <section className="mt-5 grid gap-4 md:grid-cols-3">
+          <MetricCard label="Total paid" value={money(total)} tone="emerald" />
 
-      <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-        <Panel>
-          <h2 className="text-2xl font-black">Add Payment</h2>
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <input
-              type="date"
-              value={dateISO}
-              onChange={(e) => setDateISO(e.target.value)}
-              className={inputClass}
-            />
-            <input
-              placeholder="What did you pay?"
-              value={merchant}
-              onChange={(e) => setMerchant(e.target.value)}
-              className={inputClass}
-            />
-            <input
-              type="number"
-              placeholder="Amount"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className={inputClass}
-            />
-            <select
-              value={payType}
-              onChange={(e) => {
-                setPayType(e.target.value as "debt" | "bill");
-                setDebtId("");
-                setBillId("");
-              }}
-              className={inputClass}
-            >
-              <option value="debt">Debt</option>
-              <option value="bill">Bill</option>
-            </select>
-            {payType === "debt" ? (
-              <select
-                value={debtId}
-                onChange={(e) => setDebtId(e.target.value)}
-                className={`${inputClass} md:col-span-2`}
-              >
-                <option value="">Select debt</option>
-                {debts.map((debt) => (
-                  <option key={debt.id} value={debt.id}>
-                    {debt.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <select
-                value={billId}
-                onChange={(e) => setBillId(e.target.value)}
-                className={`${inputClass} md:col-span-2`}
-              >
-                <option value="">Select bill</option>
-                {bills.map((bill) => (
-                  <option key={bill.id} value={bill.id}>
-                    {bill.name} - {money(Number(bill.target || 0))}
-                  </option>
-                ))}
-              </select>
-            )}
-            <textarea
-              placeholder="Note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className={`${inputClass} min-h-24 md:col-span-2`}
-            />
-          </div>
-          <button
-            onClick={handleAddPayment}
-            disabled={saving}
-            className={`${moneyButtonClass} mt-5 w-full`}
-          >
-            {saving ? "Saving..." : "Add Payment"}
-          </button>
-        </Panel>
+          <MetricCard
+            label="Payments"
+            value={String(payments.length)}
+            helper={
+              latestPayment
+                ? `${latestPayment.merchant || "Payment"} - ${money(
+                    Number(latestPayment.amount || 0)
+                  )}`
+                : "No payments yet"
+            }
+            tone="sky"
+          />
 
+          <MetricCard
+            label="Targets"
+            value={`${debts.length + bills.length}`}
+            helper={`${debtPayments} debt • ${billPayments} bill payments`}
+            tone="zinc"
+          />
+        </section>
+      </ScrollRevealCard>
+
+      <ScrollRevealCard
+        title="Scan Payment Proof"
+        subtitle={
+          scanning
+            ? "Ben is reading the proof..."
+            : "Upload receipt, screenshot, or confirmation"
+        }
+        image="/ben-mastermind.png"
+      >
         <PaperScrollScanner
           title="Scan Payment Proof"
           description="Upload a receipt, bank screenshot, or confirmation. Ben will fill the draft and await thy approval."
@@ -363,11 +333,111 @@ export default function PaymentsPage() {
           onFileChange={setImageFile}
           onScan={() => void handleScanPayment()}
         />
-      </section>
+      </ScrollRevealCard>
 
-      <Panel>
-        <h2 className="text-2xl font-black">Payment History</h2>
-        <div className="mt-5 grid gap-3">
+      <ScrollRevealCard
+        title="Add Payment"
+        subtitle={merchant || amount ? "Draft ready for review" : "Record a victory"}
+        image="/ben-thinking.png"
+        defaultOpen
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <input
+            type="date"
+            value={dateISO}
+            onChange={(e) => setDateISO(e.target.value)}
+            className={inputClass}
+          />
+
+          <input
+            placeholder="What did you pay?"
+            value={merchant}
+            onChange={(e) => setMerchant(e.target.value)}
+            className={inputClass}
+          />
+
+          <input
+            type="number"
+            placeholder="Amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className={inputClass}
+          />
+
+          <select
+            value={payType}
+            onChange={(e) => {
+              setPayType(e.target.value as "debt" | "bill");
+              setDebtId("");
+              setBillId("");
+            }}
+            className={inputClass}
+          >
+            <option value="debt">Debt</option>
+            <option value="bill">Bill</option>
+          </select>
+
+          {payType === "debt" ? (
+            <select
+              value={debtId}
+              onChange={(e) => setDebtId(e.target.value)}
+              className={`${inputClass} md:col-span-2`}
+            >
+              <option value="">Select debt</option>
+              {debts.map((debt) => (
+                <option key={debt.id} value={debt.id}>
+                  {debt.name}
+                  {debt.remaining_balance != null
+                    ? ` - ${money(Number(debt.remaining_balance || 0))} left`
+                    : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select
+              value={billId}
+              onChange={(e) => setBillId(e.target.value)}
+              className={`${inputClass} md:col-span-2`}
+            >
+              <option value="">Select bill</option>
+              {bills.map((bill) => (
+                <option key={bill.id} value={bill.id}>
+                  {bill.name} - {money(Number(bill.target || 0))}
+                </option>
+              ))}
+            </select>
+          )}
+
+          <textarea
+            placeholder="Note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className={`${inputClass} min-h-24 md:col-span-2`}
+          />
+
+          <button
+            onClick={handleAddPayment}
+            disabled={saving}
+            className={`${moneyButtonClass} md:col-span-2`}
+          >
+            {saving ? "Saving..." : "Add Payment"}
+          </button>
+        </div>
+      </ScrollRevealCard>
+
+      <ScrollRevealCard
+        title="Payment History"
+        subtitle={
+          latestPayment
+            ? `${latestPayment.merchant || "Latest payment"} - ${money(
+                Number(latestPayment.amount || 0)
+              )}`
+            : "The ledger awaits its first victory"
+        }
+        image="/ben-recovery.png"
+        defaultOpen
+      >
+        <div className="grid gap-3">
           {payments.length === 0 ? (
             <p className="text-sm font-semibold text-zinc-600">
               No payments yet. The ledger awaits its first victory.
@@ -380,11 +450,15 @@ export default function PaymentsPage() {
               >
                 <div>
                   <p className="font-black">{payment.merchant || "Payment"}</p>
+
                   <p className="text-sm font-semibold text-zinc-600">
                     {payment.date_iso}
-                    {payment.note ? ` - ${payment.note}` : ""}
+                    {payment.debt_id ? " • Debt payment" : ""}
+                    {payment.bill_id ? " • Bill payment" : ""}
+                    {payment.note ? ` • ${payment.note}` : ""}
                   </p>
                 </div>
+
                 <p className="text-lg font-black">
                   {money(Number(payment.amount || 0))}
                 </p>
@@ -392,7 +466,7 @@ export default function PaymentsPage() {
             ))
           )}
         </div>
-      </Panel>
+      </ScrollRevealCard>
     </AppShell>
   );
 }
