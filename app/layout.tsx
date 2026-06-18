@@ -11,6 +11,7 @@ import AppInitializer from "@/components/AppInitializer";
 import BenWorldBackground from "@/components/BenWorldBackground";
 import MobileMenu from "@/components/MobileMenu";
 import GovernorHeader from "@/components/GovernorHeader";
+import GlobalBenAdvisor from "@/components/GlobalBenAdvisor";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -309,7 +310,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <BenPersona />
           </header>
 
-          <GovernorHeader />
+<GovernorHeader />
+<GlobalBenAdvisor />
+<main style={{ position: "relative", zIndex: 1, minHeight: "70vh" }}>
+  {children}
+</main>
 
           <main style={{ position: "relative", zIndex: 1, minHeight: "70vh" }}>
             {children}
