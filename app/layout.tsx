@@ -345,41 +345,76 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             Ask Ben 💰
           </a>
 
-          <footer
+                 <footer
             style={{
               position: "relative",
               zIndex: 1,
-              marginTop: 60,
-              padding: "24px 20px 34px",
+              marginTop: 80,
+              marginLeft: "auto",
+              marginRight: "auto",
+              marginBottom: 34,
+              maxWidth: 1000,
+              padding: "30px 22px",
               textAlign: "center",
               fontSize: 13,
-              color: "rgba(255,255,255,0.62)",
-              textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+              color: "#f8fafc",
               fontFamily: "var(--font-inter), system-ui, sans-serif",
+              background:
+                "linear-gradient(180deg, rgba(15,23,42,0.94), rgba(15,23,42,0.88))",
+              border: "1px solid rgba(255,255,255,0.14)",
+              borderRadius: 28,
+              backdropFilter: "blur(18px)",
+              WebkitBackdropFilter: "blur(18px)",
+              boxShadow:
+                "0 22px 70px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
             }}
           >
+            <img
+              src="/ben-head.png"
+              alt="AskBen"
+              style={{
+                width: 88,
+                height: 88,
+                objectFit: "contain",
+                margin: "0 auto 14px",
+                display: "block",
+                borderRadius: 24,
+                background: "rgba(255,255,255,0.94)",
+                border: "1px solid rgba(251,191,36,0.35)",
+                padding: 8,
+                boxShadow: "0 14px 35px rgba(0,0,0,0.35)",
+              }}
+            />
+
             <div
               style={{
                 fontFamily: "var(--font-cormorant), Georgia, serif",
-                fontSize: 18,
-                fontWeight: 800,
-                color: "#fff7ed",
+                fontSize: 24,
+                fontWeight: 900,
+                color: "#fef3c7",
+                letterSpacing: "0.04em",
               }}
             >
               AskBen 🖋️
             </div>
 
-            <div style={{ marginTop: 4 }}>
+            <div
+              style={{
+                marginTop: 6,
+                color: "rgba(255,255,255,0.86)",
+                fontWeight: 700,
+              }}
+            >
               © 2026 Spatialytics — Built with ❤️ in Minnesota
             </div>
 
             <div
               style={{
-                marginTop: 6,
+                marginTop: 8,
                 fontFamily: "var(--font-im-fell), Georgia, serif",
                 letterSpacing: "0.18em",
                 textTransform: "uppercase",
-                color: "rgba(255,255,255,0.5)",
+                color: "#fcd34d",
               }}
             >
               Spend wisely.
@@ -387,40 +422,88 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
             <div
               style={{
-                marginTop: 14,
-                fontSize: 12,
-                opacity: 0.82,
-                lineHeight: 1.6,
+                margin: "18px auto 0",
+                maxWidth: 720,
+                padding: "14px 18px",
+                borderRadius: 18,
+                background: "rgba(251,191,36,0.08)",
+                border: "1px solid rgba(251,191,36,0.2)",
+                color: "#fde68a",
+                fontSize: 13,
+                fontWeight: 800,
+                lineHeight: 1.7,
               }}
             >
-              Secure login • Encrypted connection • No bank login required
+              🏛️ Secure login • Encrypted connection • No bank login required •
+              Your finances remain under your control
             </div>
 
             <div
               style={{
-                marginTop: 14,
+                marginTop: 16,
                 display: "flex",
                 justifyContent: "center",
                 alignItems: "center",
                 gap: 10,
                 flexWrap: "wrap",
                 fontSize: 12,
+                fontWeight: 800,
               }}
             >
-              <a href="/privacy" style={{ color: "#fff7ed", textDecoration: "none" }}>
+              <a
+                href="/privacy"
+                style={{
+                  color: "#fff7ed",
+                  textDecoration: "none",
+                  padding: "8px 10px",
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                }}
+              >
                 Privacy
               </a>
 
-              <span style={{ opacity: 0.5 }}>•</span>
-
-              <a href="/security" style={{ color: "#fff7ed", textDecoration: "none" }}>
+              <a
+                href="/security"
+                style={{
+                  color: "#fff7ed",
+                  textDecoration: "none",
+                  padding: "8px 10px",
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                }}
+              >
                 Security
               </a>
 
-              <span style={{ opacity: 0.5 }}>•</span>
-
-              <a href="/terms" style={{ color: "#fff7ed", textDecoration: "none" }}>
+              <a
+                href="/terms"
+                style={{
+                  color: "#fff7ed",
+                  textDecoration: "none",
+                  padding: "8px 10px",
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                }}
+              >
                 Terms
+              </a>
+
+              <a
+                href="/whyben"
+                style={{
+                  color: "#fff7ed",
+                  textDecoration: "none",
+                  padding: "8px 10px",
+                  borderRadius: 999,
+                  background: "rgba(251,191,36,0.12)",
+                  border: "1px solid rgba(251,191,36,0.22)",
+                }}
+              >
+                Why AskBen
               </a>
             </div>
           </footer>
