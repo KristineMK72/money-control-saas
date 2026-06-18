@@ -13,6 +13,7 @@ import {
 } from "@/components/AppFrame";
 import BenBubble from "@/components/BenBubble";
 import PaperScrollScanner from "@/components/PaperScrollScanner";
+import ScrollRevealCard from "@/components/ScrollRevealCard";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/money/utils";
@@ -156,6 +157,7 @@ export default function SpendPage() {
     }
 
     void init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
   async function handleAddSpend() {
@@ -196,7 +198,9 @@ export default function SpendPage() {
     setPaymentMethod("Debit");
     setNote("");
     setDateISO(todayISO());
+
     await reloadRows(userId);
+
     setMessage("Spending logged. The money trail has entered evidence.");
     setSaving(false);
   }
@@ -288,7 +292,9 @@ export default function SpendPage() {
     setFoundTxns([]);
     setSelectedTxns({});
     setImageFile(null);
+
     await reloadRows(userId);
+
     setMessage(`Imported ${rows.length} transactions. Ben filed the receipts.`);
     setSaving(false);
   }
@@ -304,19 +310,23 @@ export default function SpendPage() {
 
   const topCategory = useMemo(() => {
     const totals: Record<string, number> = {};
+
     entries.forEach((entry) => {
       const key = categoryLabel[entry.category] || "Misc";
       totals[key] = (totals[key] || 0) + Number(entry.amount || 0);
     });
+
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
   }, [entries]);
 
   const topPaymentMethod = useMemo(() => {
     const totals: Record<string, number> = {};
+
     entries.forEach((entry) => {
       const key = entry.payment_method || "Unknown";
       totals[key] = (totals[key] || 0) + Number(entry.amount || 0);
     });
+
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
   }, [entries]);
 
@@ -328,6 +338,13 @@ export default function SpendPage() {
     incomeGap: totalSpend,
     dailyIncomeNeeded: totalSpend > 0 ? Math.ceil(totalSpend / 30) : 0,
   });
+
+  const spendMood =
+    totalSpend > 0 && topCategory?.[0]?.toLowerCase().includes("eating")
+      ? "/ben-facepalm.png"
+      : totalSpend > 0
+      ? "/ben-thinking.png"
+      : "/ben-head.png";
 
   if (loading) {
     return (
@@ -347,94 +364,116 @@ export default function SpendPage() {
 
       {message && <Notice>{message}</Notice>}
 
-      <DarkPanel>
-        <BenBubble message={benInsight.text} mood={benInsight.mood} />
-      </DarkPanel>
+      <ScrollRevealCard
+        title="Spending Briefing"
+        subtitle="Totals, top category, payment method, and Ben's read"
+        image={spendMood}
+        defaultOpen
+      >
+        <DarkPanel>
+          <BenBubble message={benInsight.text} mood={benInsight.mood} />
+        </DarkPanel>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Total spend" value={money(totalSpend)} tone="amber" />
-        <MetricCard
-          label="Top category"
-          value={topCategory ? topCategory[0] : "None yet"}
-          helper={topCategory ? money(topCategory[1]) : "No spend logged"}
-          tone="sky"
-        />
-        <MetricCard
-          label="Top payment"
-          value={topPaymentMethod ? topPaymentMethod[0] : "None yet"}
-          helper={topPaymentMethod ? money(topPaymentMethod[1]) : "No method logged"}
-          tone="zinc"
-        />
-      </section>
+        <section className="mt-5 grid gap-4 md:grid-cols-3">
+          <MetricCard label="Total spend" value={money(totalSpend)} tone="amber" />
 
-      <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-        <Panel>
-          <h2 className="text-2xl font-black">Add Spending</h2>
+          <MetricCard
+            label="Top category"
+            value={topCategory ? topCategory[0] : "None yet"}
+            helper={topCategory ? money(topCategory[1]) : "No spend logged"}
+            tone="sky"
+          />
 
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <input
-              value={merchant}
-              onChange={(e) => setMerchant(e.target.value)}
-              placeholder="Merchant or place"
-              className={inputClass}
-            />
+          <MetricCard
+            label="Top payment"
+            value={topPaymentMethod ? topPaymentMethod[0] : "None yet"}
+            helper={
+              topPaymentMethod ? money(topPaymentMethod[1]) : "No method logged"
+            }
+            tone="zinc"
+          />
+        </section>
+      </ScrollRevealCard>
 
-            <input
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="Amount"
-              inputMode="decimal"
-              className={inputClass}
-            />
+      <ScrollRevealCard
+        title="Add Spending"
+        subtitle={merchant || amount ? "Draft ready for the ledger" : "Manual entry"}
+        image="/ben-thinking.png"
+        defaultOpen
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <input
+            value={merchant}
+            onChange={(e) => setMerchant(e.target.value)}
+            placeholder="Merchant or place"
+            className={inputClass}
+          />
 
-            <input
-              type="date"
-              value={dateISO}
-              onChange={(e) => setDateISO(e.target.value)}
-              className={inputClass}
-            />
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="Amount"
+            inputMode="decimal"
+            className={inputClass}
+          />
 
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as SpendCategory)}
-              className={inputClass}
-            >
-              {categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {categoryLabel[cat]}
-                </option>
-              ))}
-            </select>
+          <input
+            type="date"
+            value={dateISO}
+            onChange={(e) => setDateISO(e.target.value)}
+            className={inputClass}
+          />
 
-            <select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              className={inputClass}
-            >
-              {paymentOptions.map((method) => (
-                <option key={method} value={method}>
-                  {method}
-                </option>
-              ))}
-            </select>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as SpendCategory)}
+            className={inputClass}
+          >
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>
+                {categoryLabel[cat]}
+              </option>
+            ))}
+          </select>
 
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Optional note"
-              className={`${inputClass} min-h-24 md:col-span-2`}
-            />
-          </div>
+          <select
+            value={paymentMethod}
+            onChange={(e) => setPaymentMethod(e.target.value)}
+            className={inputClass}
+          >
+            {paymentOptions.map((method) => (
+              <option key={method} value={method}>
+                {method}
+              </option>
+            ))}
+          </select>
+
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Optional note"
+            className={`${inputClass} min-h-24 md:col-span-2`}
+          />
 
           <button
             onClick={handleAddSpend}
             disabled={saving || !userId}
-            className={`${moneyButtonClass} mt-5 w-full`}
+            className={`${moneyButtonClass} md:col-span-2`}
           >
             {saving ? "Saving..." : "Add Spend"}
           </button>
-        </Panel>
+        </div>
+      </ScrollRevealCard>
 
+      <ScrollRevealCard
+        title="Receipt Scanner"
+        subtitle={
+          ocrBusy
+            ? "Ben is reading the receipt..."
+            : "Upload a screenshot, receipt, or photo"
+        }
+        image="/ben-mastermind.png"
+      >
         <PaperScrollScanner
           title="Scan Receipt"
           description="Upload a bank screenshot, receipt, or photo. Choose the payment method, then import."
@@ -448,13 +487,18 @@ export default function SpendPage() {
           }}
           onScan={handleOCR}
         />
-      </section>
+      </ScrollRevealCard>
 
       {foundTxns.length > 0 && (
-        <Panel>
+        <ScrollRevealCard
+          title="Review Imports"
+          subtitle={`${foundTxns.length} possible transactions found`}
+          image="/ben-recovery.png"
+          defaultOpen
+        >
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-2xl font-black">Review imports</h2>
+              <h2 className="text-2xl font-black text-zinc-950">Review imports</h2>
               <p className="text-sm font-semibold text-zinc-600">
                 Imported transactions will use payment method:{" "}
                 <span className="font-black">{paymentMethod}</span>
@@ -496,38 +540,47 @@ export default function SpendPage() {
                   </div>
                 </div>
 
-                <p className="text-lg font-black">{money(Number(txn.amount || 0))}</p>
+                <p className="text-lg font-black">
+                  {money(Number(txn.amount || 0))}
+                </p>
               </label>
             ))}
           </div>
-        </Panel>
+        </ScrollRevealCard>
       )}
 
-      <Panel>
-        <h2 className="text-2xl font-black">Recent Spending</h2>
-
-        <div className="mt-5 grid gap-3">
+      <ScrollRevealCard
+        title="Recent Spending"
+        subtitle={`${entries.length} entries in the merchant ledger`}
+        image="/ben-recovery.png"
+        defaultOpen
+      >
+        <div className="grid gap-3">
           {entries.length === 0 ? (
             <p className="text-sm font-semibold text-zinc-600">
               No spending yet. Suspiciously peaceful.
             </p>
           ) : (
-            entries.slice(0, 12).map((entry) => (
+            entries.map((entry) => (
               <div
                 key={entry.id}
                 className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 md:flex-row md:items-center md:justify-between"
               >
                 <div>
                   <p className="font-black">{entry.merchant || "Spending"}</p>
+
                   <p className="text-sm font-semibold text-zinc-600">
-                    {entry.date_iso} • {categoryLabel[entry.category] || entry.category}
+                    {entry.date_iso} •{" "}
+                    {categoryLabel[entry.category] || entry.category}
                     {entry.payment_method ? ` • ${entry.payment_method}` : ""}
                     {entry.note ? ` • ${entry.note}` : ""}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <p className="text-lg font-black">{money(Number(entry.amount || 0))}</p>
+                  <p className="text-lg font-black">
+                    {money(Number(entry.amount || 0))}
+                  </p>
 
                   <button
                     onClick={() => void handleDelete(entry.id)}
@@ -540,7 +593,7 @@ export default function SpendPage() {
             ))
           )}
         </div>
-      </Panel>
+      </ScrollRevealCard>
     </AppShell>
   );
 }
