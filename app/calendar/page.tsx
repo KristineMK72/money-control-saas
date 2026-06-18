@@ -11,6 +11,7 @@ import {
   primaryButtonClass,
 } from "@/components/AppFrame";
 import BenBubble from "@/components/BenBubble";
+import ScrollRevealCard from "@/components/ScrollRevealCard";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -276,6 +277,14 @@ export default function CalendarPage() {
     dailyIncomeNeeded: Math.ceil(monthTotal / 30),
   });
 
+  const calendarMood =
+    monthTotal > 0 ? "/ben-mastermind.png" : "/ben-thinking.png";
+
+  const heavyMood =
+    heaviestWeek && heaviestWeek.total > 0
+      ? "/ben-overdraft.png"
+      : "/ben-recovery.png";
+
   function shiftMonth(delta: number) {
     const next = new Date(viewYear, viewMonth + delta, 1);
     setViewYear(next.getFullYear());
@@ -318,22 +327,34 @@ export default function CalendarPage() {
 
       {message && <Notice>{message}</Notice>}
 
-      <DarkPanel>
-        <BenBubble message={benInsight.text} mood={benInsight.mood} />
-      </DarkPanel>
+      <ScrollRevealCard
+        title="Calendar Briefing"
+        subtitle={`${monthLabel} obligations and weekly pressure`}
+        image={calendarMood}
+        defaultOpen
+      >
+        <DarkPanel>
+          <BenBubble message={benInsight.text} mood={benInsight.mood} />
+        </DarkPanel>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Month" value={monthLabel} tone="sky" />
-        <MetricCard label="Total due" value={money(monthTotal)} tone="amber" />
-        <MetricCard
-          label="Heaviest week"
-          value={heaviestWeek ? money(heaviestWeek.total) : "$0.00"}
-          helper={heaviestWeek?.label || "No obligations"}
-          tone={heaviestWeek?.total ? "rose" : "zinc"}
-        />
-      </section>
+        <section className="mt-5 grid gap-4 md:grid-cols-3">
+          <MetricCard label="Month" value={monthLabel} tone="sky" />
+          <MetricCard label="Total due" value={money(monthTotal)} tone="amber" />
+          <MetricCard
+            label="Heaviest week"
+            value={heaviestWeek ? money(heaviestWeek.total) : "$0.00"}
+            helper={heaviestWeek?.label || "No obligations"}
+            tone={heaviestWeek?.total ? "rose" : "zinc"}
+          />
+        </section>
+      </ScrollRevealCard>
 
-      <Panel>
+      <ScrollRevealCard
+        title="Monthly Money Map"
+        subtitle="Bills and debts laid out by day"
+        image="/ben-mastermind.png"
+        defaultOpen
+      >
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500">
@@ -422,10 +443,17 @@ export default function CalendarPage() {
             );
           })}
         </div>
-      </Panel>
+      </ScrollRevealCard>
 
-      <Panel>
-        <h2 className="text-2xl font-black">Weekly Income Targets</h2>
+      <ScrollRevealCard
+        title="Weekly Income Targets"
+        subtitle="Each week shows how much needs to be covered"
+        image={heavyMood}
+        defaultOpen
+      >
+        <h2 className="text-2xl font-black text-zinc-950">
+          Weekly Income Targets
+        </h2>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {weekSummaries.map((week) => {
@@ -494,7 +522,7 @@ export default function CalendarPage() {
             );
           })}
         </div>
-      </Panel>
+      </ScrollRevealCard>
     </AppShell>
   );
 }
