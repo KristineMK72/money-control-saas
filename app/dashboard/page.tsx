@@ -11,6 +11,7 @@ import {
 } from "@/components/AppFrame";
 import BenBubble from "@/components/BenBubble";
 import GovernorsOrders from "@/components/GovernorsOrders";
+import ScrollRevealCard from "@/components/ScrollRevealCard";
 import XpBar from "@/components/XpBar";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -181,6 +182,11 @@ export default function DashboardPage() {
     dailyIncomeNeeded: incomeGap > 0 ? Math.ceil(incomeGap / 30) : 0,
   });
 
+  const pressureMood =
+    incomeGap > 0 || net < 0 || pressurePct > 75
+      ? "/ben-overdraft.png"
+      : "/ben-recovery.png";
+
   if (loading) {
     return (
       <AppShell>
@@ -208,28 +214,42 @@ export default function DashboardPage() {
 
       {notice ? <Notice>{notice}</Notice> : null}
 
-      <DarkPanel>
-        <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
-          <BenBubble message={ben.text} mood={ben.mood} />
+      <ScrollRevealCard
+        title="Ben's Desk"
+        subtitle="Guidance, XP, and today's command briefing"
+        image="/ben-head.png"
+        defaultOpen
+      >
+        <DarkPanel>
+          <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
+            <BenBubble message={ben.text} mood={ben.mood} />
 
-          <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-white/60">
-              Ben XP
-            </p>
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-white/60">
+                Ben XP
+              </p>
 
-            <div className="mt-3">
-              <XpBar xp={profile?.xp ?? 0} level={profile?.level ?? 1} />
+              <div className="mt-3">
+                <XpBar xp={profile?.xp ?? 0} level={profile?.level ?? 1} />
+              </div>
             </div>
           </div>
+        </DarkPanel>
+
+        <div className="mt-5">
+          <GovernorsOrders />
         </div>
-      </DarkPanel>
+      </ScrollRevealCard>
 
-      <GovernorsOrders />
-
-      <Panel>
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <ScrollRevealCard
+        title="Treasury Snapshot"
+        subtitle={`Viewing ${viewMode === "month" ? "this month" : "cumulative"} totals`}
+        image="/ben-thinking.png"
+        defaultOpen
+      >
+        <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-2xl font-black">Treasury Snapshot</h2>
+            <h2 className="text-2xl font-black text-zinc-950">Treasury Snapshot</h2>
             <p className="mt-1 text-sm font-semibold text-zinc-600">
               Viewing: {viewMode === "month" ? "This Month" : "Cumulative"}
             </p>
@@ -252,64 +272,76 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
-      </Panel>
 
-      <section className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Income" value={money(totalIncome)} tone="emerald" />
-        <MetricCard label="Spend" value={money(totalSpend)} tone="amber" />
-        <MetricCard label="Debt" value={money(totalDebt)} tone="rose" />
-        <MetricCard
-          label="Net"
-          value={money(net)}
-          tone={net >= 0 ? "emerald" : "rose"}
-        />
-      </section>
+        <section className="grid gap-4 md:grid-cols-4">
+          <MetricCard label="Income" value={money(totalIncome)} tone="emerald" />
+          <MetricCard label="Spend" value={money(totalSpend)} tone="amber" />
+          <MetricCard label="Debt" value={money(totalDebt)} tone="rose" />
+          <MetricCard
+            label="Net"
+            value={money(net)}
+            tone={net >= 0 ? "emerald" : "rose"}
+          />
+        </section>
+      </ScrollRevealCard>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard
-          label="Bills"
-          value={money(bills)}
-          helper="Bill targets this period"
-          tone="sky"
-        />
+      <ScrollRevealCard
+        title="Obligations Ledger"
+        subtitle="Bills, debt minimums, and payments made"
+        image={pressureMood}
+      >
+        <section className="grid gap-4 md:grid-cols-3">
+          <MetricCard
+            label="Bills"
+            value={money(bills)}
+            helper="Bill targets this period"
+            tone="sky"
+          />
 
-        <MetricCard
-          label="Debt minimums"
-          value={money(totalDebtMinimums)}
-          helper="Required payments"
-          tone="amber"
-        />
+          <MetricCard
+            label="Debt minimums"
+            value={money(totalDebtMinimums)}
+            helper="Required payments"
+            tone="amber"
+          />
 
-        <MetricCard
-          label="Payments made"
-          value={money(payments)}
-          helper="Actual payments recorded"
-          tone="emerald"
-        />
-      </section>
+          <MetricCard
+            label="Payments made"
+            value={money(payments)}
+            helper="Actual payments recorded"
+            tone="emerald"
+          />
+        </section>
+      </ScrollRevealCard>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard
-          label="Top spending"
-          value={topCategory ? topCategory[0] : "None yet"}
-          helper={topCategory ? money(topCategory[1]) : "No spending logged"}
-          tone="zinc"
-        />
+      <ScrollRevealCard
+        title="Pressure & Warnings"
+        subtitle="Income gap, pressure level, and spending pattern"
+        image={pressureMood}
+      >
+        <section className="grid gap-4 md:grid-cols-3">
+          <MetricCard
+            label="Top spending"
+            value={topCategory ? topCategory[0] : "None yet"}
+            helper={topCategory ? money(topCategory[1]) : "No spending logged"}
+            tone="zinc"
+          />
 
-        <MetricCard
-          label="Income gap"
-          value={money(incomeGap)}
-          helper="Extra income needed to stay on track"
-          tone={incomeGap > 0 ? "rose" : "emerald"}
-        />
+          <MetricCard
+            label="Income gap"
+            value={money(incomeGap)}
+            helper="Extra income needed to stay on track"
+            tone={incomeGap > 0 ? "rose" : "emerald"}
+          />
 
-        <MetricCard
-          label="Pressure"
-          value={pressurePct ? `${pressurePct.toFixed(1)}%` : "None yet"}
-          helper="Debt pressure vs income"
-          tone={pressurePct > 50 ? "rose" : "sky"}
-        />
-      </section>
+          <MetricCard
+            label="Pressure"
+            value={pressurePct ? `${pressurePct.toFixed(1)}%` : "None yet"}
+            helper="Debt pressure vs income"
+            tone={pressurePct > 50 ? "rose" : "sky"}
+          />
+        </section>
+      </ScrollRevealCard>
     </AppShell>
   );
 }
