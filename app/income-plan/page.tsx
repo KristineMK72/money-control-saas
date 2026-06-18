@@ -618,8 +618,8 @@ export default function IncomePlanPage() {
 
         <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
-            Governor's Mission
-          </p>
+            Governor&apos;s Mission
+         </p>
           <p className="mt-2 text-2xl font-black text-emerald-950">
             Earn {formatUSD(Math.max(0, remainingGap))} before the week ends.
           </p>
