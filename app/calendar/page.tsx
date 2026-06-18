@@ -63,7 +63,10 @@ function money(n: number) {
 }
 
 function iso(date: Date) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function safeDate(year: number, month: number, day: number) {
@@ -74,17 +77,28 @@ function safeDate(year: number, month: number, day: number) {
 function obligationDate(
   dueDate: string | null,
   dueDay: number | null,
+  isMonthly: boolean | null,
   year: number,
   month: number
 ) {
-  if (dueDate) {
-    const parsed = new Date(`${dueDate}T00:00:00`);
-    if (parsed.getFullYear() === year && parsed.getMonth() === month) {
-      return parsed;
-    }
+  const parsed = dueDate ? new Date(`${dueDate}T00:00:00`) : null;
+
+  if (dueDay) {
+    return safeDate(year, month, dueDay);
   }
 
-  if (dueDay) return safeDate(year, month, dueDay);
+  if (parsed && isMonthly) {
+    return safeDate(year, month, parsed.getDate());
+  }
+
+  if (
+    parsed &&
+    parsed.getFullYear() === year &&
+    parsed.getMonth() === month
+  ) {
+    return parsed;
+  }
+
   return null;
 }
 
@@ -102,17 +116,24 @@ function dayName(date: Date) {
 
 export default function CalendarPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const now = new Date();
 
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [viewYear, setViewYear] = useState(now.getFullYear());
-  const [viewMonth, setViewMonth] = useState(now.getMonth());
+
+  const [viewDate, setViewDate] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
+
   const [expandedWeeks, setExpandedWeeks] = useState<Record<number, boolean>>(
     {}
   );
+
+  const now = new Date();
+  const viewYear = viewDate.getFullYear();
+  const viewMonth = viewDate.getMonth();
 
   useEffect(() => {
     async function loadData() {
@@ -158,6 +179,7 @@ export default function CalendarPage() {
         const date = obligationDate(
           bill.due_date,
           bill.due_day,
+          bill.is_monthly,
           viewYear,
           viewMonth
         );
@@ -179,6 +201,7 @@ export default function CalendarPage() {
         const date = obligationDate(
           debt.due_date,
           debt.due_day,
+          debt.is_monthly,
           viewYear,
           viewMonth
         );
@@ -208,9 +231,7 @@ export default function CalendarPage() {
     return Array.from({ length: startOffset + daysInMonth }, (_, index) => {
       const dayNumber = index - startOffset + 1;
 
-      if (dayNumber <= 0) {
-        return null;
-      }
+      if (dayNumber <= 0) return null;
 
       const date = new Date(viewYear, viewMonth, dayNumber);
       const dayItems = items.filter((item) => iso(item.date) === iso(date));
@@ -263,7 +284,7 @@ export default function CalendarPage() {
     (a, b) => b.total - a.total
   )[0];
 
-  const monthLabel = new Date(viewYear, viewMonth).toLocaleString("en-US", {
+  const monthLabel = viewDate.toLocaleString("en-US", {
     month: "long",
     year: "numeric",
   });
@@ -286,15 +307,37 @@ export default function CalendarPage() {
       : "/ben-recovery.png";
 
   function shiftMonth(delta: number) {
-    const next = new Date(viewYear, viewMonth + delta, 1);
-    setViewYear(next.getFullYear());
-    setViewMonth(next.getMonth());
+    setViewDate((current) => {
+      const next = new Date(
+        current.getFullYear(),
+        current.getMonth() + delta,
+        1
+      );
+      return next;
+    });
+    setExpandedWeeks({});
   }
 
   function goToCurrentMonth() {
-    setViewYear(now.getFullYear());
-    setViewMonth(now.getMonth());
+    const today = new Date();
+    setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
+    setExpandedWeeks({});
   }
+
+  function changeMonth(month: number) {
+    setViewDate((current) => new Date(current.getFullYear(), month, 1));
+    setExpandedWeeks({});
+  }
+
+  function changeYear(year: number) {
+    setViewDate((current) => new Date(year, current.getMonth(), 1));
+    setExpandedWeeks({});
+  }
+
+  const yearChoices = Array.from(
+    { length: 7 },
+    (_, index) => now.getFullYear() - 3 + index
+  );
 
   if (loading) {
     return (
@@ -315,9 +358,11 @@ export default function CalendarPage() {
             <button onClick={() => shiftMonth(-1)} className={primaryButtonClass}>
               Prev
             </button>
+
             <button onClick={goToCurrentMonth} className={primaryButtonClass}>
-              Today
+              This Month
             </button>
+
             <button onClick={() => shiftMonth(1)} className={primaryButtonClass}>
               Next
             </button>
@@ -365,13 +410,36 @@ export default function CalendarPage() {
             </h2>
           </div>
 
-          <div className="flex items-center gap-3 text-xs font-black uppercase tracking-wide">
-            <span className="rounded-full bg-sky-100 px-3 py-1 text-sky-800">
-              Bills
-            </span>
-            <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-800">
-              Debts
-            </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={viewMonth}
+              onChange={(e) => changeMonth(Number(e.target.value))}
+              className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm font-black text-zinc-950"
+            >
+              {Array.from({ length: 12 }, (_, month) => (
+                <option key={month} value={month}>
+                  {new Date(2026, month, 1).toLocaleString("en-US", {
+                    month: "long",
+                  })}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={viewYear}
+              onChange={(e) => changeYear(Number(e.target.value))}
+              className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm font-black text-zinc-950"
+            >
+              {yearChoices.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+
+            <button onClick={goToCurrentMonth} className={primaryButtonClass}>
+              This Month
+            </button>
           </div>
         </div>
 
