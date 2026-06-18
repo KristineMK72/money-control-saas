@@ -13,6 +13,7 @@ import {
 } from "@/components/AppFrame";
 import BenBubble from "@/components/BenBubble";
 import PaperScrollScanner from "@/components/PaperScrollScanner";
+import ScrollRevealCard from "@/components/ScrollRevealCard";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
@@ -253,6 +254,9 @@ export default function BillsPage() {
     dailyIncomeNeeded: Math.ceil(remaining / 30),
   });
 
+  const billMood =
+    remaining > totalBills * 0.75 ? "/ben-overdraft.png" : "/ben-recovery.png";
+
   if (loading) {
     return (
       <AppShell max="max-w-5xl">
@@ -271,75 +275,100 @@ export default function BillsPage() {
 
       {message && <Notice>{message}</Notice>}
 
-      <DarkPanel>
-        <BenBubble message={ben.text} mood={ben.mood} />
-      </DarkPanel>
+      <ScrollRevealCard
+        title="Ben's Bill Briefing"
+        subtitle="A quick read on your obligations"
+        image={billMood}
+        defaultOpen
+      >
+        <DarkPanel>
+          <BenBubble message={ben.text} mood={ben.mood} />
+        </DarkPanel>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Total bills" value={money(totalBills)} tone="amber" />
-        <MetricCard label="Paid" value={money(totalPaid)} tone="emerald" />
-        <MetricCard label="Remaining" value={money(remaining)} tone="rose" />
-      </section>
+        <section className="mt-5 grid gap-4 md:grid-cols-3">
+          <MetricCard label="Total bills" value={money(totalBills)} tone="amber" />
+          <MetricCard label="Paid" value={money(totalPaid)} tone="emerald" />
+          <MetricCard label="Remaining" value={money(remaining)} tone="rose" />
+        </section>
+      </ScrollRevealCard>
 
-      <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-        <Panel>
-          <h2 className="text-2xl font-black">Add Bill</h2>
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Bill name"
-              className={inputClass}
-            />
-            <input
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="Amount due"
-              inputMode="decimal"
-              className={inputClass}
-            />
-            <input
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder="Category"
-              className={inputClass}
-            />
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className={inputClass}
-            />
-            <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-black text-zinc-700 md:col-span-2">
+      <ScrollRevealCard
+        title="Add Bill"
+        subtitle="Create a new obligation for the ledger"
+        image="/ben-thinking.png"
+      >
+        <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
+          <Panel>
+            <h2 className="text-2xl font-black">Add Bill</h2>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
               <input
-                type="checkbox"
-                checked={monthly}
-                onChange={(e) => setMonthly(e.target.checked)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Bill name"
+                className={inputClass}
               />
-              Repeat monthly
-            </label>
-          </div>
-          <button
-            onClick={addBill}
-            disabled={saving || !userId}
-            className={`${moneyButtonClass} mt-5 w-full`}
-          >
-            {saving ? "Saving..." : "Add Bill"}
-          </button>
-        </Panel>
 
-        <PaperScrollScanner
-          title="Scan Bill"
-          description="Upload a statement, utility notice, or screenshot. Ben will try to prefill the bill name, amount, and date."
-          file={imageFile}
-          busy={scanning}
-          onFileChange={setImageFile}
-          onScan={() => void scanBillImage(imageFile)}
-        />
-      </section>
+              <input
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="Amount due"
+                inputMode="decimal"
+                className={inputClass}
+              />
 
-      <Panel>
-        <h2 className="text-2xl font-black">Bill Board</h2>
+              <input
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="Category"
+                className={inputClass}
+              />
+
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className={inputClass}
+              />
+
+              <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-black text-zinc-700 md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={monthly}
+                  onChange={(e) => setMonthly(e.target.checked)}
+                />
+                Repeat monthly
+              </label>
+            </div>
+
+            <button
+              onClick={addBill}
+              disabled={saving || !userId}
+              className={`${moneyButtonClass} mt-5 w-full`}
+            >
+              {saving ? "Saving..." : "Add Bill"}
+            </button>
+          </Panel>
+
+          <PaperScrollScanner
+            title="Scan Bill"
+            description="Upload a statement, utility notice, or screenshot. Ben will try to prefill the bill name, amount, and date."
+            file={imageFile}
+            busy={scanning}
+            onFileChange={setImageFile}
+            onScan={() => void scanBillImage(imageFile)}
+          />
+        </div>
+      </ScrollRevealCard>
+
+      <ScrollRevealCard
+        title="Bill Board"
+        subtitle={`${bills.length} obligations grouped by due month`}
+        image="/ben-mastermind.png"
+        defaultOpen
+      >
+        <h2 className="text-2xl font-black text-zinc-950">Bill Board</h2>
+
         <div className="mt-5 space-y-4">
           {billsByMonth.length === 0 ? (
             <p className="text-sm font-semibold text-zinc-600">
@@ -348,6 +377,7 @@ export default function BillsPage() {
           ) : (
             billsByMonth.map(([group, groupBills]) => {
               const open = expandedGroups[group] ?? true;
+
               return (
                 <div
                   key={group}
@@ -364,6 +394,7 @@ export default function BillsPage() {
                       {open ? "Hide" : "Show"} {groupBills.length}
                     </span>
                   </button>
+
                   {open && (
                     <div className="mt-4 grid gap-3">
                       {groupBills.map((bill) => (
@@ -378,10 +409,12 @@ export default function BillsPage() {
                               {bill.due_date ? ` - due ${bill.due_date}` : ""}
                             </p>
                           </div>
+
                           <div className="flex items-center gap-3">
                             <p className="text-lg font-black">
                               {money(Number(bill.target || 0))}
                             </p>
+
                             <button
                               onClick={() => void deleteBill(bill.id)}
                               className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700"
@@ -398,7 +431,7 @@ export default function BillsPage() {
             })
           )}
         </div>
-      </Panel>
+      </ScrollRevealCard>
     </AppShell>
   );
 }
