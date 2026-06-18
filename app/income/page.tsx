@@ -14,6 +14,7 @@ import {
 } from "@/components/AppFrame";
 import BenBubble from "@/components/BenBubble";
 import PaperScrollScanner from "@/components/PaperScrollScanner";
+import ScrollRevealCard from "@/components/ScrollRevealCard";
 import { BenEngine } from "@/lib/ben/engine";
 import {
   ocrImageFile,
@@ -53,7 +54,6 @@ export default function IncomePage() {
   const [scanning, setScanning] = useState(false);
   const [message, setMessage] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
-  const [openPanel, setOpenPanel] = useState<string | null>("add");
   const [imageFile, setImageFile] = useState<File | null>(null);
 
   const [sources, setSources] = useState<IncomeSourceRow[]>([]);
@@ -143,7 +143,6 @@ export default function IncomePage() {
         setAmount(String(parsedAmount));
       }
 
-      setOpenPanel("add");
       setImageFile(null);
       setMessage("Scanner filled what it could. Check it, then tap Add Income.");
     } catch (error) {
@@ -216,8 +215,7 @@ export default function IncomePage() {
 
       await loadData(userId);
 
-      setMessage("Income added.");
-      setOpenPanel("entries");
+      setMessage("Income added. The Treasury notes a fresh deposit.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed to add income.");
     }
@@ -248,6 +246,18 @@ export default function IncomePage() {
   }, [entries]);
 
   const latestIncome = entries[0];
+
+  const topSource = useMemo(() => {
+    const totals: Record<string, number> = {};
+
+    entries.forEach((entry) => {
+      totals[entry.source_name] =
+        (totals[entry.source_name] || 0) + Number(entry.amount || 0);
+    });
+
+    return Object.entries(totals).sort((a, b) => b[1] - a[1])[0] || null;
+  }, [entries]);
+
   const benInsight = BenEngine.getForecastMessage({
     name: null,
     timeframeLabel: "Income",
@@ -256,6 +266,16 @@ export default function IncomePage() {
     incomeGap: 0,
     dailyIncomeNeeded: 0,
   });
+
+  const incomeMood = totalIncome > 0 ? "/ben-winning.png" : "/ben-thinking.png";
+
+  if (loading) {
+    return (
+      <AppShell max="max-w-5xl">
+        <Panel>Loading income ledger...</Panel>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell max="max-w-5xl">
@@ -267,192 +287,164 @@ export default function IncomePage() {
 
       {message && <Notice>{message}</Notice>}
 
-      <DarkPanel>
-        <BenBubble message={benInsight.text} mood={benInsight.mood} />
-      </DarkPanel>
+      <ScrollRevealCard
+        title="Treasury Income Briefing"
+        subtitle="Income totals, sources, and Ben's read on the ledger"
+        image={incomeMood}
+        defaultOpen
+      >
+        <DarkPanel>
+          <BenBubble message={benInsight.text} mood={benInsight.mood} />
+        </DarkPanel>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard
-          label="Total income"
-          value={money(totalIncome)}
-          tone="emerald"
-        />
-        <MetricCard label="Sources" value={String(sources.length)} tone="sky" />
-        <MetricCard label="Entries" value={String(entries.length)} tone="zinc" />
-      </section>
-
-      <DropdownCard
-          id="scanner"
-          title="Scan income"
-          value={scanning ? "Scanning..." : "Use camera/photo"}
-          openPanel={openPanel}
-          setOpenPanel={setOpenPanel}
-        >
-          <PaperScrollScanner
-            title="Scan Income"
-            description="Upload a paycheck, deposit screenshot, or income proof. Ben will attempt the source and amount for thy review."
-            file={imageFile}
-            busy={scanning}
-            onFileChange={setImageFile}
-            onScan={() => void scanIncomeImage(imageFile)}
+        <section className="mt-5 grid gap-4 md:grid-cols-3">
+          <MetricCard
+            label="Total income"
+            value={money(totalIncome)}
+            tone="emerald"
           />
-      </DropdownCard>
 
-      <DropdownCard
-          id="add"
-          title="Add Income"
-          value={sourceName || amount ? "Draft ready" : "Manual entry"}
-          openPanel={openPanel}
-          setOpenPanel={setOpenPanel}
-        >
-          <div className="grid gap-3">
-            <input
-              type="date"
-              value={dateISO}
-              onChange={(e) => setDateISO(e.target.value)}
-              className={inputClass}
-            />
+          <MetricCard label="Sources" value={String(sources.length)} tone="sky" />
 
-            <input
-              list="sources"
-              placeholder="Source: Job, Tips, Side hustle..."
-              value={sourceName}
-              onChange={(e) => setSourceName(e.target.value)}
-              className={inputClass}
-            />
+          <MetricCard
+            label="Entries"
+            value={String(entries.length)}
+            helper={latestIncome ? latestIncome.source_name : "No income yet"}
+            tone="zinc"
+          />
+        </section>
 
-            <datalist id="sources">
-              {sources.map((s) => (
-                <option key={s.id} value={s.name} />
-              ))}
-            </datalist>
-
-            <input
-              type="number"
-              inputMode="decimal"
-              placeholder="Amount"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className={inputClass}
-            />
-
-            <input
-              placeholder="Note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className={inputClass}
-            />
-
-            <button
-              onClick={handleAddIncome}
-              disabled={saving || !userId}
-              className={moneyButtonClass}
-            >
-              {saving ? "Saving..." : "Add Income"}
-            </button>
+        {topSource && (
+          <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+              Top Source
+            </p>
+            <p className="mt-1 text-2xl font-black text-emerald-950">
+              {topSource[0]}
+            </p>
+            <p className="text-sm font-bold text-emerald-800">
+              {money(topSource[1])} recorded
+            </p>
           </div>
-      </DropdownCard>
+        )}
+      </ScrollRevealCard>
 
-      <DropdownCard
-          id="entries"
-          title="Income Entries"
-          value={
-            latestIncome
-              ? `${latestIncome.source_name} - ${money(Number(latestIncome.amount || 0))}`
-              : "No income yet"
-          }
-          openPanel={openPanel}
-          setOpenPanel={setOpenPanel}
-        >
-          <div className="grid gap-3">
-            {loading ? (
-              <p className="text-sm font-semibold text-zinc-600">Loading...</p>
-            ) : entries.length === 0 ? (
-              <p className="text-sm font-semibold text-zinc-600">
-                No income yet.
-              </p>
-            ) : (
-              entries.map((e) => (
-                <div
-                  key={e.id}
-                  className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between"
-                >
-                  <div>
-                    <div className="text-base font-black text-zinc-950">
-                      {e.source_name}
-                    </div>
+      <ScrollRevealCard
+        title="Scan Income"
+        subtitle={scanning ? "Ben is reading the parchment..." : "Use camera, photo, or screenshot"}
+        image="/ben-mastermind.png"
+      >
+        <PaperScrollScanner
+          title="Scan Income"
+          description="Upload a paycheck, deposit screenshot, or income proof. Ben will attempt the source and amount for thy review."
+          file={imageFile}
+          busy={scanning}
+          onFileChange={setImageFile}
+          onScan={() => void scanIncomeImage(imageFile)}
+        />
+      </ScrollRevealCard>
 
-                    <div className="text-sm font-semibold text-zinc-600">
-                      {e.date_iso}
-                      {e.note ? ` - ${e.note}` : ""}
-                    </div>
+      <ScrollRevealCard
+        title="Add Income"
+        subtitle={sourceName || amount ? "Draft ready for review" : "Manual entry"}
+        image="/ben-thinking.png"
+        defaultOpen
+      >
+        <div className="grid gap-3">
+          <input
+            type="date"
+            value={dateISO}
+            onChange={(e) => setDateISO(e.target.value)}
+            className={inputClass}
+          />
+
+          <input
+            list="sources"
+            placeholder="Source: Job, Tips, Side hustle..."
+            value={sourceName}
+            onChange={(e) => setSourceName(e.target.value)}
+            className={inputClass}
+          />
+
+          <datalist id="sources">
+            {sources.map((s) => (
+              <option key={s.id} value={s.name} />
+            ))}
+          </datalist>
+
+          <input
+            type="number"
+            inputMode="decimal"
+            placeholder="Amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className={inputClass}
+          />
+
+          <input
+            placeholder="Note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className={inputClass}
+          />
+
+          <button
+            onClick={handleAddIncome}
+            disabled={saving || !userId}
+            className={moneyButtonClass}
+          >
+            {saving ? "Saving..." : "Add Income"}
+          </button>
+        </div>
+      </ScrollRevealCard>
+
+      <ScrollRevealCard
+        title="Income Entries"
+        subtitle={
+          latestIncome
+            ? `${latestIncome.source_name} - ${money(Number(latestIncome.amount || 0))}`
+            : "No income yet"
+        }
+        image="/ben-recovery.png"
+        defaultOpen
+      >
+        <div className="grid gap-3">
+          {entries.length === 0 ? (
+            <p className="text-sm font-semibold text-zinc-600">No income yet.</p>
+          ) : (
+            entries.map((e) => (
+              <div
+                key={e.id}
+                className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between"
+              >
+                <div>
+                  <div className="text-base font-black text-zinc-950">
+                    {e.source_name}
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="text-lg font-black text-emerald-800">
-                      {money(Number(e.amount || 0))}
-                    </div>
-
-                    <button
-                      onClick={() => void handleDelete(e.id)}
-                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700"
-                    >
-                      Delete
-                    </button>
+                  <div className="text-sm font-semibold text-zinc-600">
+                    {e.date_iso}
+                    {e.note ? ` - ${e.note}` : ""}
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-      </DropdownCard>
+
+                <div className="flex items-center gap-3">
+                  <div className="text-lg font-black text-emerald-800">
+                    {money(Number(e.amount || 0))}
+                  </div>
+
+                  <button
+                    onClick={() => void handleDelete(e.id)}
+                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </ScrollRevealCard>
     </AppShell>
-  );
-}
-
-function DropdownCard({
-  id,
-  title,
-  value,
-  openPanel,
-  setOpenPanel,
-  children,
-}: {
-  id: string;
-  title: string;
-  value: string;
-  openPanel: string | null;
-  setOpenPanel: (id: string | null) => void;
-  children: React.ReactNode;
-}) {
-  const open = openPanel === id;
-
-  return (
-    <Panel>
-      <button
-        type="button"
-        onClick={() => setOpenPanel(open ? null : id)}
-        className="w-full text-left"
-      >
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-sm font-black uppercase tracking-wide text-zinc-700">
-              {title}
-            </h2>
-
-            <p className="mt-1 text-2xl font-black text-zinc-950">{value}</p>
-          </div>
-
-          <span className="shrink-0 rounded-full bg-zinc-950 px-3 py-1 text-xs font-black text-white">
-            {open ? "Hide" : "Open"}
-          </span>
-        </div>
-      </button>
-
-      {open && (
-        <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-          {children}
-        </div>
-      )}
-    </Panel>
   );
 }
