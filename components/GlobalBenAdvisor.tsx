@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import BenBubble from "@/components/BenBubble";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type BenMood = "encouraging" | "stern" | "urgent" | "witty" | "celebratory";
@@ -41,6 +40,13 @@ function cleanLabel(value: string | null) {
   return value ? value.replaceAll("_", " ") : "spending";
 }
 
+function moodImage(mood: BenMood) {
+  if (mood === "stern" || mood === "urgent") return "/ben-facepalm.png";
+  if (mood === "celebratory") return "/ben-winning.png";
+  if (mood === "witty") return "/ben-mastermind.png";
+  return "/ben-thinking.png";
+}
+
 function buildAdvice(pathname: string, row: PatternRow): Advice {
   const totalSpend = num(row.total_spend);
   const totalIncome = num(row.total_income);
@@ -53,13 +59,13 @@ function buildAdvice(pathname: string, row: PatternRow): Advice {
     if (spendCount === 0) {
       return {
         mood: "encouraging",
-        text: "Ben says: Add a few spending entries and I shall begin spotting the Treasury leaks.",
+        text: "Add a few spending entries and I shall begin spotting the Treasury leaks.",
       };
     }
 
     return {
       mood: totalSpend > totalIncome && totalIncome > 0 ? "stern" : "encouraging",
-      text: `Ben says: Thy top spending pattern appears to be ${cleanLabel(
+      text: `Thy top spending pattern appears to be ${cleanLabel(
         row.top_spend_category
       )}${row.top_merchant ? `, especially around ${row.top_merchant}` : ""}. Watch that habit closely.`,
     };
@@ -70,8 +76,8 @@ function buildAdvice(pathname: string, row: PatternRow): Advice {
       mood: totalIncome > 0 ? "celebratory" : "encouraging",
       text:
         totalIncome > 0
-          ? `Ben says: The Treasury has recorded ${money(totalIncome)} in income. Now we must give every dollar its orders.`
-          : "Ben says: Add income sources and I can help turn effort into a plan.",
+          ? `The Treasury has recorded ${money(totalIncome)} in income. Now we must give every dollar its orders.`
+          : "Add income sources and I can help turn effort into a plan.",
     };
   }
 
@@ -80,8 +86,8 @@ function buildAdvice(pathname: string, row: PatternRow): Advice {
       mood: totalPayments > 0 ? "celebratory" : "encouraging",
       text:
         totalPayments > 0
-          ? `Ben says: Thou hast recorded ${money(totalPayments)} in payments. Visible progress is the enemy of despair.`
-          : "Ben says: Record payments when they happen. Victories belong in the ledger.",
+          ? `Thou hast recorded ${money(totalPayments)} in payments. Visible progress is the enemy of despair.`
+          : "Record payments when they happen. Victories belong in the ledger.",
     };
   }
 
@@ -90,8 +96,8 @@ function buildAdvice(pathname: string, row: PatternRow): Advice {
       mood: billCount > 0 ? "witty" : "encouraging",
       text:
         billCount > 0
-          ? `Ben says: I see ${billCount} bills in the colony. Keeping due dates visible prevents ambushes.`
-          : "Ben says: Add bills and due dates so the Treasury is not surprised.",
+          ? `I see ${billCount} bills in the colony. Keeping due dates visible prevents ambushes.`
+          : "Add bills and due dates so the Treasury is not surprised.",
     };
   }
 
@@ -100,8 +106,8 @@ function buildAdvice(pathname: string, row: PatternRow): Advice {
       mood: debtCount > 0 ? "witty" : "encouraging",
       text:
         debtCount > 0
-          ? `Ben says: I see ${debtCount} debts in the ledger. The next victory comes from choosing the right target.`
-          : "Ben says: Add debts and I can help choose between avalanche, snowball, and recovery strategy.",
+          ? `I see ${debtCount} debts in the ledger. The next victory comes from choosing the right target.`
+          : "Add debts and I can help choose between avalanche, snowball, and recovery strategy.",
     };
   }
 
@@ -110,8 +116,8 @@ function buildAdvice(pathname: string, row: PatternRow): Advice {
       mood: totalSpend > totalIncome && totalIncome > 0 ? "stern" : "witty",
       text:
         totalSpend > totalIncome && totalIncome > 0
-          ? `Ben says: Spending of ${money(totalSpend)} is outrunning income of ${money(totalIncome)}. The forecast deserves attention.`
-          : "Ben says: Forecasting turns panic into a plan. Review what is due before the week begins.",
+          ? `Spending of ${money(totalSpend)} is outrunning income of ${money(totalIncome)}. The forecast deserves attention.`
+          : "Forecasting turns panic into a plan. Review what is due before the week begins.",
     };
   }
 
@@ -119,8 +125,8 @@ function buildAdvice(pathname: string, row: PatternRow): Advice {
     mood: totalSpend > totalIncome && totalIncome > 0 ? "stern" : "encouraging",
     text:
       totalSpend > totalIncome && totalIncome > 0
-        ? `Ben says: The Treasury shows ${money(totalSpend)} spent against ${money(totalIncome)} income. Let us inspect the pattern.`
-        : "Ben says: I am watching the ledger for patterns, habits, risks, and victories.",
+        ? `The Treasury shows ${money(totalSpend)} spent against ${money(totalIncome)} income. Let us inspect the pattern.`
+        : "I am watching the ledger for patterns, habits, risks, and victories.",
   };
 }
 
@@ -156,25 +162,33 @@ export default function GlobalBenAdvisor() {
 
   if (!loaded) return null;
 
-  if (!pattern) {
-    return (
-      <section className="mx-auto mt-4 max-w-6xl px-4">
-        <div className="rounded-3xl border border-amber-200 bg-amber-50/95 p-4 shadow-2xl">
-          <BenBubble
-            message="Ben says: I am gathering ledger evidence. Add income, spending, bills, debts, or payments and I shall become a sharper advisor."
-            mood="encouraging"
-          />
-        </div>
-      </section>
-    );
-  }
-
-  const advice = buildAdvice(pathname, pattern);
+  const advice: Advice = pattern
+    ? buildAdvice(pathname, pattern)
+    : {
+        mood: "encouraging",
+        text: "I am gathering ledger evidence. Add income, spending, bills, debts, or payments and I shall become a sharper advisor.",
+      };
 
   return (
     <section className="mx-auto mt-4 max-w-6xl px-4">
-      <div className="rounded-3xl border border-amber-200 bg-amber-50/95 p-4 shadow-2xl">
-        <BenBubble message={advice.text} mood={advice.mood} />
+      <div className="rounded-[2rem] border border-amber-300 bg-amber-50/95 p-5 shadow-2xl backdrop-blur-xl">
+        <div className="flex items-start gap-4">
+          <img
+            src={moodImage(advice.mood)}
+            alt="Ben advisor"
+            className="h-16 w-16 shrink-0 rounded-2xl border border-amber-200 bg-white object-contain p-1 shadow-md"
+          />
+
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-800">
+              Ben&apos;s Almanack
+            </p>
+
+            <p className="mt-2 text-lg font-black leading-8 text-zinc-950">
+              Ben says: {advice.text}
+            </p>
+          </div>
+        </div>
       </div>
     </section>
   );
