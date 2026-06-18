@@ -61,24 +61,40 @@ export const viewport: Viewport = {
 
 const navLinks = [
   { href: "/", label: "Home" },
+
+  // Story
   { href: "/whyben", label: "Why AskBen" },
-  { href: "/world", label: "BenWorld" },
+
+  // Game
   { href: "/governor", label: "Governor" },
+  { href: "/world", label: "BenWorld" },
+
+  // Command center
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/spend", label: "Spend" },
+  { href: "/forecast", label: "Forecast" },
+
+  // Money
   { href: "/income", label: "Income" },
   { href: "/income-plan", label: "Income Plan" },
+  { href: "/spend", label: "Spend" },
   { href: "/bills", label: "Bills" },
   { href: "/debt", label: "Debt" },
   { href: "/payments", label: "Payments" },
-  { href: "/forecast", label: "Forecast" },
-  { href: "/calendar", label: "Calendar" },
+
+  // Credit
   { href: "/credit-health", label: "Credit Health" },
   { href: "/credit-recovery", label: "Credit Recovery" },
+
+  // Tools
+  { href: "/calendar", label: "Calendar" },
   { href: "/crisis", label: "Crisis" },
+  { href: "/chat", label: "Ask Ben" },
+
+  // Letters
   { href: "/dispute-letter", label: "Dispute Letter" },
   { href: "/goodwill-letter", label: "Goodwill Letter" },
-  { href: "/chat", label: "Ask Ben" },
+
+  // Account
   { href: "/signup", label: "Signup" },
   { href: "/login", label: "Login" },
 ];
