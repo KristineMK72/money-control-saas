@@ -57,6 +57,10 @@ function money(n: number) {
   });
 }
 
+function paymentDate(payment: PaymentRow) {
+  return new Date(payment.date_iso || payment.created_at);
+}
+
 export default function PaymentsPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
@@ -84,7 +88,8 @@ export default function PaymentsPage() {
       .from("payments")
       .select("*")
       .eq("user_id", uid)
-      .order("date_iso", { ascending: false });
+      .order("date_iso", { ascending: false })
+      .order("created_at", { ascending: false });
 
     if (error) {
       setMessage(error.message);
@@ -135,6 +140,7 @@ export default function PaymentsPage() {
       }
 
       const user = data.session?.user;
+
       if (!user) {
         setMessage("Sign in so Ben can witness the payments.");
         setLoading(false);
@@ -142,11 +148,13 @@ export default function PaymentsPage() {
       }
 
       setUserId(user.id);
+
       await Promise.all([
         loadPayments(user.id),
         loadDebts(user.id),
         loadBills(user.id),
       ]);
+
       setLoading(false);
     }
 
@@ -171,7 +179,11 @@ export default function PaymentsPage() {
       }
 
       setMerchant(first.merchant || "");
-      if (first.amount) setAmount(String(first.amount));
+
+      if (first.amount) {
+        setAmount(String(first.amount));
+      }
+
       if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
         setDateISO(first.dateText);
       }
@@ -236,11 +248,32 @@ export default function PaymentsPage() {
     setImageFile(null);
 
     await loadPayments(userId);
+
     setMessage("Payment added. A fine entry for the ledger.");
     setSaving(false);
   }
 
-  const total = useMemo(() => {
+  const now = new Date();
+
+  const monthlyPayments = useMemo(() => {
+    return payments.filter((payment) => {
+      const d = paymentDate(payment);
+
+      return (
+        d.getMonth() === now.getMonth() &&
+        d.getFullYear() === now.getFullYear()
+      );
+    });
+  }, [payments]);
+
+  const monthlyTotal = useMemo(() => {
+    return monthlyPayments.reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
+      0
+    );
+  }, [monthlyPayments]);
+
+  const allTimeTotal = useMemo(() => {
     return payments.reduce(
       (sum, payment) => sum + Number(payment.amount || 0),
       0
@@ -248,20 +281,24 @@ export default function PaymentsPage() {
   }, [payments]);
 
   const latestPayment = payments[0];
+  const latestMonthlyPayment = monthlyPayments[0];
 
   const debtPayments = payments.filter((p) => p.debt_id).length;
   const billPayments = payments.filter((p) => p.bill_id).length;
 
+  const monthlyDebtPayments = monthlyPayments.filter((p) => p.debt_id).length;
+  const monthlyBillPayments = monthlyPayments.filter((p) => p.bill_id).length;
+
   const benInsight = BenEngine.getForecastMessage({
     name: null,
     timeframeLabel: "Payments",
-    totalNeeded: total,
-    incomeSoFar: total,
+    totalNeeded: allTimeTotal,
+    incomeSoFar: allTimeTotal,
     incomeGap: 0,
     dailyIncomeNeeded: 0,
   });
 
-  const paymentMood = total > 0 ? "/ben-winning.png" : "/ben-thinking.png";
+  const paymentMood = allTimeTotal > 0 ? "/ben-winning.png" : "/ben-thinking.png";
 
   if (loading) {
     return (
@@ -283,7 +320,7 @@ export default function PaymentsPage() {
 
       <ScrollRevealCard
         title="Payment Victory Briefing"
-        subtitle="Total paid, payment count, and Ben's read on the ledger"
+        subtitle="Monthly progress and lifetime totals"
         image={paymentMood}
         defaultOpen
       >
@@ -291,26 +328,38 @@ export default function PaymentsPage() {
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </DarkPanel>
 
-        <section className="mt-5 grid gap-4 md:grid-cols-3">
-          <MetricCard label="Total paid" value={money(total)} tone="emerald" />
+        <section className="mt-5 grid gap-4 md:grid-cols-2">
+          <MetricCard
+            label="Paid this month"
+            value={money(monthlyTotal)}
+            helper={
+              latestMonthlyPayment
+                ? `${latestMonthlyPayment.merchant || "Latest"} - ${money(
+                    Number(latestMonthlyPayment.amount || 0)
+                  )}`
+                : "No payments this month yet"
+            }
+            tone="emerald"
+          />
 
           <MetricCard
-            label="Payments"
-            value={String(payments.length)}
-            helper={
-              latestPayment
-                ? `${latestPayment.merchant || "Payment"} - ${money(
-                    Number(latestPayment.amount || 0)
-                  )}`
-                : "No payments yet"
-            }
+            label="Payments this month"
+            value={String(monthlyPayments.length)}
+            helper={`${monthlyDebtPayments} debt • ${monthlyBillPayments} bill`}
             tone="sky"
           />
 
           <MetricCard
-            label="Targets"
-            value={`${debts.length + bills.length}`}
-            helper={`${debtPayments} debt • ${billPayments} bill payments`}
+            label="All-time paid"
+            value={money(allTimeTotal)}
+            helper="Cumulative payment total"
+            tone="emerald"
+          />
+
+          <MetricCard
+            label="All-time payments"
+            value={String(payments.length)}
+            helper={`${debtPayments} debt • ${billPayments} bill`}
             tone="zinc"
           />
         </section>
@@ -384,6 +433,7 @@ export default function PaymentsPage() {
               className={`${inputClass} md:col-span-2`}
             >
               <option value="">Select debt</option>
+
               {debts.map((debt) => (
                 <option key={debt.id} value={debt.id}>
                   {debt.name}
@@ -400,6 +450,7 @@ export default function PaymentsPage() {
               className={`${inputClass} md:col-span-2`}
             >
               <option value="">Select bill</option>
+
               {bills.map((bill) => (
                 <option key={bill.id} value={bill.id}>
                   {bill.name} - {money(Number(bill.target || 0))}
