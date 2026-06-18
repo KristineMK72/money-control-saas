@@ -19,38 +19,38 @@ import { BenEngine } from "@/lib/ben/engine";
 
 type IncomeRow = {
   id: string;
-  amount: number;
+  amount: number | string | null;
   date_iso: string;
 };
 
 type SpendRow = {
   id: string;
-  amount: number;
+  amount: number | string | null;
   date_iso: string;
 };
 
 type PaymentRow = {
   id: string;
-  amount: number;
+  amount: number | string | null;
   date_iso: string;
 };
 
 type BillRow = {
   id: string;
-  target: number;
+  target: number | string | null;
   due_date: string | null;
   is_monthly: boolean | null;
-  monthly_target: number | null;
+  monthly_target: number | string | null;
   due_day: number | null;
 };
 
 type DebtRow = {
   id: string;
-  min_payment: number | null;
+  min_payment: number | string | null;
   due_date: string | null;
   is_monthly: boolean | null;
   due_day: number | null;
-  monthly_min_payment: number | null;
+  monthly_min_payment: number | string | null;
 };
 
 type SideHustleRow = {
@@ -58,11 +58,24 @@ type SideHustleRow = {
   user_id: string;
   name: string;
   income_type: "hourly" | "item" | "project" | "fixed";
-  rate: number;
-  planned_quantity: number;
+  rate: number | string | null;
+  planned_quantity: number | string | null;
   note: string | null;
   created_at: string;
 };
+
+function safeNum(value: unknown) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatUSD(value: unknown) {
+  return safeNum(value).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  });
+}
 
 function startOfToday() {
   const d = new Date();
@@ -101,7 +114,8 @@ function getNextDueDateFromDay(dueDay?: number | null) {
   const nextMonth = month === 11 ? 0 : month + 1;
   const lastDayNextMonth = new Date(nextMonthYear, nextMonth + 1, 0).getDate();
   const safeDayNextMonth = Math.min(dueDay, lastDayNextMonth);
-  const nextMonthDue = new Date(
+
+  return new Date(
     nextMonthYear,
     nextMonth,
     safeDayNextMonth,
@@ -109,9 +123,9 @@ function getNextDueDateFromDay(dueDay?: number | null) {
     0,
     0,
     0
-  );
-
-  return nextMonthDue.toISOString().slice(0, 10);
+  )
+    .toISOString()
+    .slice(0, 10);
 }
 
 function effectiveBillDueDate(bill: BillRow) {
@@ -121,7 +135,7 @@ function effectiveBillDueDate(bill: BillRow) {
 }
 
 function effectiveBillAmount(bill: BillRow) {
-  return Number(bill.monthly_target || bill.target || 0);
+  return safeNum(bill.monthly_target || bill.target);
 }
 
 function effectiveDebtDueDate(debt: DebtRow) {
@@ -131,15 +145,7 @@ function effectiveDebtDueDate(debt: DebtRow) {
 }
 
 function effectiveDebtAmount(debt: DebtRow) {
-  return Number(debt.monthly_min_payment || debt.min_payment || 0);
-}
-
-function formatUSD(n: number) {
-  return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  });
+  return safeNum(debt.monthly_min_payment || debt.min_payment);
 }
 
 function ProgressBar({ current, goal }: { current: number; goal: number }) {
@@ -160,6 +166,24 @@ function ProgressBar({ current, goal }: { current: number; goal: number }) {
         />
       </div>
     </div>
+  );
+}
+
+function getWeeklyGapFromView(weeklySql: BenWeeklyRow | null) {
+  if (!weeklySql) return 0;
+
+  const row = weeklySql as Record<string, unknown>;
+
+  return Math.max(
+    0,
+    safeNum(
+      row.gap_week ??
+        row.week_gap ??
+        row.income_gap ??
+        row.gap ??
+        row.total_gap ??
+        0
+    )
   );
 }
 
@@ -279,6 +303,7 @@ export default function IncomePlanPage() {
       if (billsRes.error) setMessage(billsRes.error.message);
       if (debtsRes.error) setMessage(debtsRes.error.message);
       if (hustlesRes.error) setMessage(hustlesRes.error.message);
+      if (weeklyRes.error) console.error("ben_weekly error:", weeklyRes.error.message);
 
       setIncomeEntries((incomeRes.data || []) as IncomeRow[]);
       setSpendEntries((spendRes.data || []) as SpendRow[]);
@@ -286,7 +311,11 @@ export default function IncomePlanPage() {
       setBills((billsRes.data || []) as BillRow[]);
       setDebts((debtsRes.data || []) as DebtRow[]);
       setSideHustles((hustlesRes.data || []) as SideHustleRow[]);
-      setWeeklySql(!weeklyRes.error && weeklyRes.data ? (weeklyRes.data as BenWeeklyRow) : null);
+      setWeeklySql(
+        !weeklyRes.error && weeklyRes.data
+          ? (weeklyRes.data as BenWeeklyRow)
+          : null
+      );
 
       setLoading(false);
     }
@@ -302,16 +331,10 @@ export default function IncomePlanPage() {
       return;
     }
 
-    const parsedRate = Number(rate);
-    const parsedQty = Number(plannedQuantity);
+    const parsedRate = safeNum(rate);
+    const parsedQty = safeNum(plannedQuantity);
 
-    if (
-      !name.trim() ||
-      !Number.isFinite(parsedRate) ||
-      parsedRate < 0 ||
-      !Number.isFinite(parsedQty) ||
-      parsedQty < 0
-    ) {
+    if (!name.trim() || parsedRate < 0 || parsedQty < 0) {
       setMessage("Please enter a name, rate, and planned quantity.");
       return;
     }
@@ -366,17 +389,17 @@ export default function IncomePlanPage() {
   const weekEnd = useMemo(() => endOfWindow(6), []);
 
   const totalIncome = useMemo(
-    () => incomeEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    () => incomeEntries.reduce((sum, row) => sum + safeNum(row.amount), 0),
     [incomeEntries]
   );
 
   const totalSpending = useMemo(
-    () => spendEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    () => spendEntries.reduce((sum, row) => sum + safeNum(row.amount), 0),
     [spendEntries]
   );
 
   const totalPayments = useMemo(
-    () => paymentEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    () => paymentEntries.reduce((sum, row) => sum + safeNum(row.amount), 0),
     [paymentEntries]
   );
 
@@ -411,12 +434,12 @@ export default function IncomePlanPage() {
     billsThisWeekTotal + debtThisWeekTotal + totalSpending + totalPayments - totalIncome
   );
 
-  const gapThisWeek =
-    weeklySql != null ? Math.max(0, Number(weeklySql.gap_week)) : gapThisWeekClient;
+  const weeklyGapValue = getWeeklyGapFromView(weeklySql);
+  const gapThisWeek = weeklyGapValue > 0 ? weeklyGapValue : gapThisWeekClient;
 
   const plannedIncome = useMemo(() => {
     return sideHustles.reduce(
-      (sum, row) => sum + Number(row.rate || 0) * Number(row.planned_quantity || 0),
+      (sum, row) => sum + safeNum(row.rate) * safeNum(row.planned_quantity),
       0
     );
   }, [sideHustles]);
@@ -427,10 +450,10 @@ export default function IncomePlanPage() {
   const benInsight = BenEngine.getForecastMessage({
     name: null,
     timeframeLabel: "Income Plan",
-    totalNeeded: gapThisWeek,
-    incomeSoFar: plannedIncome,
-    incomeGap: remainingGap,
-    dailyIncomeNeeded: Math.ceil(remainingGap / 7),
+    totalNeeded: safeNum(gapThisWeek),
+    incomeSoFar: safeNum(plannedIncome),
+    incomeGap: safeNum(remainingGap),
+    dailyIncomeNeeded: Math.ceil(safeNum(remainingGap) / 7),
   });
 
   const planMood =
@@ -626,8 +649,7 @@ export default function IncomePlanPage() {
             </div>
           ) : (
             sideHustles.map((row) => {
-              const projected =
-                Number(row.rate || 0) * Number(row.planned_quantity || 0);
+              const projected = safeNum(row.rate) * safeNum(row.planned_quantity);
 
               return (
                 <div
@@ -637,8 +659,8 @@ export default function IncomePlanPage() {
                   <div>
                     <div className="font-black text-zinc-950">{row.name}</div>
                     <div className="text-sm font-semibold text-zinc-600">
-                      {formatUSD(Number(row.rate || 0))} ×{" "}
-                      {Number(row.planned_quantity || 0)} · {row.income_type}
+                      {formatUSD(row.rate)} × {safeNum(row.planned_quantity)} ·{" "}
+                      {row.income_type}
                       {row.note ? ` · ${row.note}` : ""}
                     </div>
                   </div>
