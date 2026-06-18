@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
 import { Inter, Cormorant_Garamond, IM_Fell_English } from "next/font/google";
 
 import LogoutButton from "@/components/LogoutButton";
@@ -9,6 +10,7 @@ import InstallBanner from "@/components/InstallBanner";
 import AppInitializer from "@/components/AppInitializer";
 import BenWorldBackground from "@/components/BenWorldBackground";
 import MobileMenu from "@/components/MobileMenu";
+import GovernorHeader from "@/components/GovernorHeader";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -59,7 +61,9 @@ export const viewport: Viewport = {
 
 const navLinks = [
   { href: "/", label: "Home" },
+  { href: "/whyben", label: "Why AskBen" },
   { href: "/world", label: "BenWorld" },
+  { href: "/governor", label: "Governor" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/spend", label: "Spend" },
   { href: "/income", label: "Income" },
@@ -79,13 +83,7 @@ const navLinks = [
   { href: "/login", label: "Login" },
 ];
 
-function NavLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
+function NavLink({ href, children }: { href: string; children: ReactNode }) {
   return (
     <a
       href={href}
@@ -114,11 +112,7 @@ function NavLink({
   );
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body
@@ -199,6 +193,7 @@ export default function RootLayout({
                         display: "block",
                       }}
                     />
+
                     <span
                       aria-hidden="true"
                       style={{
@@ -298,6 +293,8 @@ export default function RootLayout({
             <BenPersona />
           </header>
 
+          <GovernorHeader />
+
           <main style={{ position: "relative", zIndex: 1, minHeight: "70vh" }}>
             {children}
           </main>
@@ -331,105 +328,86 @@ export default function RootLayout({
           >
             Ask Ben 💰
           </a>
-<footer
-  style={{
-    position: "relative",
-    zIndex: 1,
-    marginTop: 60,
-    padding: "24px 20px 34px",
-    textAlign: "center",
-    fontSize: 13,
-    color: "rgba(255,255,255,0.62)",
-    textShadow: "0 2px 12px rgba(0,0,0,0.8)",
-    fontFamily: "var(--font-inter), system-ui, sans-serif",
-  }}
->
-  <div
-    style={{
-      fontFamily: "var(--font-cormorant), Georgia, serif",
-      fontSize: 18,
-      fontWeight: 800,
-      color: "#fff7ed",
-    }}
-  >
-    AskBen 🖋️
-  </div>
 
-  <div style={{ marginTop: 4 }}>
-    © 2026 Spatialytics — Built with ❤️ in Minnesota
-  </div>
+          <footer
+            style={{
+              position: "relative",
+              zIndex: 1,
+              marginTop: 60,
+              padding: "24px 20px 34px",
+              textAlign: "center",
+              fontSize: 13,
+              color: "rgba(255,255,255,0.62)",
+              textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+              fontFamily: "var(--font-inter), system-ui, sans-serif",
+            }}
+          >
+            <div
+              style={{
+                fontFamily: "var(--font-cormorant), Georgia, serif",
+                fontSize: 18,
+                fontWeight: 800,
+                color: "#fff7ed",
+              }}
+            >
+              AskBen 🖋️
+            </div>
 
-  <div
-    style={{
-      marginTop: 6,
-      fontFamily: "var(--font-im-fell), Georgia, serif",
-      letterSpacing: "0.18em",
-      textTransform: "uppercase",
-      color: "rgba(255,255,255,0.5)",
-    }}
-  >
-    Spend wisely.
-  </div>
+            <div style={{ marginTop: 4 }}>
+              © 2026 Spatialytics — Built with ❤️ in Minnesota
+            </div>
 
-  {/* TRUST LINE */}
-  <div
-    style={{
-      marginTop: 14,
-      fontSize: 12,
-      opacity: 0.82,
-      lineHeight: 1.6,
-    }}
-  >
-    Secure login • Encrypted connection • No bank login required
-  </div>
+            <div
+              style={{
+                marginTop: 6,
+                fontFamily: "var(--font-im-fell), Georgia, serif",
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.5)",
+              }}
+            >
+              Spend wisely.
+            </div>
 
-  {/* LEGAL LINKS */}
-  <div
-    style={{
-      marginTop: 14,
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      gap: 10,
-      flexWrap: "wrap",
-      fontSize: 12,
-    }}
-  >
-    <a
-      href="/privacy"
-      style={{
-        color: "#fff7ed",
-        textDecoration: "none",
-      }}
-    >
-      Privacy
-    </a>
+            <div
+              style={{
+                marginTop: 14,
+                fontSize: 12,
+                opacity: 0.82,
+                lineHeight: 1.6,
+              }}
+            >
+              Secure login • Encrypted connection • No bank login required
+            </div>
 
-    <span style={{ opacity: 0.5 }}>•</span>
+            <div
+              style={{
+                marginTop: 14,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: 10,
+                flexWrap: "wrap",
+                fontSize: 12,
+              }}
+            >
+              <a href="/privacy" style={{ color: "#fff7ed", textDecoration: "none" }}>
+                Privacy
+              </a>
 
-    <a
-      href="/security"
-      style={{
-        color: "#fff7ed",
-        textDecoration: "none",
-      }}
-    >
-      Security
-    </a>
+              <span style={{ opacity: 0.5 }}>•</span>
 
-    <span style={{ opacity: 0.5 }}>•</span>
+              <a href="/security" style={{ color: "#fff7ed", textDecoration: "none" }}>
+                Security
+              </a>
 
-    <a
-      href="/terms"
-      style={{
-        color: "#fff7ed",
-        textDecoration: "none",
-      }}
-    >
-      Terms
-    </a>
-    </div> 
-      </footer>
+              <span style={{ opacity: 0.5 }}>•</span>
+
+              <a href="/terms" style={{ color: "#fff7ed", textDecoration: "none" }}>
+                Terms
+              </a>
+            </div>
+          </footer>
         </AppInitializer>
       </body>
     </html>
