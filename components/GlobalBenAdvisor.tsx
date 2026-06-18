@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import BenBubble from "@/components/BenBubble";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
+type BenMood = "encouraging" | "stern" | "urgent" | "witty" | "celebratory";
+
 type PatternRow = {
   total_spend: number | string | null;
   spend_count: number | string | null;
@@ -15,6 +17,11 @@ type PatternRow = {
   total_income: number | string | null;
   bill_count: number | string | null;
   debt_count: number | string | null;
+};
+
+type Advice = {
+  mood: BenMood;
+  text: string;
 };
 
 function num(value: unknown) {
@@ -30,7 +37,11 @@ function money(value: number) {
   });
 }
 
-function buildAdvice(pathname: string, row: PatternRow) {
+function cleanLabel(value: string | null) {
+  return value ? value.replaceAll("_", " ") : "spending";
+}
+
+function buildAdvice(pathname: string, row: PatternRow): Advice {
   const totalSpend = num(row.total_spend);
   const totalIncome = num(row.total_income);
   const totalPayments = num(row.total_payments);
@@ -41,22 +52,22 @@ function buildAdvice(pathname: string, row: PatternRow) {
   if (pathname.startsWith("/spend")) {
     if (spendCount === 0) {
       return {
-        mood: "thinking",
+        mood: "encouraging",
         text: "Ben says: Add a few spending entries and I shall begin spotting the Treasury leaks.",
       };
     }
 
     return {
-      mood: totalSpend > totalIncome && totalIncome > 0 ? "stern" : "thinking",
-      text: `Ben says: Thy top spending pattern appears to be ${
-        row.top_spend_category?.replaceAll("_", " ") || "spending"
-      }${row.top_merchant ? `, especially around ${row.top_merchant}` : ""}. Watch that habit closely.`,
+      mood: totalSpend > totalIncome && totalIncome > 0 ? "stern" : "encouraging",
+      text: `Ben says: Thy top spending pattern appears to be ${cleanLabel(
+        row.top_spend_category
+      )}${row.top_merchant ? `, especially around ${row.top_merchant}` : ""}. Watch that habit closely.`,
     };
   }
 
   if (pathname.startsWith("/income")) {
     return {
-      mood: totalIncome > 0 ? "celebratory" : "thinking",
+      mood: totalIncome > 0 ? "celebratory" : "encouraging",
       text:
         totalIncome > 0
           ? `Ben says: The Treasury has recorded ${money(totalIncome)} in income. Now we must give every dollar its orders.`
@@ -66,7 +77,7 @@ function buildAdvice(pathname: string, row: PatternRow) {
 
   if (pathname.startsWith("/payments")) {
     return {
-      mood: totalPayments > 0 ? "celebratory" : "thinking",
+      mood: totalPayments > 0 ? "celebratory" : "encouraging",
       text:
         totalPayments > 0
           ? `Ben says: Thou hast recorded ${money(totalPayments)} in payments. Visible progress is the enemy of despair.`
@@ -76,7 +87,7 @@ function buildAdvice(pathname: string, row: PatternRow) {
 
   if (pathname.startsWith("/bills") || pathname.startsWith("/calendar")) {
     return {
-      mood: billCount > 0 ? "mastermind" : "thinking",
+      mood: billCount > 0 ? "witty" : "encouraging",
       text:
         billCount > 0
           ? `Ben says: I see ${billCount} bills in the colony. Keeping due dates visible prevents ambushes.`
@@ -86,7 +97,7 @@ function buildAdvice(pathname: string, row: PatternRow) {
 
   if (pathname.startsWith("/debt") || pathname.startsWith("/credit")) {
     return {
-      mood: debtCount > 0 ? "mastermind" : "thinking",
+      mood: debtCount > 0 ? "witty" : "encouraging",
       text:
         debtCount > 0
           ? `Ben says: I see ${debtCount} debts in the ledger. The next victory comes from choosing the right target.`
@@ -96,7 +107,7 @@ function buildAdvice(pathname: string, row: PatternRow) {
 
   if (pathname.startsWith("/forecast")) {
     return {
-      mood: totalSpend > totalIncome && totalIncome > 0 ? "stern" : "mastermind",
+      mood: totalSpend > totalIncome && totalIncome > 0 ? "stern" : "witty",
       text:
         totalSpend > totalIncome && totalIncome > 0
           ? `Ben says: Spending of ${money(totalSpend)} is outrunning income of ${money(totalIncome)}. The forecast deserves attention.`
@@ -105,7 +116,7 @@ function buildAdvice(pathname: string, row: PatternRow) {
   }
 
   return {
-    mood: totalSpend > totalIncome && totalIncome > 0 ? "stern" : "thinking",
+    mood: totalSpend > totalIncome && totalIncome > 0 ? "stern" : "encouraging",
     text:
       totalSpend > totalIncome && totalIncome > 0
         ? `Ben says: The Treasury shows ${money(totalSpend)} spent against ${money(totalIncome)} income. Let us inspect the pattern.`
@@ -145,18 +156,18 @@ export default function GlobalBenAdvisor() {
 
   if (!loaded) return null;
 
-if (!pattern) {
-  return (
-    <section className="mx-auto mt-4 max-w-6xl px-4">
-      <div className="rounded-3xl border border-amber-200 bg-amber-50/95 p-4 shadow-2xl">
-        <BenBubble
-          message="Ben says: I am gathering ledger evidence. Add income, spending, bills, debts, or payments and I shall become a sharper advisor."
-          mood="thinking"
-        />
-      </div>
-    </section>
-  );
-}
+  if (!pattern) {
+    return (
+      <section className="mx-auto mt-4 max-w-6xl px-4">
+        <div className="rounded-3xl border border-amber-200 bg-amber-50/95 p-4 shadow-2xl">
+          <BenBubble
+            message="Ben says: I am gathering ledger evidence. Add income, spending, bills, debts, or payments and I shall become a sharper advisor."
+            mood="encouraging"
+          />
+        </div>
+      </section>
+    );
+  }
 
   const advice = buildAdvice(pathname, pattern);
 
