@@ -143,7 +143,20 @@ export default function GlobalBenAdvisor() {
     void loadPattern();
   }, [pathname, supabase]);
 
-  if (!loaded || !pattern) return null;
+  if (!loaded) return null;
+
+if (!pattern) {
+  return (
+    <section className="mx-auto mt-4 max-w-6xl px-4">
+      <div className="rounded-3xl border border-amber-200 bg-amber-50/95 p-4 shadow-2xl">
+        <BenBubble
+          message="Ben says: I am gathering ledger evidence. Add income, spending, bills, debts, or payments and I shall become a sharper advisor."
+          mood="thinking"
+        />
+      </div>
+    </section>
+  );
+}
 
   const advice = buildAdvice(pathname, pattern);
 
