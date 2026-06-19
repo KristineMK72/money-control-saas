@@ -87,6 +87,68 @@ textarea {
   animation-delay: 2s;
 }
 
+.benworld-weather {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.benworld-weather::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.benworld-morning::before {
+  background: rgba(255, 214, 120, 0.14);
+}
+
+.benworld-day::before {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.benworld-evening::before {
+  background: rgba(255, 140, 40, 0.18);
+}
+
+.benworld-night::before {
+  background: rgba(5, 15, 40, 0.52);
+}
+
+.cloud-layer {
+  position: absolute;
+  inset: -20%;
+  opacity: 0.22;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.45), transparent 18%),
+    radial-gradient(circle at 55% 20%, rgba(255, 255, 255, 0.35), transparent 20%),
+    radial-gradient(circle at 80% 40%, rgba(255, 255, 255, 0.28), transparent 22%);
+  animation: cloudsDrift 45s linear infinite;
+}
+
+.cloud-two {
+  opacity: 0.14;
+  animation-duration: 70s;
+  animation-direction: reverse;
+}
+
+.fog-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0.25;
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent),
+    linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+  animation: fogDrift 18s ease-in-out infinite alternate;
+}
+
+.storm-flash {
+  position: absolute;
+  inset: 0;
+  animation: lightning 9s infinite;
+}
+
 @keyframes coinFloat {
   0%, 100% {
     transform: translateY(0);
@@ -126,5 +188,43 @@ textarea {
   100% {
     transform: scale(0.8) rotate(360deg);
     opacity: 0.4;
+  }
+}
+
+@keyframes cloudsDrift {
+  from {
+    transform: translateX(-10%);
+  }
+
+  to {
+    transform: translateX(10%);
+  }
+}
+
+@keyframes fogDrift {
+  from {
+    transform: translateX(-8%);
+  }
+
+  to {
+    transform: translateX(8%);
+  }
+}
+
+@keyframes lightning {
+  0%, 92%, 100% {
+    background: transparent;
+  }
+
+  93% {
+    background: rgba(255, 255, 255, 0.35);
+  }
+
+  94% {
+    background: transparent;
+  }
+
+  96% {
+    background: rgba(255, 255, 255, 0.18);
   }
 }
