@@ -18,9 +18,18 @@ export default function TreasuryCoinMenu() {
   ];
 
   return (
-    <div className="fixed bottom-6 right-5 z-50 flex flex-col items-end gap-3">
+    <div className="fixed bottom-24 left-5 z-[9999] flex flex-col items-start gap-3">
       {open && (
-        <div className="grid gap-2 rounded-3xl border border-amber-300 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur">
+        <button
+          type="button"
+          aria-label="Close treasury menu"
+          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-0 cursor-default bg-black/25 backdrop-blur-[2px]"
+        />
+      )}
+
+      {open && (
+        <div className="relative z-10 grid gap-2 rounded-3xl border border-amber-300 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur">
           {items.map((item) => (
             <Link
               key={item.href}
@@ -37,9 +46,10 @@ export default function TreasuryCoinMenu() {
 
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="treasury-coin"
+        onClick={() => setOpen((value) => !value)}
+        className="treasury-coin relative z-20"
         aria-label="Open Treasury"
+        aria-expanded={open}
       >
         🪙
         <span className="sparkle sparkle-1">✨</span>
