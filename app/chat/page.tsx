@@ -138,8 +138,49 @@ function dueText(value?: string | null) {
   return formatDate(value);
 }
 
+function nextDateFromDueDay(dueDay?: number | string | null) {
+  const day = Number(dueDay);
+
+  if (!day || day < 1 || day > 31) return null;
+
+  const today = new Date(`${todayLocalISO()}T00:00:00`);
+  const year = today.getFullYear();
+  const month = today.getMonth();
+
+  const thisMonthLastDay = new Date(year, month + 1, 0).getDate();
+  const thisMonthSafeDay = Math.min(day, thisMonthLastDay);
+
+  let due = new Date(year, month, thisMonthSafeDay);
+
+  if (due < today) {
+    const nextMonthLastDay = new Date(year, month + 2, 0).getDate();
+    const nextMonthSafeDay = Math.min(day, nextMonthLastDay);
+    due = new Date(year, month + 1, nextMonthSafeDay);
+  }
+
+  return due.toISOString().slice(0, 10);
+}
+
+function resolvedBillDueDate(bill: BillRow) {
+  return bill.due_date ?? bill.due ?? nextDateFromDueDay(bill.due_day);
+}
+
+function resolvedDebtDueDate(debt: DebtRow) {
+  return debt.due_date ?? nextDateFromDueDay(debt.due_day);
+}
+
+function isWithinNextDays(date?: string | null, daysAhead = 7) {
+  const days = daysUntil(date);
+  return days !== null && days >= 0 && days <= daysAhead;
+}
+
 function billAmount(bill: BillRow) {
-  return num(bill.target ?? bill.monthly_target ?? bill.balance ?? bill.min_payment);
+  return num(
+    bill.target ??
+      bill.monthly_target ??
+      bill.balance ??
+      bill.min_payment
+  );
 }
 
 function debtMinimum(debt: DebtRow) {
@@ -172,11 +213,72 @@ function buildFinancialSummary(context: MoneyContext) {
 
   const pressure = num(master?.pressure_pct);
 
+  const upcomingBills = bills.filter((bill) =>
+    isWithinNextDays(resolvedBillDueDate(bill), 7)
+  );
+
+  const upcomingDebts = debts.filter((debt) =>
+    isWithinNextDays(resolvedDebtDueDate(debt), 7)
+  );
+
+  const overdueBills = bills.filter((bill) => {
+    const days = daysUntil(resolvedBillDueDate(bill));
+    return days !== null && days < 0;
+  });
+
+  const overdueDebts = debts.filter((debt) => {
+    const days = daysUntil(resolvedDebtDueDate(debt));
+    return days !== null && days < 0;
+  });
+
+  const next7Lines = [
+    ...upcomingBills.map((bill) => {
+      const due = resolvedBillDueDate(bill);
+
+      return `- BILL: ${bill.name ?? "Unnamed bill"} — ${money(
+        billAmount(bill)
+      )}; ${dueText(due)}; category: ${
+        bill.category ?? "uncategorized"
+      }; priority: ${bill.priority ?? "not set"}; focus: ${
+        bill.focus ? "yes" : "no"
+      }`;
+    }),
+
+    ...upcomingDebts.map((debt) => {
+      const due = resolvedDebtDueDate(debt);
+
+      return `- DEBT: ${debt.name ?? "Unnamed debt"} — minimum ${money(
+        debtMinimum(debt)
+      )}; balance ${money(num(debt.balance))}; ${dueText(due)}; APR: ${
+        debt.apr ?? "unknown"
+      }; type: ${debt.kind ?? "debt"}`;
+    }),
+  ].join("\n");
+
+  const overdueLines = [
+    ...overdueBills.map((bill) => {
+      const due = resolvedBillDueDate(bill);
+
+      return `- OVERDUE BILL: ${bill.name ?? "Unnamed bill"} — ${money(
+        billAmount(bill)
+      )}; ${dueText(due)}`;
+    }),
+
+    ...overdueDebts.map((debt) => {
+      const due = resolvedDebtDueDate(debt);
+
+      return `- OVERDUE DEBT: ${debt.name ?? "Unnamed debt"} — minimum ${money(
+        debtMinimum(debt)
+      )}; ${dueText(due)}`;
+    }),
+  ].join("\n");
+
   const billLines =
     bills.length > 0
       ? bills
           .map((bill) => {
-            const due = bill.due_date ?? bill.due;
+            const due = resolvedBillDueDate(bill);
+
             return `- ${bill.name ?? "Unnamed bill"}: ${money(
               billAmount(bill)
             )}; due ${dueText(due)}; category: ${
@@ -192,11 +294,15 @@ function buildFinancialSummary(context: MoneyContext) {
     debts.length > 0
       ? debts
           .map((debt) => {
+            const due = resolvedDebtDueDate(debt);
+
             return `- ${debt.name ?? "Unnamed debt"}: balance ${money(
               num(debt.balance)
             )}; minimum ${money(debtMinimum(debt))}; due ${dueText(
-              debt.due_date
-            )}; APR: ${debt.apr ?? "unknown"}; type: ${debt.kind ?? "debt"}`;
+              due
+            )}; APR: ${debt.apr ?? "unknown"}; type: ${
+              debt.kind ?? "debt"
+            }`;
           })
           .join("\n")
       : "- No debt rows found.";
@@ -216,6 +322,12 @@ MONTHLY SNAPSHOT FROM ben_master_monthly
 - Estimated net after spending, bills, and debt minimums: ${money(net)}
 - Debt pressure: ${pressure.toFixed(1)}%
 
+OVERDUE ITEMS — EXACT LIST
+${overdueLines || "- No overdue bills or debts found."}
+
+NEXT 7 DAYS — EXACT DUE ITEMS
+${next7Lines || "- Nothing is due in the next 7 days based on due_date, due, or due_day."}
+
 BILLS FROM bills TABLE
 ${billLines}
 
@@ -225,8 +337,9 @@ ${debtLines}
 RULES FOR BEN
 - This financial context is the source of truth.
 - If bills or debts are listed above, never say the ledger has not been shared.
-- When asked what is due this week, use the due dates above.
-- When asked what to pay first, prioritize overdue items, due-soon bills, minimum debt payments, high APR debts, and essentials.
+- When asked what is due in the next 7 days, use the section called "NEXT 7 DAYS — EXACT DUE ITEMS."
+- When asked what is overdue, use the section called "OVERDUE ITEMS — EXACT LIST."
+- When asked what to pay first, prioritize overdue items first, then items due in the next 7 days, then minimum debt payments, then high APR debt.
 - Be specific. Name the bill, debt, amount, and due date when available.
 - If data is missing, say exactly what is missing instead of pretending nothing exists.
 `.trim();
@@ -248,7 +361,8 @@ Financial behavior:
 - For urgent money questions, prioritize survival: housing, utilities, transportation, food, insurance, minimum payments, then extra debt payments.
 - Do not shame the user.
 - Do not recommend risky financial decisions.
-- If the user asks what to pay first, give a ranked list.
+- If the user asks what to pay first, give a ranked list using exact due dates and amounts.
+- If the user asks what is due this week or in the next 7 days, answer only from the NEXT 7 DAYS section.
 - If the user asks for a plan, give a short action plan.
 `.trim();
 
@@ -376,6 +490,8 @@ export default function ChatPage() {
     try {
       const financialSummary = buildFinancialSummary(moneyContext);
 
+      console.log("ASKBEN FINANCIAL SUMMARY SENT:", financialSummary);
+
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: {
@@ -454,8 +570,12 @@ export default function ChatPage() {
         {!notice && (
           <div className="mb-4 rounded-2xl border border-white/15 bg-black/45 p-4 text-sm font-semibold text-white/80 shadow-xl backdrop-blur-xl">
             {hasData
-              ? `Ben can currently see ${moneyContext.bills.length} bill(s), ${moneyContext.debts.length} debt(s), and ${
-                  moneyContext.master ? "the monthly master snapshot" : "no monthly master snapshot"
+              ? `Ben can currently see ${moneyContext.bills.length} bill(s), ${
+                  moneyContext.debts.length
+                } debt(s), and ${
+                  moneyContext.master
+                    ? "the monthly master snapshot"
+                    : "no monthly master snapshot"
                 }.`
               : "Ben is connected, but no money rows were found yet."}
           </div>
@@ -525,6 +645,7 @@ export default function ChatPage() {
         <div className="mt-6 flex flex-wrap gap-2">
           {[
             "What should I pay first this week?",
+            "What is due in the next 7 days?",
             "Give me a 7-day survival plan, good sir.",
             "How much coin must I earn daily?",
             "What is my greatest risk at present?",
