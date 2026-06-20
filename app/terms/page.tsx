@@ -4,7 +4,7 @@ export default function TermsPage() {
       <div className="rounded-3xl border border-amber-300/30 bg-black/80 p-8 text-white shadow-2xl backdrop-blur-md">
         <div className="mb-8 flex flex-col items-center text-center">
           <img
-            src="/ben-governor.png"
+            src="/ben-winning.png"
             alt="Benjamin Franklin"
             className="mb-4 h-40 w-auto"
           />
