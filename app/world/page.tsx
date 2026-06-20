@@ -1,7 +1,7 @@
 import BenWorldMap from "@/components/BenWorldMap";
 import BenWorldWeatherOverlay from "@/components/BenWorldWeatherOverlay";
 import TreasuryCoinMenu from "@/components/TreasuryCoinMenu";
-
+import TreasuryBuilder from "@/components/TreasuryBuilder";
 export default function WorldPage() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#080706] p-3 md:p-6">
