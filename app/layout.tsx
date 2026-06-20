@@ -12,6 +12,7 @@ import BenWorldBackground from "@/components/BenWorldBackground";
 import MobileMenu from "@/components/MobileMenu";
 import GovernorHeader from "@/components/GovernorHeader";
 import GlobalBenAdvisor from "@/components/GlobalBenAdvisor";
+import SwipeHeader from "@/components/SwipeHeader";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -62,40 +63,24 @@ export const viewport: Viewport = {
 
 const navLinks = [
   { href: "/", label: "Home" },
-
-  // Story
   { href: "/whyben", label: "Why AskBen" },
-
-  // Game
   { href: "/governor", label: "Governor" },
   { href: "/world", label: "BenWorld" },
-
-  // Command center
   { href: "/dashboard", label: "Dashboard" },
   { href: "/forecast", label: "Forecast" },
-
-  // Money
   { href: "/income", label: "Income" },
   { href: "/income-plan", label: "Income Plan" },
   { href: "/spend", label: "Spend" },
   { href: "/bills", label: "Bills" },
   { href: "/debt", label: "Debt" },
   { href: "/payments", label: "Payments" },
-
-  // Credit
   { href: "/credit-health", label: "Credit Health" },
   { href: "/credit-recovery", label: "Credit Recovery" },
-
-  // Tools
   { href: "/calendar", label: "Calendar" },
   { href: "/crisis", label: "Crisis" },
   { href: "/chat", label: "Ask Ben" },
-
-  // Letters
   { href: "/dispute-letter", label: "Dispute Letter" },
   { href: "/goodwill-letter", label: "Goodwill Letter" },
-
-  // Account
   { href: "/signup", label: "Signup" },
   { href: "/login", label: "Login" },
 ];
@@ -145,19 +130,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <BenWorldBackground />
 
         <AppInitializer>
-          <header
-            style={{
-              position: "sticky",
-              top: 0,
-              zIndex: 100,
-              background:
-                "linear-gradient(180deg, rgba(5,5,8,0.78), rgba(5,5,8,0.32))",
-              backdropFilter: "blur(14px)",
-              WebkitBackdropFilter: "blur(14px)",
-              borderBottom: "1px solid rgba(255,255,255,0.1)",
-              boxShadow: "0 12px 40px rgba(0,0,0,0.28)",
-            }}
-          >
+          <SwipeHeader>
             <div
               style={{
                 maxWidth: 1180,
@@ -308,13 +281,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </div>
 
             <BenPersona />
-          </header>
+          </SwipeHeader>
 
-<GovernorHeader />
-<GlobalBenAdvisor />
-<main style={{ position: "relative", zIndex: 1, minHeight: "70vh" }}>
-  {children}
-</main>
+          <GovernorHeader />
+          <GlobalBenAdvisor />
 
           <main style={{ position: "relative", zIndex: 1, minHeight: "70vh" }}>
             {children}
@@ -350,7 +320,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             Ask Ben 💰
           </a>
 
-                 <footer
+          <footer
             style={{
               position: "relative",
               zIndex: 1,
@@ -455,61 +425,39 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 fontWeight: 800,
               }}
             >
-              <a
-                href="/privacy"
-                style={{
-                  color: "#fff7ed",
-                  textDecoration: "none",
-                  padding: "8px 10px",
-                  borderRadius: 999,
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                }}
-              >
-                Privacy
-              </a>
+              {["Privacy", "Security", "Terms", "Why AskBen"].map((label) => {
+                const href =
+                  label === "Privacy"
+                    ? "/privacy"
+                    : label === "Security"
+                      ? "/security"
+                      : label === "Terms"
+                        ? "/terms"
+                        : "/whyben";
 
-              <a
-                href="/security"
-                style={{
-                  color: "#fff7ed",
-                  textDecoration: "none",
-                  padding: "8px 10px",
-                  borderRadius: 999,
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                }}
-              >
-                Security
-              </a>
-
-              <a
-                href="/terms"
-                style={{
-                  color: "#fff7ed",
-                  textDecoration: "none",
-                  padding: "8px 10px",
-                  borderRadius: 999,
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                }}
-              >
-                Terms
-              </a>
-
-              <a
-                href="/whyben"
-                style={{
-                  color: "#fff7ed",
-                  textDecoration: "none",
-                  padding: "8px 10px",
-                  borderRadius: 999,
-                  background: "rgba(251,191,36,0.12)",
-                  border: "1px solid rgba(251,191,36,0.22)",
-                }}
-              >
-                Why AskBen
-              </a>
+                return (
+                  <a
+                    key={href}
+                    href={href}
+                    style={{
+                      color: "#fff7ed",
+                      textDecoration: "none",
+                      padding: "8px 10px",
+                      borderRadius: 999,
+                      background:
+                        href === "/whyben"
+                          ? "rgba(251,191,36,0.12)"
+                          : "rgba(255,255,255,0.08)",
+                      border:
+                        href === "/whyben"
+                          ? "1px solid rgba(251,191,36,0.22)"
+                          : "1px solid rgba(255,255,255,0.12)",
+                    }}
+                  >
+                    {label}
+                  </a>
+                );
+              })}
             </div>
           </footer>
         </AppInitializer>
