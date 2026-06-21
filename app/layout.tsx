@@ -38,7 +38,9 @@ export const metadata: Metadata = {
       { url: "/ben-head.png", sizes: "192x192", type: "image/png" },
       { url: "/ben-head.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
     shortcut: "/ben-head.png",
   },
   openGraph: {
@@ -47,7 +49,14 @@ export const metadata: Metadata = {
     url: "https://www.askben.buzz/",
     siteName: "AskBen",
     type: "website",
-    images: [{ url: "/askben-social.jpeg", width: 1200, height: 630, alt: "AskBen" }],
+    images: [
+      {
+        url: "/askben-social.jpeg",
+        width: 1200,
+        height: 630,
+        alt: "AskBen",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
@@ -63,28 +72,24 @@ export const viewport: Viewport = {
 
 const navLinks = [
   { href: "/", label: "Home" },
-  { href: "/whyben", label: "Why AskBen" },
-  { href: "/governor", label: "Governor" },
   { href: "/world", label: "Franklin’s Landing" },
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/forecast", label: "Forecast" },
-  { href: "/treasury", label: "Treasury Hall" },
+  { href: "/spend", label: "Spend" },
   { href: "/income", label: "Income" },
   { href: "/income-plan", label: "Income Plan" },
-  { href: "/spend", label: "Spend" },
   { href: "/bills", label: "Bills" },
   { href: "/debt", label: "Debt" },
   { href: "/payments", label: "Payments" },
+  { href: "/forecast", label: "Forecast" },
+  { href: "/calendar", label: "Calendar" },
   { href: "/credit-health", label: "Credit Health" },
   { href: "/credit-recovery", label: "Credit Recovery" },
-  { href: "/calendar", label: "Calendar" },
   { href: "/crisis", label: "Crisis" },
   { href: "/chat", label: "Ask Ben" },
+  { href: "/settings", label: "⚙️ Settings" },
+  { href: "/whyben", label: "Why AskBen" },
   { href: "/dispute-letter", label: "Dispute Letter" },
   { href: "/goodwill-letter", label: "Goodwill Letter" },
-  { href: "/signup", label: "Signup" },
-  { href: "/settings", label: "⚙️ Settings" },
-  { href: "/login", label: "Login" },
 ];
 
 function NavLink({ href, children }: { href: string; children: ReactNode }) {
@@ -112,6 +117,43 @@ function NavLink({ href, children }: { href: string; children: ReactNode }) {
       }}
     >
       {children}
+    </a>
+  );
+}
+
+function HeaderIconLink({
+  href,
+  label,
+  title,
+}: {
+  href: string;
+  label: string;
+  title: string;
+}) {
+  return (
+    <a
+      href={href}
+      aria-label={title}
+      title={title}
+      style={{
+        width: 52,
+        height: 52,
+        display: "grid",
+        placeItems: "center",
+        borderRadius: 18,
+        textDecoration: "none",
+        color: "#fff7ed",
+        background: "rgba(5,5,8,0.72)",
+        border: "1px solid rgba(255,255,255,0.18)",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        fontSize: 22,
+        fontWeight: 900,
+        flexShrink: 0,
+      }}
+    >
+      {label}
     </a>
   );
 }
@@ -239,7 +281,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                         fontFamily: "var(--font-im-fell), Georgia, serif",
                       }}
                     >
-                      Financial triage, with judgment.
+                      Financial triage, without judgment.
                     </div>
                   </div>
                 </a>
@@ -252,10 +294,18 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                     flexShrink: 0,
                   }}
                 >
+                  <HeaderIconLink
+                    href="/settings"
+                    label="⚙️"
+                    title="Settings"
+                  />
+
                   <MobileMenu />
+
                   <div className="hidden sm:block">
                     <UserGreeting />
                   </div>
+
                   <LogoutButton />
                 </div>
               </div>
@@ -427,39 +477,43 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 fontWeight: 800,
               }}
             >
-              {["Privacy", "Security", "Terms", "Why AskBen"].map((label) => {
-                const href =
-                  label === "Privacy"
-                    ? "/privacy"
-                    : label === "Security"
-                      ? "/security"
-                      : label === "Terms"
-                        ? "/terms"
-                        : "/whyben";
+              {["Privacy", "Security", "Terms", "Why AskBen", "Settings"].map(
+                (label) => {
+                  const href =
+                    label === "Privacy"
+                      ? "/privacy"
+                      : label === "Security"
+                        ? "/security"
+                        : label === "Terms"
+                          ? "/terms"
+                          : label === "Settings"
+                            ? "/settings"
+                            : "/whyben";
 
-                return (
-                  <a
-                    key={href}
-                    href={href}
-                    style={{
-                      color: "#fff7ed",
-                      textDecoration: "none",
-                      padding: "8px 10px",
-                      borderRadius: 999,
-                      background:
-                        href === "/whyben"
-                          ? "rgba(251,191,36,0.12)"
-                          : "rgba(255,255,255,0.08)",
-                      border:
-                        href === "/whyben"
-                          ? "1px solid rgba(251,191,36,0.22)"
-                          : "1px solid rgba(255,255,255,0.12)",
-                    }}
-                  >
-                    {label}
-                  </a>
-                );
-              })}
+                  return (
+                    <a
+                      key={href}
+                      href={href}
+                      style={{
+                        color: "#fff7ed",
+                        textDecoration: "none",
+                        padding: "8px 10px",
+                        borderRadius: 999,
+                        background:
+                          href === "/whyben" || href === "/settings"
+                            ? "rgba(251,191,36,0.12)"
+                            : "rgba(255,255,255,0.08)",
+                        border:
+                          href === "/whyben" || href === "/settings"
+                            ? "1px solid rgba(251,191,36,0.22)"
+                            : "1px solid rgba(255,255,255,0.12)",
+                      }}
+                    >
+                      {label}
+                    </a>
+                  );
+                },
+              )}
             </div>
           </footer>
         </AppInitializer>
