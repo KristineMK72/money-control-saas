@@ -20,41 +20,67 @@ import {
   ocrImageFile,
   parseTransactionsScreenshot,
 } from "@/lib/money/receiptOcr";
+import { clampMoney, money } from "@/lib/money/math";
+import {
+  currentMonthStartISO,
+  daysUntil,
+  nextDateFromDueDay,
+} from "@/lib/money/dates";
+import {
+  prioritizeMoneyItems,
+  type PriorityInput,
+} from "@/lib/money/priorityV2";
 
 type BillRow = {
   id: string;
   user_id: string;
   name: string;
-  target: number;
+  target: number | string | null;
   category: string | null;
   due_date: string | null;
-  due_day: number | null;
+  due?: string | null;
+  due_day: number | string | null;
   is_monthly: boolean | null;
-  monthly_target: number | null;
+  monthly_target: number | string | null;
+  focus?: boolean | null;
+  kind?: string | null;
   created_at: string;
 };
 
 type PaymentRow = {
   id: string;
-  amount: number;
+  amount: number | string | null;
   bill_id: string | null;
   date_iso: string;
 };
 
-function money(n: number) {
-  return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  });
+function billAmount(bill: BillRow) {
+  return clampMoney(bill.monthly_target ?? bill.target);
+}
+
+function resolvedBillDueDate(bill: BillRow) {
+  return bill.due_date ?? bill.due ?? nextDateFromDueDay(bill.due_day);
 }
 
 function monthKey(date: string | null) {
   if (!date) return "Unscheduled";
+
   return new Date(`${date}T00:00:00`).toLocaleString("en-US", {
     month: "long",
     year: "numeric",
   });
+}
+
+function dueLabel(date: string | null) {
+  const days = daysUntil(date);
+
+  if (days === null) return "No due date";
+  if (days < 0) return `Overdue by ${Math.abs(days)} day(s)`;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due tomorrow";
+  if (days <= 7) return `Due in ${days} days`;
+
+  return `Due in ${days} days`;
 }
 
 export default function BillsPage() {
@@ -155,9 +181,11 @@ export default function BillsPage() {
 
       setName(first.merchant || "");
       if (first.amount) setAmount(String(first.amount));
+
       if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
         setDueDate(first.dateText);
       }
+
       setMessage("Scanner filled what it could. Give it the human eye.");
     } catch (error) {
       console.error("Bill scanner error:", error);
@@ -172,14 +200,18 @@ export default function BillsPage() {
 
     if (!userId) return;
 
-    const target = Number(amount);
-    if (!name.trim() || !Number.isFinite(target) || target <= 0) {
+    const target = clampMoney(amount);
+
+    if (!name.trim() || target <= 0) {
       setMessage("Add a bill name and a valid amount.");
       return;
     }
 
     setSaving(true);
-    const dueDay = dueDate ? new Date(`${dueDate}T00:00:00`).getDate() : null;
+
+    const dueDay = dueDate
+      ? new Date(`${dueDate}T00:00:00`).getDate()
+      : null;
 
     const { error } = await supabase.from("bills").insert({
       user_id: userId,
@@ -203,7 +235,8 @@ export default function BillsPage() {
     setCategory("household");
     setDueDate("");
     setMonthly(true);
-    await loadBills(userId);
+
+    await Promise.all([loadBills(userId), loadPayments(userId)]);
     setMessage("Bill added. Ben has placed it on the priority board.");
     setSaving(false);
   }
@@ -226,24 +259,67 @@ export default function BillsPage() {
     setMessage("Bill removed.");
   }
 
-  const totalBills = bills.reduce(
-    (sum, bill) => sum + Number(bill.monthly_target || bill.target || 0),
-    0
-  );
-  const totalPaid = payments.reduce(
-    (sum, payment) => sum + Number(payment.amount || 0),
-    0
-  );
+  const currentMonthStart = currentMonthStartISO();
+
+  const paidThisMonthByBill = useMemo(() => {
+    const paid: Record<string, number> = {};
+
+    payments.forEach((payment) => {
+      if (!payment.bill_id) return;
+      if (payment.date_iso < currentMonthStart) return;
+
+      paid[payment.bill_id] =
+        (paid[payment.bill_id] || 0) + clampMoney(payment.amount);
+    });
+
+    return paid;
+  }, [payments, currentMonthStart]);
+
+  const totalBills = bills.reduce((sum, bill) => {
+    return sum + billAmount(bill);
+  }, 0);
+
+  const totalPaid = payments.reduce((sum, payment) => {
+    return sum + clampMoney(payment.amount);
+  }, 0);
+
   const remaining = Math.max(0, totalBills - totalPaid);
 
-  const billsByMonth = useMemo(() => {
-    const groups: Record<string, BillRow[]> = {};
-    bills.forEach((bill) => {
-      const key = monthKey(bill.due_date);
-      groups[key] = [...(groups[key] || []), bill];
+  const priorityItems = useMemo<PriorityInput[]>(() => {
+    return bills.map((bill) => {
+      const amountDue = billAmount(bill);
+      const paidThisMonth = paidThisMonthByBill[bill.id] || 0;
+
+      return {
+        id: bill.id,
+        type: "bill" as const,
+        name: bill.name,
+        amount: Math.max(0, amountDue - paidThisMonth),
+        due_date: bill.due_date,
+        due: bill.due,
+        due_day: bill.due_day,
+        category: bill.category,
+        kind: bill.kind,
+        focus: bill.focus,
+        is_paid_this_month: paidThisMonth >= amountDue && amountDue > 0,
+      };
     });
+  }, [bills, paidThisMonthByBill]);
+
+  const rankedBills = useMemo(() => {
+    return prioritizeMoneyItems(priorityItems);
+  }, [priorityItems]);
+
+  const billsByMonth = useMemo(() => {
+    const groups: Record<string, typeof rankedBills> = {};
+
+    rankedBills.forEach((row) => {
+      const key = monthKey(row.resolvedDueDate);
+      groups[key] = [...(groups[key] || []), row];
+    });
+
     return Object.entries(groups);
-  }, [bills]);
+  }, [rankedBills]);
 
   const ben = BenEngine.getForecastMessage({
     name: null,
@@ -363,7 +439,7 @@ export default function BillsPage() {
 
       <ScrollRevealCard
         title="Bill Board"
-        subtitle={`${bills.length} obligations grouped by due month`}
+        subtitle={`${bills.length} obligations grouped by due month and ranked by priority`}
         image="/ben-mastermind.png"
         defaultOpen
       >
@@ -397,33 +473,55 @@ export default function BillsPage() {
 
                   {open && (
                     <div className="mt-4 grid gap-3">
-                      {groupBills.map((bill) => (
-                        <div
-                          key={bill.id}
-                          className="flex flex-col gap-3 rounded-2xl border border-white bg-white p-4 md:flex-row md:items-center md:justify-between"
-                        >
-                          <div>
-                            <p className="font-black">{bill.name}</p>
-                            <p className="text-sm font-semibold text-zinc-600">
-                              {bill.category || "Uncategorized"}
-                              {bill.due_date ? ` - due ${bill.due_date}` : ""}
-                            </p>
-                          </div>
+                      {groupBills.map((row) => {
+                        const bill = bills.find((b) => b.id === row.item.id);
+                        if (!bill) return null;
 
-                          <div className="flex items-center gap-3">
-                            <p className="text-lg font-black">
-                              {money(Number(bill.target || 0))}
-                            </p>
+                        return (
+                          <div
+                            key={bill.id}
+                            className="flex flex-col gap-3 rounded-2xl border border-white bg-white p-4 md:flex-row md:items-center md:justify-between"
+                          >
+                            <div>
+                              <p className="font-black">{bill.name}</p>
 
-                            <button
-                              onClick={() => void deleteBill(bill.id)}
-                              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700"
-                            >
-                              Delete
-                            </button>
+                              <p className="text-sm font-semibold text-zinc-600">
+                                {bill.category || "Uncategorized"} •{" "}
+                                {dueLabel(row.resolvedDueDate)}
+                              </p>
+
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {row.reasons.map((reason) => (
+                                  <span
+                                    key={reason}
+                                    className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-black text-zinc-700"
+                                  >
+                                    {reason}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <p className="text-lg font-black">
+                                  {money(row.amount)}
+                                </p>
+                                <p className="text-xs font-black uppercase tracking-[0.15em] text-zinc-400">
+                                  Score {row.score}
+                                </p>
+                              </div>
+
+                              <button
+                                onClick={() => void deleteBill(bill.id)}
+                                className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
