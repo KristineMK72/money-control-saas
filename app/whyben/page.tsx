@@ -8,15 +8,13 @@ export const metadata: Metadata = {
     "AskBen helps people rebuild financial confidence through guidance, progress, and positive reinforcement.",
   openGraph: {
     title: "Why AskBen?",
-    description:
-      "Financial wellness built around people, not spreadsheets.",
+    description: "Financial wellness built around people, not spreadsheets.",
     images: ["/ben-thinking.png"],
   },
   twitter: {
     card: "summary_large_image",
     title: "Why AskBen?",
-    description:
-      "Financial wellness built around people, not spreadsheets.",
+    description: "Financial wellness built around people, not spreadsheets.",
     images: ["/ben-thinking.png"],
   },
 };
@@ -33,18 +31,27 @@ const sources = [
   {
     name: "Consumer Financial Protection Bureau — Making Ends Meet in 2024",
     href: "https://www.consumerfinance.gov/data-research/research-reports/making-ends-meet-in-2024-insights-from-the-making-ends-meet-survey/",
+    note: "Household financial pressure, bill stress, and financial well-being research.",
   },
   {
     name: "Federal Reserve — Economic Well-Being of U.S. Households in 2024",
     href: "https://www.federalreserve.gov/publications/2025-economic-well-being-of-us-households-in-2024-overall-financial-well-being.htm",
+    note: "Research on inflation, emergency savings, household stress, and financial resilience.",
+  },
+  {
+    name: "CFPB — Financial Well-Being Scale",
+    href: "https://www.consumerfinance.gov/consumer-tools/educator-tools/financial-well-being-resources/measure-and-score/",
+    note: "A framework for confidence, control, resilience, and financial choice.",
   },
   {
     name: "National Library of Medicine — Financial Stress and Mental Health Research",
     href: "https://pmc.ncbi.nlm.nih.gov/articles/PMC8806009/",
+    note: "Research connecting financial stress with emotional strain and mental health.",
   },
   {
     name: "Simply Psychology — Positive Reinforcement",
     href: "https://www.simplypsychology.org/operant-conditioning.html",
+    note: "Explains how positive reinforcement can encourage repeated behavior.",
   },
 ];
 
@@ -56,7 +63,13 @@ function Panel({ children }: { children: ReactNode }) {
   );
 }
 
-function BenImage({ src, size = "normal" }: { src: string; size?: "normal" | "large" }) {
+function BenImage({
+  src,
+  size = "normal",
+}: {
+  src: string;
+  size?: "normal" | "large";
+}) {
   return (
     <img
       src={src}
@@ -140,19 +153,24 @@ export default function WhyBenPage() {
               </p>
 
               <h1 className="mt-3 text-5xl font-black leading-none text-zinc-950 md:text-6xl">
-                Rebuilding the Treasury, one decision at a time.
+                Rebuilding the Treasury.
+                <br />
+                Rebuilding confidence.
               </h1>
 
               <div className="mt-5 space-y-4 text-lg font-bold leading-8 text-zinc-700">
-                <p>Many financial apps focus on numbers.</p>
-                <p>AskBen focuses on people.</p>
+                <p>Money problems rarely start with money.</p>
                 <p>
-                  Behind every debt balance, overdue bill, budget category, and
-                  financial goal is a real person trying to breathe again.
+                  They start with stress, avoidance, shame, overwhelm, and the
+                  feeling that you are already too far behind.
                 </p>
                 <p>
-                  AskBen was built on one belief: financial management should
-                  feel empowering, not intimidating.
+                  Most financial apps were built to track numbers. AskBen was
+                  built to help people move forward.
+                </p>
+                <p className="text-2xl font-black text-emerald-800">
+                  One decision. One payment. One victory. One rebuilt Treasury
+                  at a time.
                 </p>
               </div>
 
@@ -185,61 +203,70 @@ export default function WhyBenPage() {
 
         <BenSection
           image="/ben-overdraft.png"
-          eyebrow="Why AskBen matters now"
-          title="Financial stress is increasing."
+          eyebrow="Why AskBen exists"
+          title="Financial stress is not just a math problem."
         >
           <p>
-            Housing, food, utilities, transportation, healthcare, childcare,
-            insurance, and everyday necessities keep putting pressure on
-            household budgets.
+            Behind every overdue bill, debt balance, budget category, and
+            financial goal is a real person trying to breathe again.
           </p>
           <p>
-            Many people are not looking for luxury. They are looking for
-            breathing room.
+            People are not always stuck because they do not know what to do.
+            Often, they are stuck because the process feels painful,
+            intimidating, or hopeless.
           </p>
           <p>
-            AskBen helps people face their finances without shame, panic, or
-            spreadsheet overwhelm.
+            AskBen helps turn financial management from something people avoid
+            into something they can face one step at a time.
           </p>
         </BenSection>
 
         <BenSection
           image="/ben-facepalm.png"
-          title="Financial stress is more than a money problem."
+          title="Most apps show the problem. AskBen helps with the next step."
           reverse
         >
-          <p>Financial stress can affect sleep, focus, confidence, and mood.</p>
-          <p>It can lead to:</p>
+          <p>
+            Traditional finance apps often lead with red warnings, large debt
+            totals, negative balances, and complicated charts.
+          </p>
+          <p>
+            Those numbers may be true, but they do not always help someone feel
+            capable of changing them.
+          </p>
+          <p>AskBen still tells the truth, but it does it with:</p>
           <BulletList
             items={[
-              "Avoiding bills",
-              "Ignoring balances",
-              "Feeling overwhelmed",
-              "Putting off financial decisions",
-              "Feeling stuck before even starting",
+              "Clear next steps",
+              "Encouragement instead of shame",
+              "Progress tracking",
+              "Debt payoff guidance",
+              "Bill awareness",
+              "Small wins that build momentum",
             ]}
           />
-          <p>AskBen exists to help break that cycle.</p>
         </BenSection>
 
         <BenSection image="/ben-thinking.png" title="The avoidance problem.">
           <p>
             Most people do not avoid their finances because they are
-            irresponsible. They avoid them because the experience feels painful.
+            irresponsible.
           </p>
-          <p>Traditional finance apps often show:</p>
+          <p>They avoid them because the experience feels painful.</p>
+          <p>Financial avoidance can look like:</p>
           <BulletList
             items={[
-              "Large debt totals",
-              "Negative balances",
-              "Red warnings",
-              "Complicated charts",
-              "Endless categories",
+              "Not opening bills",
+              "Ignoring balances",
+              "Avoiding debt totals",
+              "Putting off payments",
+              "Feeling embarrassed to ask for help",
+              "Waiting until things feel urgent",
             ]}
           />
           <p>
-            AskBen still tells the truth, but it does it with guidance,
-            encouragement, and a clear next step.
+            AskBen was designed to make the first step feel smaller, safer, and
+            more possible.
           </p>
         </BenSection>
 
@@ -249,9 +276,10 @@ export default function WhyBenPage() {
           reverse
         >
           <p>
-            People stay engaged when progress is visible and effort is
-            recognized.
+            People know they should budget. They know they should save. They
+            know they should pay down debt.
           </p>
+          <p>But knowledge alone does not create consistency.</p>
           <p>AskBen encourages healthy money habits with:</p>
           <BulletList
             items={[
@@ -259,21 +287,52 @@ export default function WhyBenPage() {
               "Achievements",
               "Ranks",
               "Streaks",
+              "Weekly missions",
               "Debt campaign victories",
-              "Milestones",
               "Ben’s reactions and encouragement",
+              "Milestones that make progress visible",
             ]}
           />
           <p>
-            The goal is not to turn money into a game. The goal is to make
-            progress feel possible.
+            The goal is not perfection. The goal is momentum.
+          </p>
+        </BenSection>
+
+        <BenSection image="/ben-winning.png" title="Progress deserves to be celebrated.">
+          <p>AskBen treats small financial actions like wins because they are.</p>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
+            <p>Review a debt? Victory.</p>
+            <p className="mt-2">Log a payment? Victory.</p>
+            <p className="mt-2">Pay off a card? Major victory.</p>
+            <p className="mt-2">Come back tomorrow? Momentum.</p>
+          </div>
+          <p>
+            Every action becomes another brick in rebuilding the Treasury.
           </p>
         </BenSection>
 
         <BenSection
-          image="/ben-thinking.png"
-          title="Your finances belong to you."
+          image="/ben-recovery.png"
+          title="Rebuilding the Treasury."
+          reverse
         >
+          <p>Traditional finance apps often focus on what is wrong.</p>
+          <p>AskBen focuses on what is improving.</p>
+
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-emerald-950">
+            <p>Instead of only saying: “You still owe $5,000.”</p>
+            <p className="mt-2">
+              AskBen highlights: “You paid off $500 this month.”
+            </p>
+          </div>
+
+          <p>
+            Rebuilding is not one giant leap. It is repeated proof that progress
+            is still possible.
+          </p>
+        </BenSection>
+
+        <BenSection image="/ben-thinking.png" title="Your finances belong to you.">
           <p>
             AskBen was designed so users stay in control of what they share.
           </p>
@@ -297,45 +356,6 @@ export default function WhyBenPage() {
         </BenSection>
 
         <BenSection
-          image="/ben-winning.png"
-          title="Finance should not feel like punishment."
-          reverse
-        >
-          <p>Budgeting should not feel like detention.</p>
-          <p>
-            AskBen turns financial management into a journey with progress,
-            rewards, campaigns, encouragement, and small wins that add up.
-          </p>
-
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-            <p className="font-black text-emerald-950">
-              The goal is momentum, not perfection.
-            </p>
-            <p className="mt-2 font-bold text-emerald-900">
-              One payment, one bill, one reviewed debt, and one better decision
-              at a time.
-            </p>
-          </div>
-        </BenSection>
-
-        <BenSection image="/ben-recovery.png" title="Rebuilding the Treasury.">
-          <p>Traditional finance apps often focus on what is wrong.</p>
-          <p>AskBen focuses on what is improving.</p>
-
-          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-emerald-950">
-            <p>Instead of only saying: “You still owe $5,000.”</p>
-            <p className="mt-2">
-              AskBen highlights: “You paid off $500 this month.”
-            </p>
-          </div>
-
-          <p>
-            Every payment recorded, bill planned, debt reviewed, and dollar
-            tracked becomes another brick in rebuilding the Treasury.
-          </p>
-        </BenSection>
-
-        <BenSection
           image="/ben-goal-achieved.png"
           title="The future of financial wellness."
           reverse
@@ -347,7 +367,39 @@ export default function WhyBenPage() {
             behavioral science, and gamification to help people stay engaged
             long enough to change their financial lives.
           </p>
+          <p>
+            It is not about making money management childish. It is about making
+            progress feel possible, visible, and worth coming back to.
+          </p>
         </BenSection>
+
+        <Panel>
+          <div className="grid gap-6 md:grid-cols-[180px_1fr] md:items-center">
+            <BenImage src="/ben-winning.png" />
+
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-700">
+                Early User Feedback
+              </p>
+
+              <h2 className="mt-2 text-3xl font-black text-zinc-950 md:text-4xl">
+                “For the first time, I didn’t feel judged by my money app.”
+              </h2>
+
+              <div className="mt-4 space-y-4 text-base font-bold leading-8 text-zinc-700">
+                <p>
+                  “AskBen made it feel less scary to look at my bills and debt.
+                  Instead of feeling like I failed, I could see what I already
+                  did right and what one next step I could take.”
+                </p>
+
+                <p className="text-sm font-black uppercase tracking-[0.18em] text-zinc-500">
+                  — Early AskBen tester
+                </p>
+              </div>
+            </div>
+          </div>
+        </Panel>
 
         <Panel>
           <div className="text-center">
@@ -364,9 +416,15 @@ export default function WhyBenPage() {
                 confident about their future.
               </p>
 
+              <p>
+                We believe financial wellness should feel less like punishment
+                and more like rebuilding.
+              </p>
+
               <p className="text-2xl font-black text-emerald-800">
-                One payment. One decision. One victory. One rebuilt Treasury at
-                a time.
+                One payment. One decision. One victory.
+                <br />
+                One rebuilt Treasury at a time.
               </p>
             </div>
           </div>
@@ -379,8 +437,8 @@ export default function WhyBenPage() {
 
           <p className="mt-3 text-sm font-bold leading-6 text-zinc-600">
             This page is informed by public research on household financial
-            well-being, financial stress, mental health, positive reinforcement,
-            and habit formation.
+            well-being, financial stress, emergency resilience, behavioral
+            motivation, positive reinforcement, and habit formation.
           </p>
 
           <div className="mt-5 grid gap-3">
@@ -390,9 +448,14 @@ export default function WhyBenPage() {
                 href={source.href}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm font-black text-emerald-800 transition hover:bg-emerald-50"
+                className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 transition hover:bg-emerald-50"
               >
-                {source.name}
+                <p className="text-sm font-black text-emerald-800">
+                  {source.name}
+                </p>
+                <p className="mt-2 text-xs font-bold leading-5 text-zinc-600">
+                  {source.note}
+                </p>
               </a>
             ))}
           </div>
