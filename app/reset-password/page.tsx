@@ -1,16 +1,54 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function ResetPasswordPage() {
   const supabase = createSupabaseBrowserClient();
+  const searchParams = useSearchParams();
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  const [checkingLink, setCheckingLink] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    prepareRecoverySession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function prepareRecoverySession() {
+    setCheckingLink(true);
+    setMessage("");
+
+    const code = searchParams.get("code");
+
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+      if (error) {
+        setMessage(
+          "This reset link is invalid or expired. Please request a new password reset email.",
+        );
+      }
+    } else {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        setMessage(
+          "No active reset session found. Please request a new password reset email.",
+        );
+      }
+    }
+
+    setCheckingLink(false);
+  }
 
   async function updatePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -56,16 +94,25 @@ export default function ResetPasswordPage() {
           Choose a new password for your AskBen account.
         </p>
 
+        {checkingLink ? (
+          <div className="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm font-bold text-cyan-50">
+            Checking reset link...
+          </div>
+        ) : null}
+
         <form onSubmit={updatePassword} className="mt-6 grid gap-4">
           <label>
             <span className="text-sm font-black text-white/80">
               New Password
             </span>
+
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-white/20 bg-white px-4 py-3 font-bold text-zinc-950 outline-none"
+              autoComplete="new-password"
+              disabled={checkingLink}
+              className="mt-2 w-full rounded-xl border border-white/20 bg-white px-4 py-3 font-bold text-zinc-950 outline-none disabled:opacity-60"
             />
           </label>
 
@@ -73,11 +120,14 @@ export default function ResetPasswordPage() {
             <span className="text-sm font-black text-white/80">
               Confirm Password
             </span>
+
             <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-white/20 bg-white px-4 py-3 font-bold text-zinc-950 outline-none"
+              autoComplete="new-password"
+              disabled={checkingLink}
+              className="mt-2 w-full rounded-xl border border-white/20 bg-white px-4 py-3 font-bold text-zinc-950 outline-none disabled:opacity-60"
             />
           </label>
 
@@ -89,11 +139,18 @@ export default function ResetPasswordPage() {
 
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || checkingLink}
             className="rounded-xl bg-cyan-400 px-5 py-3 font-black text-black transition hover:opacity-90 disabled:opacity-50"
           >
             {saving ? "Saving..." : "Update Password"}
           </button>
+
+          <Link
+            href="/forgot-password"
+            className="text-center text-sm font-black text-yellow-200 hover:underline"
+          >
+            Request a new reset link
+          </Link>
 
           <Link
             href="/login"
