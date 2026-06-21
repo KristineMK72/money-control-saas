@@ -20,13 +20,14 @@ import {
   ocrImageFile,
   parseTransactionsScreenshot,
 } from "@/lib/money/receiptOcr";
+import { clampMoney, money } from "@/lib/money/math";
 
 type PaymentRow = {
   id: string;
   user_id: string;
   date_iso: string;
   merchant: string | null;
-  amount: number;
+  amount: number | string | null;
   note: string | null;
   created_at: string;
   debt_id: string | null;
@@ -36,29 +37,33 @@ type PaymentRow = {
 type DebtRow = {
   id: string;
   name: string;
-  remaining_balance: number | null;
+  remaining_balance?: number | string | null;
+  balance?: number | string | null;
 };
 
 type BillRow = {
   id: string;
   name: string;
-  target: number;
+  target: number | string | null;
+  monthly_target?: number | string | null;
 };
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function money(n: number) {
-  return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  });
+  const d = new Date();
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 10);
 }
 
 function paymentDate(payment: PaymentRow) {
-  return new Date(payment.date_iso || payment.created_at);
+  return new Date(`${payment.date_iso || payment.created_at}T00:00:00`);
+}
+
+function monthStartISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
 }
 
 export default function PaymentsPage() {
@@ -96,13 +101,13 @@ export default function PaymentsPage() {
       return;
     }
 
-    setPayments((data as PaymentRow[]) || []);
+    setPayments((data || []) as PaymentRow[]);
   }
 
   async function loadDebts(uid: string) {
     const { data, error } = await supabase
       .from("debt_status")
-      .select("id, name, remaining_balance")
+      .select("id, name, remaining_balance, balance")
       .eq("user_id", uid)
       .order("name");
 
@@ -111,13 +116,13 @@ export default function PaymentsPage() {
       return;
     }
 
-    setDebts((data as DebtRow[]) || []);
+    setDebts((data || []) as DebtRow[]);
   }
 
   async function loadBills(uid: string) {
     const { data, error } = await supabase
       .from("bills")
-      .select("id, name, target")
+      .select("id, name, target, monthly_target")
       .eq("user_id", uid)
       .order("name");
 
@@ -126,7 +131,11 @@ export default function PaymentsPage() {
       return;
     }
 
-    setBills((data as BillRow[]) || []);
+    setBills((data || []) as BillRow[]);
+  }
+
+  async function reloadAll(uid: string) {
+    await Promise.all([loadPayments(uid), loadDebts(uid), loadBills(uid)]);
   }
 
   useEffect(() => {
@@ -148,13 +157,7 @@ export default function PaymentsPage() {
       }
 
       setUserId(user.id);
-
-      await Promise.all([
-        loadPayments(user.id),
-        loadDebts(user.id),
-        loadBills(user.id),
-      ]);
-
+      await reloadAll(user.id);
       setLoading(false);
     }
 
@@ -203,9 +206,9 @@ export default function PaymentsPage() {
 
     if (!userId) return;
 
-    const amt = Number(amount);
+    const amt = clampMoney(amount);
 
-    if (!merchant.trim() || !Number.isFinite(amt) || amt <= 0) {
+    if (!merchant.trim() || amt <= 0) {
       setMessage("Enter a payment name and amount.");
       return;
     }
@@ -247,37 +250,30 @@ export default function PaymentsPage() {
     setDateISO(todayISO());
     setImageFile(null);
 
-    await loadPayments(userId);
+    await reloadAll(userId);
 
     setMessage("Payment added. A fine entry for the ledger.");
     setSaving(false);
   }
 
-  const now = new Date();
+  const currentMonthStart = monthStartISO();
 
   const monthlyPayments = useMemo(() => {
     return payments.filter((payment) => {
-      const d = paymentDate(payment);
-
-      return (
-        d.getMonth() === now.getMonth() &&
-        d.getFullYear() === now.getFullYear()
-      );
+      const date = (payment.date_iso || payment.created_at || "").slice(0, 10);
+      return date >= currentMonthStart;
     });
-  }, [payments]);
+  }, [payments, currentMonthStart]);
 
   const monthlyTotal = useMemo(() => {
     return monthlyPayments.reduce(
-      (sum, payment) => sum + Number(payment.amount || 0),
+      (sum, payment) => sum + clampMoney(payment.amount),
       0
     );
   }, [monthlyPayments]);
 
   const allTimeTotal = useMemo(() => {
-    return payments.reduce(
-      (sum, payment) => sum + Number(payment.amount || 0),
-      0
-    );
+    return payments.reduce((sum, payment) => sum + clampMoney(payment.amount), 0);
   }, [payments]);
 
   const latestPayment = payments[0];
@@ -298,7 +294,8 @@ export default function PaymentsPage() {
     dailyIncomeNeeded: 0,
   });
 
-  const paymentMood = allTimeTotal > 0 ? "/ben-winning.png" : "/ben-thinking.png";
+  const paymentMood =
+    allTimeTotal > 0 ? "/ben-winning.png" : "/ben-thinking.png";
 
   if (loading) {
     return (
@@ -335,7 +332,7 @@ export default function PaymentsPage() {
             helper={
               latestMonthlyPayment
                 ? `${latestMonthlyPayment.merchant || "Latest"} - ${money(
-                    Number(latestMonthlyPayment.amount || 0)
+                    latestMonthlyPayment.amount
                   )}`
                 : "No payments this month yet"
             }
@@ -438,8 +435,10 @@ export default function PaymentsPage() {
                 <option key={debt.id} value={debt.id}>
                   {debt.name}
                   {debt.remaining_balance != null
-                    ? ` - ${money(Number(debt.remaining_balance || 0))} left`
-                    : ""}
+                    ? ` - ${money(debt.remaining_balance)} left`
+                    : debt.balance != null
+                      ? ` - ${money(debt.balance)} balance`
+                      : ""}
                 </option>
               ))}
             </select>
@@ -453,7 +452,7 @@ export default function PaymentsPage() {
 
               {bills.map((bill) => (
                 <option key={bill.id} value={bill.id}>
-                  {bill.name} - {money(Number(bill.target || 0))}
+                  {bill.name} - {money(bill.monthly_target ?? bill.target)}
                 </option>
               ))}
             </select>
@@ -481,7 +480,7 @@ export default function PaymentsPage() {
         subtitle={
           latestPayment
             ? `${latestPayment.merchant || "Latest payment"} - ${money(
-                Number(latestPayment.amount || 0)
+                latestPayment.amount
               )}`
             : "The ledger awaits its first victory"
         }
@@ -510,9 +509,7 @@ export default function PaymentsPage() {
                   </p>
                 </div>
 
-                <p className="text-lg font-black">
-                  {money(Number(payment.amount || 0))}
-                </p>
+                <p className="text-lg font-black">{money(payment.amount)}</p>
               </div>
             ))
           )}
