@@ -116,65 +116,83 @@ export default function HomePage() {
           />
         </div>
 
-      <div className="mt-16 rounded-3xl border border-white/20 bg-black/55 p-8 shadow-2xl backdrop-blur-xl">
-  <p className="text-sm font-black uppercase tracking-[0.25em] text-yellow-300">
-    Why AskBen?
-  </p>
+        <div className="mt-16 rounded-3xl border border-white/20 bg-black/55 p-8 shadow-2xl backdrop-blur-xl">
+          <p className="text-sm font-black uppercase tracking-[0.25em] text-yellow-300">
+            Why AskBen?
+          </p>
 
-  <h2 className="mt-3 text-4xl font-black">
-    Most financial apps focus on numbers.
-    <span className="block text-cyan-300">AskBen focuses on people.</span>
-  </h2>
+          <h2 className="mt-3 text-4xl font-black">
+            Money problems rarely start with money.
+            <span className="block text-cyan-300">
+              They start with stress.
+            </span>
+          </h2>
 
-  <p className="mt-4 max-w-4xl text-lg font-semibold leading-8 text-white/80">
-    Behind every overdue bill, debt balance, budget category, and financial
-    goal is a real person trying to breathe again.
-  </p>
+          <p className="mt-4 max-w-4xl text-lg font-semibold leading-8 text-white/80">
+            Most financial apps focus on numbers. AskBen focuses on people.
+            Behind every overdue bill, debt balance, budget category, and
+            financial goal is a real person trying to breathe again.
+          </p>
 
-  <p className="mt-4 max-w-4xl text-lg font-semibold leading-8 text-white/80">
-    Financial stress affects more than money. It can impact sleep,
-    confidence, relationships, focus, and peace of mind. Many people do not
-    avoid their finances because they are irresponsible — they avoid them
-    because the experience feels overwhelming.
-  </p>
+          <p className="mt-4 max-w-4xl text-lg font-semibold leading-8 text-white/80">
+            AskBen helps turn financial chaos into a calmer plan with guidance,
+            encouragement, progress tracking, and small wins that build
+            momentum.
+          </p>
 
-  <p className="mt-4 max-w-4xl text-lg font-semibold leading-8 text-white/80">
-    AskBen was built to change that. Instead of shame, AskBen provides
-    guidance. Instead of confusion, AskBen provides clarity. Instead of
-    focusing only on what is wrong, AskBen highlights what is improving.
-  </p>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <MiniCard
+              title="What AskBen Helps You Do"
+              items={[
+                "Know what needs attention first",
+                "Track bills, spending, debt, income, and progress",
+                "Earn achievements and celebrate milestones",
+                "Build momentum one small win at a time",
+              ]}
+            />
 
-  <div className="mt-6 grid gap-4 md:grid-cols-2">
-    <MiniCard
-      title="What AskBen Helps You Do"
-      items={[
-        "Track bills, spending, debt, income, and progress",
-        "Know what needs attention first",
-        "Earn achievements and celebrate milestones",
-        "Build momentum one small win at a time",
-      ]}
-    />
+            <MiniCard
+              title="You Stay In Control"
+              items={[
+                "No Social Security numbers required",
+                "No bank passwords required",
+                "No mandatory bank account connections",
+                "You choose what information to enter",
+              ]}
+            />
+          </div>
 
-    <MiniCard
-      title="You Stay In Control"
-      items={[
-        "No Social Security numbers required",
-        "No bank passwords required",
-        "No mandatory bank account connections",
-        "You choose what information to enter",
-      ]}
-    />
-  </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <TestimonialCard
+              quote="For the first time, I didn’t feel judged by my money app."
+              text="AskBen made it feel less scary to look at bills and debt. Instead of feeling like I failed, I could see one next step."
+              name="Early AskBen tester"
+            />
 
-  <div className="mt-6 rounded-2xl border border-yellow-300/25 bg-yellow-300/10 p-5 text-center">
-    <p className="text-lg font-black leading-8 text-yellow-100">
-      One payment. One decision. One victory.
-      <span className="block text-cyan-200">
-        One rebuilt Treasury at a time.
-      </span>
-    </p>
-  </div>
-</div>
+            <TestimonialCard
+              quote="It made money feel less overwhelming."
+              text="The small wins, Ben’s encouragement, and the clear priorities made it easier to come back instead of avoiding everything."
+              name="Early AskBen tester"
+            />
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-yellow-300/25 bg-yellow-300/10 p-5 text-center">
+            <p className="text-lg font-black leading-8 text-yellow-100">
+              One payment. One decision. One victory.
+              <span className="block text-cyan-200">
+                One rebuilt Treasury at a time.
+              </span>
+            </p>
+
+            <a
+              href="/whyben"
+              className="mt-5 inline-flex rounded-xl bg-cyan-400 px-5 py-3 font-black text-black transition hover:opacity-90"
+            >
+              Read the whole story
+            </a>
+          </div>
+        </div>
+
         <div className="mt-16 grid gap-6 lg:grid-cols-2">
           <PricingCard
             eyebrow="Pro Monthly"
@@ -232,6 +250,32 @@ function MiniCard({ title, items }: { title: string; items: string[] }) {
           <li key={item}>• {item}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function TestimonialCard({
+  quote,
+  text,
+  name,
+}: {
+  quote: string;
+  text: string;
+  name: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-5">
+      <p className="text-xl font-black leading-7 text-cyan-100">
+        “{quote}”
+      </p>
+
+      <p className="mt-3 text-sm font-semibold leading-6 text-white/80">
+        {text}
+      </p>
+
+      <p className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-white/50">
+        — {name}
+      </p>
     </div>
   );
 }
