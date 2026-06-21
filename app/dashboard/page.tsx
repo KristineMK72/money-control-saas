@@ -14,12 +14,45 @@ import GovernorsOrders from "@/components/GovernorsOrders";
 import ScrollRevealCard from "@/components/ScrollRevealCard";
 import XpBar from "@/components/XpBar";
 import { BenEngine } from "@/lib/ben/engine";
+import { clampMoney, money } from "@/lib/money/math";
+import { currentMonthStartISO, daysUntil } from "@/lib/money/dates";
+import {
+  prioritizeMoneyItems,
+  type PriorityInput,
+} from "@/lib/money/priorityV2";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type SpendRow = {
   id: string;
   amount: number | string | null;
   category: string | null;
+};
+
+type BillRow = {
+  id: string;
+  name: string | null;
+  kind?: string | null;
+  category?: string | null;
+  target?: number | string | null;
+  monthly_target?: number | string | null;
+  balance?: number | string | null;
+  min_payment?: number | string | null;
+  due_date?: string | null;
+  due?: string | null;
+  due_day?: number | string | null;
+  focus?: boolean | null;
+};
+
+type DebtRow = {
+  id: string;
+  name: string | null;
+  kind?: string | null;
+  balance?: number | string | null;
+  min_payment?: number | string | null;
+  monthly_min_payment?: number | string | null;
+  due_date?: string | null;
+  due_day?: number | string | null;
+  apr?: number | string | null;
 };
 
 type BenMasterRow = {
@@ -42,19 +75,6 @@ type ProfileRow = {
   reputation?: number | null;
 };
 
-function num(value: unknown): number {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function money(value: number): string {
-  return value.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  });
-}
-
 function getColonialRank(reputation: number) {
   if (reputation >= 5000) return "Defender of the Treasury";
   if (reputation >= 2500) return "Founding Financier";
@@ -65,11 +85,32 @@ function getColonialRank(reputation: number) {
   return "Apprentice Clerk";
 }
 
+function billAmount(bill: BillRow) {
+  return clampMoney(
+    bill.target ?? bill.monthly_target ?? bill.balance ?? bill.min_payment
+  );
+}
+
+function debtMinimum(debt: DebtRow) {
+  return clampMoney(debt.monthly_min_payment ?? debt.min_payment);
+}
+
+function dueLabel(days: number | null) {
+  if (days === null) return "No due date";
+  if (days < 0) return `Overdue by ${Math.abs(days)} day(s)`;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due tomorrow";
+  if (days <= 7) return `Due in ${days} days`;
+  return `Due in ${days} days`;
+}
+
 export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [viewMode, setViewMode] = useState<"month" | "cumulative">("month");
 
   const [spend, setSpend] = useState<SpendRow[]>([]);
+  const [billsRows, setBillsRows] = useState<BillRow[]>([]);
+  const [debtRows, setDebtRows] = useState<DebtRow[]>([]);
   const [monthlyMaster, setMonthlyMaster] = useState<BenMasterRow | null>(null);
   const [cumulativeMaster, setCumulativeMaster] =
     useState<BenMasterRow | null>(null);
@@ -95,46 +136,69 @@ export default function DashboardPage() {
 
       const uid = session.user.id;
 
-      const [spendRes, monthlyRes, cumulativeRes, profileRes] =
-        await Promise.all([
-          supabase
-            .from("spend_entries")
-            .select("id, amount, category")
-            .eq("user_id", uid),
+      const [
+        spendRes,
+        billsRes,
+        debtsRes,
+        monthlyRes,
+        cumulativeRes,
+        profileRes,
+      ] = await Promise.all([
+        supabase
+          .from("spend_entries")
+          .select("id, amount, category")
+          .eq("user_id", uid),
 
-          supabase
-            .from("ben_master_monthly")
-            .select("*")
-            .eq("user_id", uid)
-            .order("month", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
+        supabase
+          .from("bills")
+          .select(
+            "id, name, kind, category, target, monthly_target, balance, min_payment, due_date, due, due_day, focus"
+          )
+          .eq("user_id", uid),
 
-          supabase
-            .from("ben_master")
-            .select("*")
-            .eq("user_id", uid)
-            .maybeSingle(),
+        supabase
+          .from("debts")
+          .select(
+            "id, name, kind, balance, min_payment, monthly_min_payment, due_date, due_day, apr"
+          )
+          .eq("user_id", uid),
 
-          supabase
-            .from("profiles")
-            .select("xp, level, reputation")
-            .eq("user_id", uid)
-            .maybeSingle(),
-        ]);
+        supabase
+          .from("ben_master_monthly")
+          .select("*")
+          .eq("user_id", uid)
+          .gte("month", currentMonthStartISO())
+          .order("month", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+
+        supabase.from("ben_master").select("*").eq("user_id", uid).maybeSingle(),
+
+        supabase
+          .from("profiles")
+          .select("xp, level, reputation")
+          .eq("user_id", uid)
+          .maybeSingle(),
+      ]);
 
       if (spendRes.error) setNotice(spendRes.error.message);
+      if (billsRes.error) setNotice(billsRes.error.message);
+      if (debtsRes.error) setNotice(debtsRes.error.message);
       if (monthlyRes.error) setNotice(monthlyRes.error.message);
       if (cumulativeRes.error) setNotice(cumulativeRes.error.message);
       if (profileRes.error) setNotice(profileRes.error.message);
 
       setSpend((spendRes.data || []) as SpendRow[]);
+      setBillsRows((billsRes.data || []) as BillRow[]);
+      setDebtRows((debtsRes.data || []) as DebtRow[]);
       setMonthlyMaster((monthlyRes.data || null) as BenMasterRow | null);
       setCumulativeMaster((cumulativeRes.data || null) as BenMasterRow | null);
       setProfile((profileRes.data || null) as ProfileRow | null);
 
       if (!monthlyRes.data && !cumulativeRes.data) {
-        setNotice("Add income, bills, spending, or payments to wake up the full picture.");
+        setNotice(
+          "Add income, bills, spending, or payments to wake up the full picture."
+        );
       }
 
       setLoading(false);
@@ -148,14 +212,14 @@ export default function DashboardPage() {
       ? monthlyMaster ?? cumulativeMaster
       : cumulativeMaster ?? monthlyMaster;
 
-  const totalIncome = num(master?.total_income);
-  const totalSpend = num(master?.total_spend);
-  const bills = num(master?.bills ?? master?.total_bills);
-  const totalDebt = num(master?.total_debt);
-  const totalDebtMinimums = num(master?.total_debt_minimums);
-  const payments = num(master?.payments);
-  const net = num(master?.leftover);
-  const pressurePct = num(master?.pressure_pct);
+  const totalIncome = clampMoney(master?.total_income);
+  const totalSpend = clampMoney(master?.total_spend);
+  const bills = clampMoney(master?.bills ?? master?.total_bills);
+  const totalDebt = clampMoney(master?.total_debt);
+  const totalDebtMinimums = clampMoney(master?.total_debt_minimums);
+  const payments = clampMoney(master?.payments);
+  const net = clampMoney(master?.leftover);
+  const pressurePct = clampMoney(master?.pressure_pct);
   const totalObligations = totalSpend + bills + totalDebtMinimums;
   const incomeGap = Math.max(0, totalObligations - totalIncome);
 
@@ -167,11 +231,43 @@ export default function DashboardPage() {
 
     spend.forEach((row) => {
       const cat = (row.category || "misc").replaceAll("_", " ");
-      totals[cat] = (totals[cat] || 0) + num(row.amount);
+      totals[cat] = (totals[cat] || 0) + clampMoney(row.amount);
     });
 
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0] || null;
   }, [spend]);
+
+  const priorityItems = useMemo<PriorityInput[]>(() => {
+    return [
+      ...billsRows.map((bill) => ({
+        id: bill.id,
+        type: "bill" as const,
+        name: bill.name,
+        amount: billAmount(bill),
+        due_date: bill.due_date,
+        due: bill.due,
+        due_day: bill.due_day,
+        category: bill.category,
+        kind: bill.kind,
+        focus: bill.focus,
+      })),
+      ...debtRows.map((debt) => ({
+        id: debt.id,
+        type: "debt" as const,
+        name: debt.name,
+        amount: debtMinimum(debt),
+        balance: debt.balance,
+        due_date: debt.due_date,
+        due_day: debt.due_day,
+        kind: debt.kind,
+        apr: debt.apr,
+      })),
+    ];
+  }, [billsRows, debtRows]);
+
+  const topPriorities = useMemo(() => {
+    return prioritizeMoneyItems(priorityItems).slice(0, 5);
+  }, [priorityItems]);
 
   const ben = BenEngine.getForecastMessage({
     name: null,
@@ -181,6 +277,15 @@ export default function DashboardPage() {
     incomeGap,
     dailyIncomeNeeded: incomeGap > 0 ? Math.ceil(incomeGap / 30) : 0,
   });
+
+  const priorityBenText =
+    topPriorities.length > 0
+      ? `Good Governor, thy first concern appears to be ${
+          topPriorities[0].item.name ?? "an unnamed item"
+        } for ${money(topPriorities[0].amount)}. Reason: ${topPriorities[0].reasons.join(
+          ", "
+        )}.`
+      : ben.text;
 
   const pressureMood =
     incomeGap > 0 || net < 0 || pressurePct > 75
@@ -206,7 +311,9 @@ export default function DashboardPage() {
             <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
               Reputation
             </p>
-            <p className="text-4xl font-black text-emerald-950">{reputation}</p>
+            <p className="text-4xl font-black text-emerald-950">
+              {reputation}
+            </p>
             <p className="mt-1 text-xs font-black text-emerald-800">{rank}</p>
           </div>
         }
@@ -222,7 +329,7 @@ export default function DashboardPage() {
       >
         <DarkPanel>
           <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
-            <BenBubble message={ben.text} mood={ben.mood} />
+            <BenBubble message={priorityBenText} mood={ben.mood} />
 
             <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-white/60">
@@ -242,14 +349,74 @@ export default function DashboardPage() {
       </ScrollRevealCard>
 
       <ScrollRevealCard
+        title="Priority Engine"
+        subtitle="The same trusted ranking Ben uses in chat"
+        image="/ben-mastermind.png"
+        defaultOpen
+      >
+        <div className="grid gap-3">
+          {topPriorities.length > 0 ? (
+            topPriorities.map((row, index) => (
+              <div
+                key={`${row.item.type}-${row.item.id}`}
+                className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+              >
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">
+                      #{index + 1} {row.item.type}
+                    </p>
+
+                    <h3 className="mt-1 text-xl font-black text-zinc-950">
+                      {row.item.name ?? "Unnamed"}
+                    </h3>
+
+                    <p className="mt-1 text-sm font-bold text-zinc-600">
+                      {dueLabel(row.daysUntilDue)}
+                    </p>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {row.reasons.map((reason) => (
+                        <span
+                          key={reason}
+                          className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-black text-zinc-700"
+                        >
+                          {reason}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="text-left md:text-right">
+                    <p className="text-2xl font-black text-zinc-950">
+                      {money(row.amount)}
+                    </p>
+                    <p className="mt-1 text-xs font-black uppercase tracking-[0.16em] text-zinc-400">
+                      Score {row.score}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <Panel>No bills or debts found for priority ranking yet.</Panel>
+          )}
+        </div>
+      </ScrollRevealCard>
+
+      <ScrollRevealCard
         title="Treasury Snapshot"
-        subtitle={`Viewing ${viewMode === "month" ? "this month" : "cumulative"} totals`}
+        subtitle={`Viewing ${
+          viewMode === "month" ? "this month" : "cumulative"
+        } totals`}
         image="/ben-thinking.png"
         defaultOpen
       >
         <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-2xl font-black text-zinc-950">Treasury Snapshot</h2>
+            <h2 className="text-2xl font-black text-zinc-950">
+              Treasury Snapshot
+            </h2>
             <p className="mt-1 text-sm font-semibold text-zinc-600">
               Viewing: {viewMode === "month" ? "This Month" : "Cumulative"}
             </p>
