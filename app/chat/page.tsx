@@ -1,1293 +1,778 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import BenBubble from "@/components/BenBubble";
-import { BenEngine } from "@/lib/ben/engine";
-import {
-  ocrImageFile,
-  parseTransactionsScreenshot,
-} from "@/lib/money/receiptOcr";
 import { clampMoney, money } from "@/lib/money/math";
-import { daysUntil, nextDateFromDueDay } from "@/lib/money/dates";
+import {
+  currentMonthStartISO,
+  daysUntil,
+  isWithinNextDays,
+  nextDateFromDueDay,
+  todayLocalISO,
+} from "@/lib/money/dates";
 import {
   prioritizeMoneyItems,
   type PriorityInput,
 } from "@/lib/money/priorityV2";
 
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+type BenMasterRow = {
+  user_id: string;
+  month?: string | null;
+  total_income?: number | string | null;
+  total_spend?: number | string | null;
+  bills?: number | string | null;
+  total_bills?: number | string | null;
+  payments?: number | string | null;
+  leftover?: number | string | null;
+  net?: number | string | null;
+  pressure_pct?: number | string | null;
+  total_debt?: number | string | null;
+  total_debt_balance?: number | string | null;
+  total_debt_minimums?: number | string | null;
+  monthly_minimums?: number | string | null;
+};
+
+type BillRow = {
+  id: string;
+  user_id?: string;
+  name: string | null;
+  kind?: string | null;
+  category?: string | null;
+  target?: number | string | null;
+  saved?: number | string | null;
+  due_date?: string | null;
+  due?: string | null;
+  priority?: number | string | null;
+  focus?: boolean | null;
+  balance?: number | string | null;
+  apr?: number | string | null;
+  min_payment?: number | string | null;
+  credit_limit?: number | string | null;
+  is_monthly?: boolean | null;
+  monthly_target?: number | string | null;
+  due_day?: number | string | null;
+  created_at?: string | null;
+};
+
 type DebtRow = {
   id: string;
-  user_id: string;
-  name: string;
-  kind: "credit" | "loan";
-  balance: number | string | null;
-  min_payment: number | string | null;
-  monthly_min_payment: number | string | null;
-  due_date: string | null;
-  apr: number | string | null;
-  credit_limit: number | string | null;
-  note: string | null;
-  is_monthly: boolean | null;
-  due_day: number | null;
-  created_at: string;
+  user_id?: string;
+  name: string | null;
+  kind?: string | null;
+  balance?: number | string | null;
+  min_payment?: number | string | null;
+  monthly_min_payment?: number | string | null;
+  due_date?: string | null;
+  due_day?: number | string | null;
+  apr?: number | string | null;
+  credit_limit?: number | string | null;
+  note?: string | null;
+  is_monthly?: boolean | null;
+  created_at?: string | null;
 };
 
-type EditDebt = {
-  name: string;
-  balance: string;
-  minPayment: string;
-  apr: string;
-  kind: "credit" | "loan";
-  dueDate: string;
-  dueDay: string;
-  creditLimit: string;
-  note: string;
+type PaymentRow = {
+  id: string;
+  user_id?: string;
+  amount?: number | string | null;
+  bill_id?: string | null;
+  debt_id?: string | null;
+  date_iso?: string | null;
+  paid_at?: string | null;
+  created_at?: string | null;
 };
 
-type ScanReview = {
-  name: string;
-  balance: string;
-  minPayment: string;
-  dueDay: string;
-  dueDate: string;
-  note: string;
+type MoneyContext = {
+  master: BenMasterRow | null;
+  bills: BillRow[];
+  debts: DebtRow[];
+  payments: PaymentRow[];
 };
 
-function cleanNumberString(value: string) {
-  return value.replace(/[$,%\s,]/g, "");
+function formatDate(value?: string | null) {
+  if (!value) return "No due date";
+
+  const clean = value.slice(0, 10);
+  const [y, m, d] = clean.split("-").map(Number);
+
+  if (!y || !m || !d) return value;
+
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
-function num(value: unknown) {
-  const raw = typeof value === "string" ? cleanNumberString(value) : value;
-  return clampMoney(raw);
-}
-
-function nullableNum(value: string) {
-  const cleaned = cleanNumberString(value);
-  if (cleaned.trim() === "") return null;
-
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? clampMoney(n) : null;
-}
-
-function percent(value: unknown) {
-  const n = num(value);
-  if (n <= 0) return "APR not added";
-  return `${n.toFixed(2)}% APR`;
-}
-
-function dueLabel(date: string | null) {
-  const days = daysUntil(date);
+function dueText(value?: string | null) {
+  const days = daysUntil(value);
 
   if (days === null) return "No due date";
-  if (days < 0) return `Overdue by ${Math.abs(days)} day(s)`;
-  if (days === 0) return "Due today";
-  if (days === 1) return "Due tomorrow";
-  if (days <= 7) return `Due in ${days} days`;
+  if (days < 0) return `${formatDate(value)} — overdue by ${Math.abs(days)} day(s)`;
+  if (days === 0) return `${formatDate(value)} — due today`;
+  if (days === 1) return `${formatDate(value)} — due tomorrow`;
+  if (days <= 7) return `${formatDate(value)} — due in ${days} days`;
 
-  return `Due in ${days} days`;
+  return formatDate(value);
 }
 
-function formatDate(value: string | null, dueDay?: number | null) {
-  if (value) {
-    const date = new Date(`${value}T00:00:00`);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-  }
-
-  if (dueDay) return `Day ${dueDay} monthly`;
-  return "No due date";
-}
-
-function findAmount(text: string, labels: string[]) {
-  for (const label of labels) {
-    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(
-      `${escaped}[^\\d$-]*\\$?\\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\\.\\d{2})|[0-9]+(?:\\.\\d{2})?)`,
-      "i"
-    );
-    const match = text.match(regex);
-    if (match?.[1]) return match[1].replace(/,/g, "");
-  }
-
-  return "";
-}
-
-function findDueDay(text: string) {
-  const dateMatch =
-    text.match(
-      /\b(?:Jan|Feb|Mar|Apr|May|Jun|June|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+([0-9]{1,2})\b/i
-    ) || text.match(/\b([0-9]{1,2})\/[0-9]{1,2}\/[0-9]{2,4}\b/);
-
-  if (!dateMatch?.[1]) return "";
-  const day = Number(dateMatch[1]);
-
-  if (!Number.isFinite(day) || day < 1 || day > 31) return "";
-  return String(day);
-}
-
-function guessDebtName(text: string, fallback: string) {
-  const lower = text.toLowerCase();
-
-  if (lower.includes("milestone")) return "Milestone";
-  if (lower.includes("credit one")) return "Credit One";
-  if (lower.includes("capital one")) return "Capital One";
-  if (lower.includes("ollo")) return "Ollo";
-  if (lower.includes("ally")) return "Ally";
-  if (lower.includes("home choice")) return "Home Choice";
-  if (lower.includes("consumer portfolio")) return "Consumer Portfolio";
-  if (lower.includes("sparrow")) return "Sparrow";
-
-  return fallback || "Scanned Debt";
-}
-
-function buildDueDay(dateValue: string, dayValue: string) {
-  const manualDay = nullableNum(dayValue);
-
-  if (manualDay && manualDay >= 1 && manualDay <= 31) {
-    return manualDay;
-  }
-
-  if (dateValue) {
-    return new Date(`${dateValue}T00:00:00`).getDate();
-  }
-
-  return null;
-}
-
-function validateDueDay(dayValue: string) {
-  if (!dayValue.trim()) return true;
-  const day = num(dayValue);
-  return day >= 1 && day <= 31;
+function resolvedBillDueDate(bill: BillRow) {
+  return bill.due_date ?? bill.due ?? nextDateFromDueDay(bill.due_day);
 }
 
 function resolvedDebtDueDate(debt: DebtRow) {
   return debt.due_date ?? nextDateFromDueDay(debt.due_day);
 }
 
-const shellClass =
-  "rounded-3xl border border-white/25 bg-black/55 p-4 shadow-2xl backdrop-blur-xl md:p-8";
+function billAmount(bill: BillRow) {
+  return clampMoney(
+    bill.target ?? bill.monthly_target ?? bill.balance ?? bill.min_payment
+  );
+}
 
-const cardClass =
-  "rounded-3xl border border-white/20 bg-black/55 p-5 text-white shadow-2xl backdrop-blur-xl md:p-6";
+function debtMinimum(debt: DebtRow) {
+  return clampMoney(debt.monthly_min_payment ?? debt.min_payment);
+}
 
-const lightCardClass =
-  "rounded-3xl border border-white/80 bg-white/95 p-5 text-zinc-950 shadow-2xl md:p-6";
+function paymentDate(payment: PaymentRow) {
+  return (
+    payment.date_iso ??
+    payment.paid_at ??
+    payment.created_at ??
+    ""
+  ).slice(0, 10);
+}
 
-const inputClass =
-  "w-full rounded-2xl border border-zinc-300 bg-white px-5 py-3.5 text-zinc-950 shadow-sm outline-none placeholder:text-zinc-500 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100";
+function buildFinancialSummary(context: MoneyContext) {
+  const { master, bills, debts, payments } = context;
 
-const smallButtonClass =
-  "rounded-xl px-4 py-2 text-sm font-black transition";
+  const incomeTotal = clampMoney(master?.total_income);
+  const spendTotal = clampMoney(master?.total_spend);
 
-export default function DebtPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const billsTotal =
+    clampMoney(master?.total_bills ?? master?.bills) ||
+    bills.reduce((sum, row) => sum + billAmount(row), 0);
 
-  const [debts, setDebts] = useState<DebtRow[]>([]);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const paymentsTotal =
+    clampMoney(master?.payments) ||
+    payments.reduce((sum, row) => sum + clampMoney(row.amount), 0);
 
-  const [message, setMessage] = useState("");
-  const [saving, setSaving] = useState(false);
+  const debtBalance =
+    clampMoney(master?.total_debt_balance ?? master?.total_debt) ||
+    debts.reduce((sum, row) => sum + clampMoney(row.balance), 0);
 
-  const [name, setName] = useState("");
-  const [balance, setBalance] = useState("");
-  const [minPayment, setMinPayment] = useState("");
-  const [apr, setApr] = useState("");
-  const [creditLimit, setCreditLimit] = useState("");
-  const [note, setNote] = useState("");
-  const [kind, setKind] = useState<"credit" | "loan">("credit");
-  const [dueDate, setDueDate] = useState("");
-  const [dueDay, setDueDay] = useState("");
+  const debtMinimums =
+    clampMoney(master?.total_debt_minimums ?? master?.monthly_minimums) ||
+    debts.reduce((sum, row) => sum + debtMinimum(row), 0);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDebt, setEditDebt] = useState<EditDebt | null>(null);
+  const net =
+    clampMoney(master?.net ?? master?.leftover) ||
+    incomeTotal - spendTotal - billsTotal - debtMinimums;
 
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [scanReview, setScanReview] = useState<ScanReview | null>(null);
+  const pressure = clampMoney(master?.pressure_pct);
+  const monthStart = currentMonthStartISO();
 
-  useEffect(() => {
-    void init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const paidThisMonthByBill: Record<string, number> = {};
+  const paidThisMonthByDebt: Record<string, number> = {};
 
-  async function init() {
-    setLoading(true);
-    setMessage("");
+  payments.forEach((payment) => {
+    const date = paymentDate(payment);
+    if (!date || date < monthStart) return;
 
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
+    const amount = clampMoney(payment.amount);
 
-    if (error) {
-      setMessage(error.message);
-      setLoading(false);
-      return;
+    if (payment.bill_id) {
+      paidThisMonthByBill[payment.bill_id] =
+        (paidThisMonthByBill[payment.bill_id] || 0) + amount;
     }
 
-    if (!user) {
-      setMessage("Please log in to view your debt.");
-      setLoading(false);
-      return;
+    if (payment.debt_id) {
+      paidThisMonthByDebt[payment.debt_id] =
+        (paidThisMonthByDebt[payment.debt_id] || 0) + amount;
     }
-
-    setUserId(user.id);
-    await loadDebts(user.id);
-    setLoading(false);
-  }
-
-  async function loadDebts(uid: string) {
-    const { data, error } = await supabase
-      .from("debts")
-      .select("*")
-      .eq("user_id", uid)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      setMessage(error.message);
-      setDebts([]);
-      return;
-    }
-
-    setDebts((data || []) as DebtRow[]);
-  }
-
-  function clearAddForm() {
-    setName("");
-    setBalance("");
-    setMinPayment("");
-    setApr("");
-    setCreditLimit("");
-    setNote("");
-    setDueDate("");
-    setDueDay("");
-    setKind("credit");
-  }
-
-  async function scanDebtImage(file: File | null) {
-    if (!file) return;
-
-    setScanning(true);
-    setMessage("");
-    setScanReview(null);
-
-    try {
-      const { text } = await ocrImageFile(file);
-      const parsed = parseTransactionsScreenshot(text);
-      const first = parsed?.[0];
-
-      const guessedName = guessDebtName(text, first?.merchant || "");
-      const guessedBalance =
-        findAmount(text, ["current balance", "balance"]) ||
-        (num(first?.amount) > 0 ? String(first?.amount) : "");
-
-      const guessedMinimum = findAmount(text, [
-        "minimum payment due",
-        "min. payment due",
-        "min payment due",
-        "minimum payment",
-        "min payment",
-      ]);
-
-      const guessedDueDay = findDueDay(text);
-
-      const review = {
-        name: guessedName,
-        balance: guessedBalance,
-        minPayment: guessedMinimum,
-        dueDay: guessedDueDay,
-        dueDate: "",
-        note: `Scanned from ${file.name}`,
-      };
-
-      setScanReview(review);
-      setName(review.name);
-      setBalance(review.balance);
-      setMinPayment(review.minPayment);
-      setDueDay(review.dueDay);
-      setDueDate("");
-      setKind("credit");
-      setNote(review.note);
-
-      setMessage(
-        "Ben found possible debt details. Review them, then tap Save Scanned Debt."
-      );
-    } catch (error) {
-      console.error("Scanner failed:", error);
-      setMessage("Scanner had trouble. You can still enter manually.");
-    }
-
-    setScanning(false);
-  }
-
-  async function saveScannedDebt() {
-    if (!scanReview) {
-      setMessage("Scan a statement first.");
-      return;
-    }
-
-    await addDebt({
-      override: {
-        name: scanReview.name,
-        balance: scanReview.balance,
-        minPayment: scanReview.minPayment,
-        apr: "",
-        creditLimit: "",
-        note: scanReview.note,
-        kind: "credit",
-        dueDate: scanReview.dueDate,
-        dueDay: scanReview.dueDay,
-      },
-      successMessage: "Scanned debt saved to the ledger.",
-    });
-
-    setScanReview(null);
-  }
-
-  async function addDebt(options?: {
-    override?: {
-      name: string;
-      balance: string;
-      minPayment: string;
-      apr: string;
-      creditLimit: string;
-      note: string;
-      kind: "credit" | "loan";
-      dueDate: string;
-      dueDay: string;
-    };
-    successMessage?: string;
-  }) {
-    if (!userId || saving) return;
-
-    const source = options?.override;
-
-    const debtName = source?.name ?? name;
-    const debtBalance = source?.balance ?? balance;
-    const debtMinPayment = source?.minPayment ?? minPayment;
-    const debtApr = source?.apr ?? apr;
-    const debtCreditLimit = source?.creditLimit ?? creditLimit;
-    const debtNote = source?.note ?? note;
-    const debtKind = source?.kind ?? kind;
-    const debtDueDate = source?.dueDate ?? dueDate;
-    const debtDueDay = source?.dueDay ?? dueDay;
-
-    const bal = nullableNum(debtBalance);
-    const min = nullableNum(debtMinPayment);
-    const aprValue = nullableNum(debtApr);
-    const limit = nullableNum(debtCreditLimit);
-
-    if (!debtName.trim() || bal === null || bal < 0) {
-      setMessage("Name and valid balance required.");
-      return;
-    }
-
-    if (!validateDueDay(debtDueDay)) {
-      setMessage("Due day must be between 1 and 31.");
-      return;
-    }
-
-    setSaving(true);
-    setMessage("");
-
-    const payload = {
-      user_id: userId,
-      name: debtName.trim(),
-      kind: debtKind,
-      balance: bal,
-      min_payment: min,
-      monthly_min_payment: min,
-      apr: aprValue,
-      credit_limit: limit,
-      note: debtNote.trim() || null,
-      due_date: debtDueDate || null,
-      is_monthly: true,
-      due_day: buildDueDay(debtDueDate, debtDueDay),
-    };
-
-    const { data, error } = await supabase
-      .from("debts")
-      .insert(payload)
-      .select("*")
-      .single();
-
-    setSaving(false);
-
-    if (error) {
-      setMessage(`Could not add debt: ${error.message}`);
-      return;
-    }
-
-    setDebts((prev) => [data as DebtRow, ...prev]);
-    clearAddForm();
-    setImageFile(null);
-    setMessage(options?.successMessage || "Debt added successfully.");
-  }
-
-  function startEdit(debt: DebtRow) {
-    setEditingId(debt.id);
-    setMessage("");
-
-    setEditDebt({
-      name: debt.name || "",
-      balance: debt.balance === null ? "" : String(debt.balance),
-      minPayment: String(debt.monthly_min_payment ?? debt.min_payment ?? ""),
-      apr: debt.apr === null ? "" : String(debt.apr),
-      kind: debt.kind || "credit",
-      dueDate: debt.due_date || "",
-      dueDay: debt.due_day === null ? "" : String(debt.due_day),
-      creditLimit: debt.credit_limit === null ? "" : String(debt.credit_limit),
-      note: debt.note || "",
-    });
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setEditDebt(null);
-    setMessage("");
-  }
-
-  async function saveEdit(id: string) {
-    if (!userId || !editDebt || saving) return;
-
-    const bal = nullableNum(editDebt.balance);
-    const min = nullableNum(editDebt.minPayment);
-    const aprValue = nullableNum(editDebt.apr);
-    const limit = nullableNum(editDebt.creditLimit);
-
-    if (!editDebt.name.trim() || bal === null || bal < 0) {
-      setMessage(
-        "Name and valid balance required. Balance can be 0 if it is paid off."
-      );
-      return;
-    }
-
-    if (!validateDueDay(editDebt.dueDay)) {
-      setMessage("Due day must be between 1 and 31.");
-      return;
-    }
-
-    setSaving(true);
-    setMessage("");
-
-    const payload = {
-      name: editDebt.name.trim(),
-      kind: editDebt.kind,
-      balance: bal,
-      min_payment: min,
-      monthly_min_payment: min,
-      apr: aprValue,
-      credit_limit: limit,
-      note: editDebt.note.trim() || null,
-      due_date: editDebt.dueDate || null,
-      due_day: buildDueDay(editDebt.dueDate, editDebt.dueDay),
-      is_monthly: true,
-    };
-
-    const { data, error } = await supabase
-      .from("debts")
-      .update(payload)
-      .eq("id", id)
-      .eq("user_id", userId)
-      .select("*")
-      .single();
-
-    if (error) {
-      setSaving(false);
-      console.error("Debt update failed:", error);
-      setMessage(`Could not save changes: ${error.message}`);
-      return;
-    }
-
-    if (!data) {
-      setSaving(false);
-      setMessage(
-        "Nothing was updated. This usually means Supabase RLS is blocking updates on debts."
-      );
-      return;
-    }
-
-    setDebts((prev) =>
-      prev.map((debt) => (debt.id === id ? (data as DebtRow) : debt))
-    );
-
-    await loadDebts(userId);
-
-    setSaving(false);
-    setEditingId(null);
-    setEditDebt(null);
-    setMessage("Debt updated.");
-  }
-
-  async function deleteDebt(id: string) {
-    if (!userId) return;
-
-    const confirmed = window.confirm("Delete this debt?");
-    if (!confirmed) return;
-
-    setMessage("");
-
-    const { error } = await supabase
-      .from("debts")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", userId);
-
-    if (error) {
-      setMessage(`Could not delete debt: ${error.message}`);
-      return;
-    }
-
-    setDebts((prev) => prev.filter((debt) => debt.id !== id));
-    setMessage("Debt deleted.");
-  }
-
-  const totals = useMemo(() => {
-    const totalBalance = debts.reduce((sum, debt) => sum + num(debt.balance), 0);
-
-    const totalMin = debts.reduce(
-      (sum, debt) => sum + num(debt.monthly_min_payment ?? debt.min_payment),
-      0
-    );
-
-    const weightedApr =
-      totalBalance > 0
-        ? debts.reduce((sum, debt) => {
-            return sum + num(debt.balance) * num(debt.apr);
-          }, 0) / totalBalance
-        : 0;
-
-    return {
-      totalBalance,
-      totalMin,
-      accountCount: debts.length,
-      weightedApr,
-    };
-  }, [debts]);
-
-  const priorityItems = useMemo<PriorityInput[]>(() => {
-    return debts.map((debt) => ({
-      id: debt.id,
-      type: "debt" as const,
-      name: debt.name,
-      amount: num(debt.monthly_min_payment ?? debt.min_payment),
-      balance: debt.balance,
-      due_date: debt.due_date,
-      due_day: debt.due_day,
-      kind: debt.kind,
-      apr: debt.apr,
-    }));
-  }, [debts]);
-
-  const rankedDebts = useMemo(() => {
-    return prioritizeMoneyItems(priorityItems);
-  }, [priorityItems]);
-
-  const avalancheOrder = useMemo(() => {
-    return [...debts]
-      .filter((debt) => num(debt.balance) > 0)
-      .sort((a, b) => num(b.apr) - num(a.apr));
-  }, [debts]);
-
-  const snowballOrder = useMemo(() => {
-    return [...debts]
-      .filter((debt) => num(debt.balance) > 0)
-      .sort((a, b) => num(a.balance) - num(b.balance));
-  }, [debts]);
-
-  const highestAprDebt = avalancheOrder[0];
-  const smallestDebt = snowballOrder[0];
-
-  const customInsight = useMemo(() => {
-    if (debts.length === 0) {
-      return "Add a debt and Ben will build a payoff strategy. Avalanche attacks interest. Snowball attacks momentum.";
-    }
-
-    const topPriority = rankedDebts[0];
-
-    if (topPriority) {
-      return `Priority move: handle ${
-        topPriority.item.name ?? "your top debt"
-      } first for ${money(topPriority.amount)}. Reason: ${topPriority.reasons.join(
-        ", "
-      )}.`;
-    }
-
-    if (highestAprDebt && num(highestAprDebt.apr) > 0) {
-      return `Avalanche move: attack ${highestAprDebt.name} first at ${percent(
-        highestAprDebt.apr
-      )}. Pay minimums on everything else, then throw extra cash at that balance.`;
-    }
-
-    if (smallestDebt) {
-      return `Snowball move: start with ${smallestDebt.name}, your smallest balance at ${money(
-        smallestDebt.balance
-      )}. Knock it out first for a quick win.`;
-    }
-
-    return "Ben needs APRs and balances to build a sharper payoff plan.";
-  }, [debts, rankedDebts, highestAprDebt, smallestDebt]);
-
-  const benInsight = BenEngine.getForecastMessage({
-    name: null,
-    timeframeLabel: "Debt Overview",
-    totalNeeded: totals.totalMin,
-    incomeSoFar: 0,
-    incomeGap: totals.totalMin,
-    dailyIncomeNeeded: Math.ceil(totals.totalMin / 30),
   });
 
-  if (loading) {
-    return <div className="p-8 text-center text-white">Loading debts...</div>;
+  const priorityItems: PriorityInput[] = [
+    ...bills.map((bill) => {
+      const amountDue = billAmount(bill);
+      const paidThisMonth = paidThisMonthByBill[bill.id] || 0;
+      const remainingDue = Math.max(0, amountDue - paidThisMonth);
+
+      return {
+        id: bill.id,
+        type: "bill" as const,
+        name: bill.name,
+        amount: remainingDue,
+        due_date: bill.due_date,
+        due: bill.due,
+        due_day: bill.due_day,
+        category: bill.category,
+        kind: bill.kind,
+        focus: bill.focus,
+        is_paid_this_month: paidThisMonth >= amountDue && amountDue > 0,
+      };
+    }),
+    ...debts.map((debt) => {
+      const amountDue = debtMinimum(debt);
+      const paidThisMonth = paidThisMonthByDebt[debt.id] || 0;
+      const remainingDue = Math.max(0, amountDue - paidThisMonth);
+
+      return {
+        id: debt.id,
+        type: "debt" as const,
+        name: debt.name,
+        amount: remainingDue,
+        balance: debt.balance,
+        due_date: debt.due_date,
+        due_day: debt.due_day,
+        kind: debt.kind,
+        apr: debt.apr,
+        is_paid_this_month: paidThisMonth >= amountDue && amountDue > 0,
+      };
+    }),
+  ];
+
+  const rankedPriorities = prioritizeMoneyItems(priorityItems);
+
+  const activeRankedPriorities = rankedPriorities.filter(
+    (row) => !row.item.is_paid_this_month && row.amount > 0
+  );
+
+  const paidLines =
+    rankedPriorities
+      .filter((row) => row.item.is_paid_this_month)
+      .map((row) => {
+        return `- PAID THIS MONTH: ${row.item.type.toUpperCase()} ${
+          row.item.name ?? "Unnamed"
+        } — regular amount ${money(row.amount)}`;
+      })
+      .join("\n") || "- No paid-this-month bill/debt matches found.";
+
+  const priorityLines =
+    activeRankedPriorities.length > 0
+      ? activeRankedPriorities
+          .slice(0, 10)
+          .map((row, index) => {
+            return `${index + 1}. ${row.item.type.toUpperCase()}: ${
+              row.item.name ?? "Unnamed"
+            } — remaining due ${money(row.amount)}; due ${dueText(
+              row.resolvedDueDate
+            )}; score ${row.score}; reasons: ${row.reasons.join(", ")}`;
+          })
+          .join("\n")
+      : "- No active unpaid priority items found.";
+
+  const unpaidBills = bills.filter((bill) => {
+    const amountDue = billAmount(bill);
+    const paidThisMonth = paidThisMonthByBill[bill.id] || 0;
+    return !(paidThisMonth >= amountDue && amountDue > 0);
+  });
+
+  const unpaidDebts = debts.filter((debt) => {
+    const amountDue = debtMinimum(debt);
+    const paidThisMonth = paidThisMonthByDebt[debt.id] || 0;
+    return !(paidThisMonth >= amountDue && amountDue > 0);
+  });
+
+  const upcomingBills = unpaidBills.filter((bill) =>
+    isWithinNextDays(resolvedBillDueDate(bill), 7)
+  );
+
+  const upcomingDebts = unpaidDebts.filter((debt) =>
+    isWithinNextDays(resolvedDebtDueDate(debt), 7)
+  );
+
+  const overdueBills = unpaidBills.filter((bill) => {
+    const days = daysUntil(resolvedBillDueDate(bill));
+    return days !== null && days < 0;
+  });
+
+  const overdueDebts = unpaidDebts.filter((debt) => {
+    const days = daysUntil(resolvedDebtDueDate(debt));
+    return days !== null && days < 0;
+  });
+
+  const next7Lines = [
+    ...upcomingBills.map((bill) => {
+      const due = resolvedBillDueDate(bill);
+      const remainingDue = Math.max(
+        0,
+        billAmount(bill) - (paidThisMonthByBill[bill.id] || 0)
+      );
+
+      return `- BILL: ${bill.name ?? "Unnamed bill"} — remaining due ${money(
+        remainingDue
+      )}; ${dueText(due)}; category: ${
+        bill.category ?? "uncategorized"
+      }; priority: ${bill.priority ?? "not set"}; focus: ${
+        bill.focus ? "yes" : "no"
+      }`;
+    }),
+
+    ...upcomingDebts.map((debt) => {
+      const due = resolvedDebtDueDate(debt);
+      const remainingDue = Math.max(
+        0,
+        debtMinimum(debt) - (paidThisMonthByDebt[debt.id] || 0)
+      );
+
+      return `- DEBT: ${debt.name ?? "Unnamed debt"} — remaining minimum due ${money(
+        remainingDue
+      )}; balance ${money(clampMoney(debt.balance))}; ${dueText(
+        due
+      )}; APR: ${debt.apr ?? "unknown"}; type: ${debt.kind ?? "debt"}`;
+    }),
+  ].join("\n");
+
+  const overdueLines = [
+    ...overdueBills.map((bill) => {
+      const due = resolvedBillDueDate(bill);
+      const remainingDue = Math.max(
+        0,
+        billAmount(bill) - (paidThisMonthByBill[bill.id] || 0)
+      );
+
+      return `- OVERDUE BILL: ${bill.name ?? "Unnamed bill"} — remaining due ${money(
+        remainingDue
+      )}; ${dueText(due)}`;
+    }),
+
+    ...overdueDebts.map((debt) => {
+      const due = resolvedDebtDueDate(debt);
+      const remainingDue = Math.max(
+        0,
+        debtMinimum(debt) - (paidThisMonthByDebt[debt.id] || 0)
+      );
+
+      return `- OVERDUE DEBT: ${
+        debt.name ?? "Unnamed debt"
+      } — remaining minimum due ${money(remainingDue)}; ${dueText(due)}`;
+    }),
+  ].join("\n");
+
+  const billLines =
+    bills.length > 0
+      ? bills
+          .map((bill) => {
+            const due = resolvedBillDueDate(bill);
+            const amountDue = billAmount(bill);
+            const paidThisMonth = paidThisMonthByBill[bill.id] || 0;
+            const remainingDue = Math.max(0, amountDue - paidThisMonth);
+            const status =
+              paidThisMonth >= amountDue && amountDue > 0
+                ? "paid this month"
+                : "not fully paid this month";
+
+            return `- ${bill.name ?? "Unnamed bill"}: regular amount ${money(
+              amountDue
+            )}; paid this month ${money(paidThisMonth)}; remaining ${money(
+              remainingDue
+            )}; status ${status}; due ${dueText(due)}; category: ${
+              bill.category ?? "uncategorized"
+            }; priority: ${bill.priority ?? "not set"}; focus: ${
+              bill.focus ? "yes" : "no"
+            }`;
+          })
+          .join("\n")
+      : "- No bill rows found.";
+
+  const debtLines =
+    debts.length > 0
+      ? debts
+          .map((debt) => {
+            const due = resolvedDebtDueDate(debt);
+            const amountDue = debtMinimum(debt);
+            const paidThisMonth = paidThisMonthByDebt[debt.id] || 0;
+            const remainingDue = Math.max(0, amountDue - paidThisMonth);
+            const status =
+              paidThisMonth >= amountDue && amountDue > 0
+                ? "paid this month"
+                : "not fully paid this month";
+
+            return `- ${debt.name ?? "Unnamed debt"}: balance ${money(
+              clampMoney(debt.balance)
+            )}; regular minimum ${money(
+              amountDue
+            )}; paid this month ${money(paidThisMonth)}; remaining minimum ${money(
+              remainingDue
+            )}; status ${status}; due ${dueText(due)}; APR: ${
+              debt.apr ?? "unknown"
+            }; type: ${debt.kind ?? "debt"}`;
+          })
+          .join("\n")
+      : "- No debt rows found.";
+
+  return `
+ASKBEN FINANCIAL CONTEXT
+Today: ${formatDate(todayLocalISO())}
+Current month starts: ${formatDate(monthStart)}
+
+MONTHLY SNAPSHOT FROM ben_master_monthly
+- Income logged this month: ${money(incomeTotal)}
+- Spending logged this month: ${money(spendTotal)}
+- Bills total: ${money(billsTotal)}
+- Debt payments logged this month: ${money(paymentsTotal)}
+- Total debt balance: ${money(debtBalance)}
+- Monthly debt minimums: ${money(debtMinimums)}
+- Estimated net after spending, bills, and debt minimums: ${money(net)}
+- Debt pressure: ${pressure.toFixed(1)}%
+
+PAID THIS MONTH — DO NOT RECOMMEND AGAIN
+${paidLines}
+
+TOP UNPAID PRIORITIES FROM PRIORITY ENGINE
+${priorityLines}
+
+OVERDUE UNPAID ITEMS — EXACT LIST
+${overdueLines || "- No overdue unpaid bills or debts found."}
+
+NEXT 7 DAYS — UNPAID DUE ITEMS
+${next7Lines || "- Nothing unpaid is due in the next 7 days based on due_date, due, or due_day."}
+
+BILLS FROM bills TABLE WITH PAYMENT STATUS
+${billLines}
+
+DEBTS FROM debts TABLE WITH PAYMENT STATUS
+${debtLines}
+
+RULES FOR BEN
+- This financial context is the source of truth.
+- Never recommend items listed under "PAID THIS MONTH — DO NOT RECOMMEND AGAIN."
+- When asked what to pay first, use "TOP UNPAID PRIORITIES FROM PRIORITY ENGINE" first.
+- Explain the recommendation using the listed reasons.
+- When asked what is due in the next 7 days, use "NEXT 7 DAYS — UNPAID DUE ITEMS."
+- When asked what is overdue, use "OVERDUE UNPAID ITEMS — EXACT LIST."
+- Be specific. Name the bill, debt, amount remaining, and due date when available.
+- If a bill or debt is paid this month, say it appears paid and do not include it in the active payment plan.
+- If data is missing, say exactly what is missing instead of pretending nothing exists.
+`.trim();
+}
+
+const BEN_PERSONA = `
+You are Benjamin Franklin serving as a modern financial triage advisor.
+
+Voice:
+- Wise, warm, practical, and slightly witty.
+- Use light colonial flavor, not Shakespeare cosplay.
+- Occasional phrases are welcome: "good friend", "thy", "pray tell", "verily", "hath".
+- Keep advice clear, modern, and useful.
+- Sound intelligent and grounded, not gimmicky.
+
+Financial behavior:
+- Use the supplied financialSummary as factual context.
+- Give concrete next steps.
+- For urgent money questions, prioritize survival: housing, utilities, transportation, food, insurance, unpaid minimum payments, then extra debt payments.
+- Do not shame the user.
+- Do not recommend risky financial decisions.
+- Do not recommend bills or debts already marked paid this month.
+- If the user asks what to pay first, give a ranked list using the TOP UNPAID PRIORITIES section.
+- Explain why each item is ranked using the priority reasons.
+- If the user asks what is due this week or in the next 7 days, answer only from the NEXT 7 DAYS — UNPAID DUE ITEMS section.
+- If the user asks for a plan, give a short action plan using only unpaid items.
+`.trim();
+
+export default function ChatPage() {
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      role: "assistant",
+      content:
+        "Good morrow, friend. I am Benjamin Franklin, at thy service in matters of coin and prudence. Ask me what to pay first, what is due soon, or how to steady thy finances this week.",
+    },
+  ]);
+
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [moneyContext, setMoneyContext] = useState<MoneyContext>({
+    master: null,
+    bills: [],
+    debts: [],
+    payments: [],
+  });
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    async function loadMoneyContext() {
+      setNotice("");
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        setNotice(sessionError.message);
+        return;
+      }
+
+      const user = session?.user;
+
+      if (!user) {
+        setNotice("Log in to let Ben see your money snapshot.");
+        return;
+      }
+
+      const monthStart = currentMonthStartISO();
+
+      const [masterResult, billsResult, debtsResult, paymentsResult] =
+        await Promise.all([
+          supabase
+            .from("ben_master_monthly")
+            .select("*")
+            .eq("user_id", user.id)
+            .gte("month", monthStart)
+            .order("month", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+
+          supabase
+            .from("bills")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("due_date", { ascending: true, nullsFirst: false }),
+
+          supabase
+            .from("debts")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("due_date", { ascending: true, nullsFirst: false }),
+
+          supabase.from("payments").select("*").eq("user_id", user.id),
+        ]);
+
+      if (masterResult.error) {
+        setNotice(`ben_master_monthly: ${masterResult.error.message}`);
+        return;
+      }
+
+      if (billsResult.error) {
+        setNotice(`bills: ${billsResult.error.message}`);
+        return;
+      }
+
+      if (debtsResult.error) {
+        setNotice(`debts: ${debtsResult.error.message}`);
+        return;
+      }
+
+      if (paymentsResult.error) {
+        setNotice(`payments: ${paymentsResult.error.message}`);
+        return;
+      }
+
+      setMoneyContext({
+        master: (masterResult.data || null) as BenMasterRow | null,
+        bills: (billsResult.data || []) as BillRow[],
+        debts: (debtsResult.data || []) as DebtRow[],
+        payments: (paymentsResult.data || []) as PaymentRow[],
+      });
+    }
+
+    void loadMoneyContext();
+  }, [supabase]);
+
+  async function sendMessage(customText?: string) {
+    const text = (customText ?? input).trim();
+
+    if (!text || loading) return;
+
+    const userMessage: ChatMessage = {
+      role: "user",
+      content: text,
+    };
+
+    const newMessages = [...messages, userMessage];
+
+    setMessages(newMessages);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const financialSummary = buildFinancialSummary(moneyContext);
+
+      console.log("ASKBEN FINANCIAL SUMMARY SENT:", financialSummary);
+
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          mode: "money",
+          messages: newMessages,
+          financialSummary,
+          context: BEN_PERSONA,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Ben could not answer right now.");
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            data.reply ||
+            "Forgive me, friend. My thoughts are unclear at present.",
+        },
+      ]);
+    } catch (err) {
+      console.error("AskBen chat error:", err);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "Forgive me, good friend. The wires between us are troubled. Pray ask again in a moment.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   }
 
+  const hasData =
+    !!moneyContext.master ||
+    moneyContext.bills.length > 0 ||
+    moneyContext.debts.length > 0 ||
+    moneyContext.payments.length > 0;
+
   return (
-    <main className="min-h-screen bg-transparent p-4 text-white md:p-6">
-      <div className={`${shellClass} mx-auto max-w-6xl space-y-8`}>
-        <header>
-          <h1 className="text-5xl font-black drop-shadow-2xl md:text-6xl">
-            Debt
-          </h1>
-          <p className="mt-2 max-w-2xl text-base font-semibold text-white/90 md:text-lg">
-            Track what you owe, edit every account, see APR clearly, and choose
-            snowball or avalanche without squinting at numbers like a colonial
-            tax ledger.
-          </p>
-        </header>
-
-        {message ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950 shadow-xl">
-            {message}
+    <main className="min-h-screen bg-transparent p-4 pb-24">
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-8 flex items-center gap-4">
+          <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/30 shadow-xl">
+            <img
+              src="/ben.png"
+              alt="Benjamin Franklin"
+              className="h-full w-full object-cover"
+            />
           </div>
-        ) : null}
 
-        <div className="rounded-3xl border border-white/20 bg-black/55 p-5 shadow-xl backdrop-blur-xl">
-          <BenBubble
-            message={`${benInsight.text} ${customInsight}`}
-            mood={benInsight.mood}
-          />
+          <div>
+            <h1 className="text-4xl font-black text-white">Ask Ben</h1>
+            <p className="text-white/75">
+              Benjamin Franklin’s Counsel on Money
+            </p>
+          </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
-          <StatCard label="Total Debt" value={totals.totalBalance} />
-          <StatCard label="Monthly Minimums" value={totals.totalMin} />
-          <StatCard
-            label="Avg APR"
-            value={
-              totals.weightedApr > 0
-                ? `${totals.weightedApr.toFixed(2)}%`
-                : "Add APR"
-            }
-            plain
-          />
-          <StatCard label="Accounts" value={totals.accountCount} plain />
-        </div>
+        {notice && (
+          <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50/95 p-4 text-sm font-semibold text-amber-950 shadow-xl">
+            {notice}
+          </div>
+        )}
 
-        <section className={lightCardClass}>
-          <h2 className="text-2xl font-black">Debt Priority Board</h2>
-          <p className="mt-2 text-sm font-bold text-zinc-700">
-            Minimum payments ranked by due date, APR risk, and urgency.
-          </p>
+        {!notice && (
+          <div className="mb-4 rounded-2xl border border-white/15 bg-black/45 p-4 text-sm font-semibold text-white/80 shadow-xl backdrop-blur-xl">
+            {hasData
+              ? `Ben can currently see ${moneyContext.bills.length} bill(s), ${
+                  moneyContext.debts.length
+                } debt(s), ${moneyContext.payments.length} payment(s), and ${
+                  moneyContext.master
+                    ? "the monthly master snapshot"
+                    : "no monthly master snapshot"
+                }.`
+              : "Ben is connected, but no money rows were found yet."}
+          </div>
+        )}
 
-          <div className="mt-5 grid gap-3">
-            {rankedDebts.length === 0 ? (
-              <p className="text-sm font-semibold text-zinc-600">
-                No debts ranked yet.
-              </p>
-            ) : (
-              rankedDebts.slice(0, 5).map((row, index) => (
+        <div className="flex h-[65vh] flex-col overflow-hidden rounded-3xl border border-white/20 bg-black/70 shadow-2xl backdrop-blur-2xl">
+          <div className="flex-1 space-y-6 overflow-y-auto p-6">
+            {messages.map((msg, i) => (
+              <div
+                key={`${msg.role}-${i}`}
+                className={`flex ${
+                  msg.role === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
                 <div
-                  key={row.item.id}
-                  className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4"
+                  className={`max-w-[85%] rounded-3xl px-5 py-4 text-sm font-semibold leading-relaxed shadow-lg md:text-base ${
+                    msg.role === "user"
+                      ? "rounded-br-none bg-yellow-400 text-zinc-950"
+                      : "rounded-bl-none bg-white/95 text-zinc-950"
+                  }`}
                 >
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">
-                        #{index + 1} Debt Priority
-                      </p>
-
-                      <h3 className="mt-1 text-xl font-black text-zinc-950">
-                        {row.item.name ?? "Unnamed debt"}
-                      </h3>
-
-                      <p className="mt-1 text-sm font-bold text-zinc-600">
-                        {dueLabel(row.resolvedDueDate)}
-                      </p>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {row.reasons.map((reason) => (
-                          <span
-                            key={reason}
-                            className="rounded-full bg-white px-3 py-1 text-xs font-black text-zinc-700"
-                          >
-                            {reason}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="text-left md:text-right">
-                      <p className="text-2xl font-black text-zinc-950">
-                        {money(row.amount)}
-                      </p>
-                      <p className="mt-1 text-xs font-black uppercase tracking-[0.16em] text-zinc-400">
-                        Score {row.score}
-                      </p>
-                    </div>
-                  </div>
+                  {msg.content}
                 </div>
-              ))
+              </div>
+            ))}
+
+            {loading && (
+              <div className="flex justify-start">
+                <div className="flex items-center gap-3 rounded-3xl rounded-bl-none bg-white/95 px-5 py-4 text-zinc-950">
+                  <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
+                  <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 delay-150" />
+                  <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 delay-300" />
+                  <span className="ml-2 text-sm text-zinc-500">
+                    Ben is thinking...
+                  </span>
+                </div>
+              </div>
             )}
+
+            <div ref={chatEndRef} />
           </div>
-        </section>
 
-        <section className={cardClass}>
-          <h2 className="text-2xl font-black">Ben Payoff Strategy</h2>
+          <div className="border-t border-white/20 bg-black/80 p-4">
+            <div className="flex gap-3">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void sendMessage();
+                }}
+                placeholder="What should I pay first, good sir?"
+                className="flex-1 rounded-2xl bg-white/90 px-6 py-4 text-zinc-950 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                disabled={loading}
+              />
 
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <StrategyCard
-              title="Avalanche"
-              subtitle="Best for saving interest"
-              debt={highestAprDebt}
-              detail={
-                highestAprDebt
-                  ? `${highestAprDebt.name} has the highest APR: ${percent(
-                      highestAprDebt.apr
-                    )}.`
-                  : "Add APRs to unlock this strategy."
-              }
-            />
-
-            <StrategyCard
-              title="Snowball"
-              subtitle="Best for motivation"
-              debt={smallestDebt}
-              detail={
-                smallestDebt
-                  ? `${smallestDebt.name} is the smallest balance: ${money(
-                      smallestDebt.balance
-                    )}.`
-                  : "Add debts to unlock this strategy."
-              }
-            />
-          </div>
-        </section>
-
-        <section className={lightCardClass}>
-          <div className="mb-6 flex items-start gap-4">
-            <div className="text-5xl">📜</div>
-            <div>
-              <h2 className="text-2xl font-black">Scan Debt Statement</h2>
-              <p className="text-sm font-semibold text-zinc-700">
-                Upload a credit card statement, loan summary, screenshot, photo,
-                or PDF.
-              </p>
+              <button
+                onClick={() => void sendMessage()}
+                disabled={loading || !input.trim()}
+                className="rounded-2xl bg-yellow-400 px-8 font-black text-zinc-950 transition hover:bg-yellow-300 disabled:opacity-50"
+              >
+                Send
+              </button>
             </div>
           </div>
+        </div>
 
-          <label className="block cursor-pointer rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50 p-8 text-center shadow-inner transition hover:bg-amber-100">
-            <input
-              type="file"
-              accept="image/*,.pdf,application/pdf"
-              className="hidden"
-              onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-            />
-
-            <div className="mx-auto mb-4 text-7xl">📜</div>
-
-            <p className="break-words text-xl font-black text-amber-950">
-              {imageFile
-                ? imageFile.name
-                : "Tap to upload statement, screenshot, photo, or file"}
-            </p>
-
-            <p className="mt-2 text-sm font-bold text-amber-800">
-              JPG • PNG • Screenshot • Photo • PDF
-            </p>
-          </label>
-
-          <button
-            onClick={() => void scanDebtImage(imageFile)}
-            disabled={!imageFile || scanning}
-            className="mt-6 w-full rounded-2xl bg-emerald-600 py-4 text-lg font-black text-white shadow-xl disabled:opacity-50"
-          >
-            {scanning ? "Scanning..." : "Scan with Ben"}
-          </button>
-
-          {scanReview ? (
-            <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
-                📜 Review Scan
-              </p>
-
-              <h3 className="mt-2 text-2xl font-black">
-                Ben found possible debt details
-              </h3>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <input
-                  className={inputClass}
-                  value={scanReview.name}
-                  placeholder="Debt name"
-                  onChange={(e) =>
-                    setScanReview({ ...scanReview, name: e.target.value })
-                  }
-                />
-
-                <input
-                  className={inputClass}
-                  value={scanReview.balance}
-                  placeholder="Current balance"
-                  inputMode="decimal"
-                  onChange={(e) =>
-                    setScanReview({ ...scanReview, balance: e.target.value })
-                  }
-                />
-
-                <input
-                  className={inputClass}
-                  value={scanReview.minPayment}
-                  placeholder="Monthly minimum"
-                  inputMode="decimal"
-                  onChange={(e) =>
-                    setScanReview({ ...scanReview, minPayment: e.target.value })
-                  }
-                />
-
-                <input
-                  className={inputClass}
-                  value={scanReview.dueDay}
-                  placeholder="Due day"
-                  inputMode="numeric"
-                  onChange={(e) =>
-                    setScanReview({ ...scanReview, dueDay: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => void saveScannedDebt()}
-                  disabled={saving}
-                  className="rounded-2xl bg-emerald-600 px-6 py-3 font-black text-white shadow-xl hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {saving ? "Saving..." : "Save Scanned Debt"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setScanReview(null)}
-                  disabled={saving}
-                  className="rounded-2xl bg-zinc-200 px-6 py-3 font-black text-zinc-950 hover:bg-zinc-300 disabled:opacity-50"
-                >
-                  Cancel Scan
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </section>
-
-        <section className={lightCardClass}>
-          <h2 className="mb-6 text-2xl font-black">Add New Debt</h2>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <input
-              placeholder="Debt name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className={inputClass}
-            />
-
-            <input
-              placeholder="Current balance"
-              inputMode="decimal"
-              value={balance}
-              onChange={(e) => setBalance(e.target.value)}
-              className={inputClass}
-            />
-
-            <input
-              placeholder="Monthly minimum"
-              inputMode="decimal"
-              value={minPayment}
-              onChange={(e) => setMinPayment(e.target.value)}
-              className={inputClass}
-            />
-
-            <input
-              placeholder="APR, example: 27.99"
-              inputMode="decimal"
-              value={apr}
-              onChange={(e) => setApr(e.target.value)}
-              className={inputClass}
-            />
-
-            <select
-              value={kind}
-              onChange={(e) => setKind(e.target.value as "credit" | "loan")}
-              className={inputClass}
+        <div className="mt-6 flex flex-wrap gap-2">
+          {[
+            "What should I pay first this week?",
+            "What is due in the next 7 days?",
+            "Give me a 7-day survival plan, good sir.",
+            "How much coin must I earn daily?",
+            "What is my greatest risk at present?",
+          ].map((prompt) => (
+            <button
+              key={prompt}
+              onClick={() => void sendMessage(prompt)}
+              disabled={loading}
+              className="rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/20 disabled:opacity-50"
             >
-              <option value="credit">Credit Card</option>
-              <option value="loan">Loan</option>
-            </select>
-
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => {
-                const value = e.target.value;
-                setDueDate(value);
-                if (value) {
-                  setDueDay(String(new Date(`${value}T00:00:00`).getDate()));
-                }
-              }}
-              className={inputClass}
-            />
-
-            <input
-              placeholder="Due day, example: 15"
-              inputMode="numeric"
-              value={dueDay}
-              onChange={(e) => setDueDay(e.target.value)}
-              className={inputClass}
-            />
-
-            <input
-              placeholder="Credit limit optional"
-              inputMode="decimal"
-              value={creditLimit}
-              onChange={(e) => setCreditLimit(e.target.value)}
-              className={inputClass}
-            />
-
-            <input
-              placeholder="Note optional"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className={`${inputClass} md:col-span-2`}
-            />
-          </div>
-
-          <button
-            onClick={() => void addDebt()}
-            disabled={saving}
-            className="mt-6 w-full rounded-2xl bg-emerald-600 py-4 text-lg font-black text-white shadow-xl hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {saving ? "Saving..." : "Add Debt"}
-          </button>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-2xl font-black text-white">Your Debts</h2>
-
-          {debts.length === 0 ? (
-            <div className={lightCardClass}>
-              <p className="font-bold text-zinc-700">
-                No debts added yet. Add one above and Ben will build your payoff
-                plan.
-              </p>
-            </div>
-          ) : (
-            debts.map((debt) => {
-              const isEditing = editingId === debt.id && editDebt !== null;
-
-              return (
-                <div key={debt.id} className={lightCardClass}>
-                  {isEditing && editDebt ? (
-                    <div className="space-y-4">
-                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                        <p className="text-sm font-black uppercase tracking-widest text-emerald-800">
-                          Editing Debt
-                        </p>
-                        <p className="mt-1 text-sm font-bold text-emerald-950">
-                          Change the fields below, then tap Save Changes.
-                        </p>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <input
-                          value={editDebt.name}
-                          placeholder="Debt name"
-                          onChange={(e) =>
-                            setEditDebt({ ...editDebt, name: e.target.value })
-                          }
-                          className={inputClass}
-                        />
-
-                        <input
-                          value={editDebt.balance}
-                          inputMode="decimal"
-                          placeholder="Current balance"
-                          onChange={(e) =>
-                            setEditDebt({
-                              ...editDebt,
-                              balance: e.target.value,
-                            })
-                          }
-                          className={inputClass}
-                        />
-
-                        <input
-                          value={editDebt.minPayment}
-                          inputMode="decimal"
-                          placeholder="Monthly minimum"
-                          onChange={(e) =>
-                            setEditDebt({
-                              ...editDebt,
-                              minPayment: e.target.value,
-                            })
-                          }
-                          className={inputClass}
-                        />
-
-                        <input
-                          value={editDebt.apr}
-                          inputMode="decimal"
-                          placeholder="APR"
-                          onChange={(e) =>
-                            setEditDebt({ ...editDebt, apr: e.target.value })
-                          }
-                          className={inputClass}
-                        />
-
-                        <select
-                          value={editDebt.kind}
-                          onChange={(e) =>
-                            setEditDebt({
-                              ...editDebt,
-                              kind: e.target.value as "credit" | "loan",
-                            })
-                          }
-                          className={inputClass}
-                        >
-                          <option value="credit">Credit Card</option>
-                          <option value="loan">Loan</option>
-                        </select>
-
-                        <input
-                          type="date"
-                          value={editDebt.dueDate}
-                          onChange={(e) => {
-                            const value = e.target.value;
-
-                            setEditDebt({
-                              ...editDebt,
-                              dueDate: value,
-                              dueDay: value
-                                ? String(
-                                    new Date(`${value}T00:00:00`).getDate()
-                                  )
-                                : editDebt.dueDay,
-                            });
-                          }}
-                          className={inputClass}
-                        />
-
-                        <input
-                          value={editDebt.dueDay}
-                          inputMode="numeric"
-                          placeholder="Due day, example: 15"
-                          onChange={(e) =>
-                            setEditDebt({
-                              ...editDebt,
-                              dueDay: e.target.value,
-                            })
-                          }
-                          className={inputClass}
-                        />
-
-                        <input
-                          value={editDebt.creditLimit}
-                          inputMode="decimal"
-                          placeholder="Credit limit"
-                          onChange={(e) =>
-                            setEditDebt({
-                              ...editDebt,
-                              creditLimit: e.target.value,
-                            })
-                          }
-                          className={inputClass}
-                        />
-
-                        <input
-                          value={editDebt.note}
-                          placeholder="Note"
-                          onChange={(e) =>
-                            setEditDebt({ ...editDebt, note: e.target.value })
-                          }
-                          className={`${inputClass} md:col-span-2`}
-                        />
-                      </div>
-
-                      <div className="flex flex-wrap gap-3 pt-2">
-                        <button
-                          onClick={() => void saveEdit(debt.id)}
-                          disabled={saving}
-                          className="rounded-2xl bg-emerald-600 px-6 py-3 font-black text-white shadow-xl hover:bg-emerald-700 disabled:opacity-50"
-                        >
-                          {saving ? "Saving..." : "Save Changes"}
-                        </button>
-
-                        <button
-                          onClick={cancelEdit}
-                          disabled={saving}
-                          className="rounded-2xl bg-zinc-200 px-6 py-3 font-black text-zinc-950 hover:bg-zinc-300 disabled:opacity-50"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col justify-between gap-5 md:flex-row">
-                      <div>
-                        <h3 className="text-2xl font-black text-zinc-950">
-                          {debt.name}
-                        </h3>
-
-                        <p className="mt-1 text-sm font-bold capitalize text-zinc-600">
-                          {debt.kind} • Due{" "}
-                          {formatDate(debt.due_date, debt.due_day)}
-                        </p>
-
-                        <p className="mt-1 text-sm font-bold text-zinc-500">
-                          {dueLabel(resolvedDebtDueDate(debt))}
-                        </p>
-
-                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                          <MiniStat
-                            label="Minimum"
-                            value={money(
-                              debt.monthly_min_payment ?? debt.min_payment
-                            )}
-                          />
-
-                          <MiniStat label="APR" value={percent(debt.apr)} />
-
-                          <MiniStat
-                            label="Credit limit"
-                            value={
-                              num(debt.credit_limit) > 0
-                                ? money(debt.credit_limit)
-                                : "Not added"
-                            }
-                          />
-                        </div>
-
-                        {debt.note ? (
-                          <p className="mt-4 rounded-xl bg-zinc-100 p-3 text-sm font-semibold text-zinc-700">
-                            {debt.note}
-                          </p>
-                        ) : null}
-                      </div>
-
-                      <div className="md:text-right">
-                        <p className="text-sm font-black uppercase tracking-widest text-zinc-500">
-                          Balance
-                        </p>
-                        <p className="text-3xl font-black text-zinc-950">
-                          {money(debt.balance)}
-                        </p>
-
-                        <div className="mt-4 flex flex-wrap gap-2 md:justify-end">
-                          <button
-                            type="button"
-                            onClick={() => startEdit(debt)}
-                            className={`${smallButtonClass} bg-sky-100 text-sky-900 hover:bg-sky-200`}
-                          >
-                            Edit
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => void deleteDebt(debt.id)}
-                            className={`${smallButtonClass} bg-rose-100 text-rose-900 hover:bg-rose-200`}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </section>
+              {prompt}
+            </button>
+          ))}
+        </div>
       </div>
     </main>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  plain = false,
-}: {
-  label: string;
-  value: number | string;
-  plain?: boolean;
-}) {
-  return (
-    <div className={lightCardClass}>
-      <div className="text-sm font-black uppercase tracking-widest text-zinc-600">
-        {label}
-      </div>
-
-      <div className="mt-3 break-words text-3xl font-black text-zinc-950 md:text-4xl">
-        {plain ? value : money(value)}
-      </div>
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-      <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500">
-        {label}
-      </p>
-
-      <p className="mt-1 break-words text-sm font-black text-zinc-950">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function StrategyCard({
-  title,
-  subtitle,
-  detail,
-  debt,
-}: {
-  title: string;
-  subtitle: string;
-  detail: string;
-  debt?: DebtRow;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/20 bg-white/95 p-5 text-zinc-950">
-      <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500">
-        {subtitle}
-      </p>
-
-      <h3 className="mt-1 text-xl font-black text-zinc-950">{title}</h3>
-
-      <p className="mt-3 text-sm font-bold leading-6 text-zinc-700">{detail}</p>
-
-      {debt ? (
-        <div className="mt-4 rounded-xl bg-zinc-100 p-3">
-          <p className="font-black text-zinc-950">{debt.name}</p>
-          <p className="text-sm font-bold text-zinc-600">
-            {money(debt.balance)} balance • {percent(debt.apr)}
-          </p>
-        </div>
-      ) : null}
-    </div>
   );
 }
