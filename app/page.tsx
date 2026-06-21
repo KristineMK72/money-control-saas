@@ -1,6 +1,5 @@
 import Image from "next/image";
 import StripeCheckoutButton from "@/components/StripeCheckoutButton";
-import SubscriptionOptions from "@/components/SubscriptionOptions";
 
 export default function HomePage() {
   return (
@@ -46,6 +45,13 @@ export default function HomePage() {
               </a>
 
               <a
+                href="/login"
+                className="rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-5 py-3 font-black text-cyan-100 transition hover:bg-cyan-300/15"
+              >
+                Login
+              </a>
+
+              <a
                 href="/world"
                 className="rounded-xl border border-yellow-300/30 bg-yellow-300/10 px-5 py-3 font-black text-yellow-100 transition hover:bg-yellow-300/15"
               >
@@ -56,8 +62,6 @@ export default function HomePage() {
             <p className="mt-4 text-sm font-semibold text-white/75">
               Start free. Upgrade later when you want smarter planning tools.
             </p>
-
-            <SubscriptionOptions compact className="mt-6" />
           </div>
 
           <div className="flex justify-center lg:justify-end">
