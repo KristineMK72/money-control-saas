@@ -15,7 +15,7 @@ import ScrollRevealCard from "@/components/ScrollRevealCard";
 import XpBar from "@/components/XpBar";
 import { BenEngine } from "@/lib/ben/engine";
 import { clampMoney, money } from "@/lib/money/math";
-import { currentMonthStartISO, daysUntil } from "@/lib/money/dates";
+import { currentMonthStartISO } from "@/lib/money/dates";
 import {
   prioritizeMoneyItems,
   type PriorityInput,
@@ -53,6 +53,15 @@ type DebtRow = {
   due_date?: string | null;
   due_day?: number | string | null;
   apr?: number | string | null;
+};
+
+type PaymentRow = {
+  id: string;
+  amount: number | string | null;
+  bill_id: string | null;
+  debt_id: string | null;
+  date_iso: string | null;
+  created_at?: string | null;
 };
 
 type BenMasterRow = {
@@ -100,7 +109,6 @@ function dueLabel(days: number | null) {
   if (days < 0) return `Overdue by ${Math.abs(days)} day(s)`;
   if (days === 0) return "Due today";
   if (days === 1) return "Due tomorrow";
-  if (days <= 7) return `Due in ${days} days`;
   return `Due in ${days} days`;
 }
 
@@ -111,6 +119,7 @@ export default function DashboardPage() {
   const [spend, setSpend] = useState<SpendRow[]>([]);
   const [billsRows, setBillsRows] = useState<BillRow[]>([]);
   const [debtRows, setDebtRows] = useState<DebtRow[]>([]);
+  const [paymentsRows, setPaymentsRows] = useState<PaymentRow[]>([]);
   const [monthlyMaster, setMonthlyMaster] = useState<BenMasterRow | null>(null);
   const [cumulativeMaster, setCumulativeMaster] =
     useState<BenMasterRow | null>(null);
@@ -140,6 +149,7 @@ export default function DashboardPage() {
         spendRes,
         billsRes,
         debtsRes,
+        paymentsRes,
         monthlyRes,
         cumulativeRes,
         profileRes,
@@ -164,6 +174,11 @@ export default function DashboardPage() {
           .eq("user_id", uid),
 
         supabase
+          .from("payments")
+          .select("id, amount, bill_id, debt_id, date_iso, created_at")
+          .eq("user_id", uid),
+
+        supabase
           .from("ben_master_monthly")
           .select("*")
           .eq("user_id", uid)
@@ -184,6 +199,7 @@ export default function DashboardPage() {
       if (spendRes.error) setNotice(spendRes.error.message);
       if (billsRes.error) setNotice(billsRes.error.message);
       if (debtsRes.error) setNotice(debtsRes.error.message);
+      if (paymentsRes.error) setNotice(paymentsRes.error.message);
       if (monthlyRes.error) setNotice(monthlyRes.error.message);
       if (cumulativeRes.error) setNotice(cumulativeRes.error.message);
       if (profileRes.error) setNotice(profileRes.error.message);
@@ -191,6 +207,7 @@ export default function DashboardPage() {
       setSpend((spendRes.data || []) as SpendRow[]);
       setBillsRows((billsRes.data || []) as BillRow[]);
       setDebtRows((debtsRes.data || []) as DebtRow[]);
+      setPaymentsRows((paymentsRes.data || []) as PaymentRow[]);
       setMonthlyMaster((monthlyRes.data || null) as BenMasterRow | null);
       setCumulativeMaster((cumulativeRes.data || null) as BenMasterRow | null);
       setProfile((profileRes.data || null) as ProfileRow | null);
@@ -237,36 +254,77 @@ export default function DashboardPage() {
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0] || null;
   }, [spend]);
 
+  const paidThisMonth = useMemo(() => {
+    const monthStart = currentMonthStartISO();
+
+    const byBill: Record<string, number> = {};
+    const byDebt: Record<string, number> = {};
+
+    paymentsRows.forEach((payment) => {
+      const date = (payment.date_iso || payment.created_at || "").slice(0, 10);
+      if (!date || date < monthStart) return;
+
+      const amount = clampMoney(payment.amount);
+
+      if (payment.bill_id) {
+        byBill[payment.bill_id] = (byBill[payment.bill_id] || 0) + amount;
+      }
+
+      if (payment.debt_id) {
+        byDebt[payment.debt_id] = (byDebt[payment.debt_id] || 0) + amount;
+      }
+    });
+
+    return { byBill, byDebt };
+  }, [paymentsRows]);
+
   const priorityItems = useMemo<PriorityInput[]>(() => {
     return [
-      ...billsRows.map((bill) => ({
-        id: bill.id,
-        type: "bill" as const,
-        name: bill.name,
-        amount: billAmount(bill),
-        due_date: bill.due_date,
-        due: bill.due,
-        due_day: bill.due_day,
-        category: bill.category,
-        kind: bill.kind,
-        focus: bill.focus,
-      })),
-      ...debtRows.map((debt) => ({
-        id: debt.id,
-        type: "debt" as const,
-        name: debt.name,
-        amount: debtMinimum(debt),
-        balance: debt.balance,
-        due_date: debt.due_date,
-        due_day: debt.due_day,
-        kind: debt.kind,
-        apr: debt.apr,
-      })),
+      ...billsRows.map((bill) => {
+        const due = billAmount(bill);
+        const paid = paidThisMonth.byBill[bill.id] || 0;
+        const remaining = Math.max(0, due - paid);
+
+        return {
+          id: bill.id,
+          type: "bill" as const,
+          name: bill.name,
+          amount: remaining,
+          due_date: bill.due_date,
+          due: bill.due,
+          due_day: bill.due_day,
+          category: bill.category,
+          kind: bill.kind,
+          focus: bill.focus,
+          is_paid_this_month: paid >= due && due > 0,
+        };
+      }),
+
+      ...debtRows.map((debt) => {
+        const due = debtMinimum(debt);
+        const paid = paidThisMonth.byDebt[debt.id] || 0;
+        const remaining = Math.max(0, due - paid);
+
+        return {
+          id: debt.id,
+          type: "debt" as const,
+          name: debt.name,
+          amount: remaining,
+          balance: debt.balance,
+          due_date: debt.due_date,
+          due_day: debt.due_day,
+          kind: debt.kind,
+          apr: debt.apr,
+          is_paid_this_month: paid >= due && due > 0,
+        };
+      }),
     ];
-  }, [billsRows, debtRows]);
+  }, [billsRows, debtRows, paidThisMonth]);
 
   const topPriorities = useMemo(() => {
-    return prioritizeMoneyItems(priorityItems).slice(0, 5);
+    return prioritizeMoneyItems(priorityItems)
+      .filter((row) => !row.item.is_paid_this_month && row.amount > 0)
+      .slice(0, 5);
   }, [priorityItems]);
 
   const ben = BenEngine.getForecastMessage({
@@ -350,7 +408,7 @@ export default function DashboardPage() {
 
       <ScrollRevealCard
         title="Priority Engine"
-        subtitle="The same trusted ranking Ben uses in chat"
+        subtitle="Unpaid bills and debts ranked by urgency"
         image="/ben-mastermind.png"
         defaultOpen
       >
@@ -399,7 +457,7 @@ export default function DashboardPage() {
               </div>
             ))
           ) : (
-            <Panel>No bills or debts found for priority ranking yet.</Panel>
+            <Panel>No unpaid priority items found. Nice work.</Panel>
           )}
         </div>
       </ScrollRevealCard>
