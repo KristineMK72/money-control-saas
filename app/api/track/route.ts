@@ -4,12 +4,19 @@ import { detectVisitorRisk, hashIp } from "@/lib/security/visitorRisk";
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
 
     const body = await req.json().catch(() => ({}));
 
-    const pathname = body.pathname || "/";
-    const referrer = body.referrer || null;
+    const pathname =
+      typeof body.pathname === "string" && body.pathname.length > 0
+        ? body.pathname
+        : "/";
+
+    const referrer =
+      typeof body.referrer === "string" && body.referrer.length > 0
+        ? body.referrer
+        : null;
 
     const rawIp =
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -29,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     const risk = detectVisitorRisk(userAgent, pathname);
 
-    await supabase.from("visitors").insert({
+    const { error: visitorError } = await supabase.from("visitors").insert({
       ip_hash: ipHash,
       user_agent: userAgent,
       pathname,
@@ -45,16 +52,26 @@ export async function POST(req: NextRequest) {
       reason: risk.reason,
     });
 
+    if (visitorError) {
+      console.error("Visitor insert error:", visitorError);
+    }
+
     if (risk.isSuspicious || risk.isBot) {
-      await supabase.from("security_events").insert({
-        ip_hash: ipHash,
-        event_type: risk.isBot ? "bot_detected" : "suspicious_visit",
-        pathname,
-        user_agent: userAgent,
-        country,
-        risk_score: risk.riskScore,
-        reason: risk.reason,
-      });
+      const { error: eventError } = await supabase
+        .from("security_events")
+        .insert({
+          ip_hash: ipHash,
+          event_type: risk.isBot ? "bot_detected" : "suspicious_visit",
+          pathname,
+          user_agent: userAgent,
+          country,
+          risk_score: risk.riskScore,
+          reason: risk.reason,
+        });
+
+      if (eventError) {
+        console.error("Security event insert error:", eventError);
+      }
     }
 
     return NextResponse.json({ success: true });
