@@ -116,44 +116,65 @@ export default function HomePage() {
           />
         </div>
 
-        <div className="mt-16 rounded-3xl border border-white/20 bg-black/55 p-8 shadow-2xl backdrop-blur-xl">
-          <p className="text-sm font-black uppercase tracking-[0.25em] text-yellow-300">
-            Why AskBen Exists
-          </p>
+      <div className="mt-16 rounded-3xl border border-white/20 bg-black/55 p-8 shadow-2xl backdrop-blur-xl">
+  <p className="text-sm font-black uppercase tracking-[0.25em] text-yellow-300">
+    Why AskBen?
+  </p>
 
-          <h2 className="mt-3 text-4xl font-black">
-            Most people don&apos;t need another budgeting app.
-          </h2>
+  <h2 className="mt-3 text-4xl font-black">
+    Most financial apps focus on numbers.
+    <span className="block text-cyan-300">AskBen focuses on people.</span>
+  </h2>
 
-          <p className="mt-4 max-w-4xl text-lg font-semibold leading-8 text-white/80">
-            They need help taking the next step. When money gets overwhelming,
-            people avoid it. AskBen was built for those moments — when you need
-            clarity, encouragement, and a plan that starts with today.
-          </p>
+  <p className="mt-4 max-w-4xl text-lg font-semibold leading-8 text-white/80">
+    Behind every overdue bill, debt balance, budget category, and financial
+    goal is a real person trying to breathe again.
+  </p>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <MiniCard
-              title="Before AskBen"
-              items={[
-                "Bills feel loud",
-                "Debt feels impossible",
-                "You avoid looking",
-                "Everything feels urgent",
-              ]}
-            />
+  <p className="mt-4 max-w-4xl text-lg font-semibold leading-8 text-white/80">
+    Financial stress affects more than money. It can impact sleep,
+    confidence, relationships, focus, and peace of mind. Many people do not
+    avoid their finances because they are irresponsible — they avoid them
+    because the experience feels overwhelming.
+  </p>
 
-            <MiniCard
-              title="After AskBen"
-              items={[
-                "You know what is due next",
-                "You get a weekly plan",
-                "Progress becomes visible",
-                "Every small win counts",
-              ]}
-            />
-          </div>
-        </div>
+  <p className="mt-4 max-w-4xl text-lg font-semibold leading-8 text-white/80">
+    AskBen was built to change that. Instead of shame, AskBen provides
+    guidance. Instead of confusion, AskBen provides clarity. Instead of
+    focusing only on what is wrong, AskBen highlights what is improving.
+  </p>
 
+  <div className="mt-6 grid gap-4 md:grid-cols-2">
+    <MiniCard
+      title="What AskBen Helps You Do"
+      items={[
+        "Track bills, spending, debt, income, and progress",
+        "Know what needs attention first",
+        "Earn achievements and celebrate milestones",
+        "Build momentum one small win at a time",
+      ]}
+    />
+
+    <MiniCard
+      title="You Stay In Control"
+      items={[
+        "No Social Security numbers required",
+        "No bank passwords required",
+        "No mandatory bank account connections",
+        "You choose what information to enter",
+      ]}
+    />
+  </div>
+
+  <div className="mt-6 rounded-2xl border border-yellow-300/25 bg-yellow-300/10 p-5 text-center">
+    <p className="text-lg font-black leading-8 text-yellow-100">
+      One payment. One decision. One victory.
+      <span className="block text-cyan-200">
+        One rebuilt Treasury at a time.
+      </span>
+    </p>
+  </div>
+</div>
         <div className="mt-16 grid gap-6 lg:grid-cols-2">
           <PricingCard
             eyebrow="Pro Monthly"
