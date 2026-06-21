@@ -5,6 +5,8 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import BenBubble from "@/components/BenBubble";
 import { getForecast } from "@/lib/ben/forecast";
 import type { BenMasterRow } from "@/lib/ben/viewTypes";
+import { clampMoney, money } from "@/lib/money/math";
+import { currentMonthStartISO } from "@/lib/money/dates";
 
 type BenMasterAny = BenMasterRow & Record<string, unknown>;
 
@@ -14,17 +16,24 @@ const cardClass =
 const darkCardClass =
   "rounded-2xl border border-white/20 bg-zinc-950/80 p-5 text-white shadow-2xl shadow-zinc-950/20 backdrop-blur-xl";
 
-function num(value: unknown) {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
+function getMonthTiming() {
+  const today = new Date();
+  const daysElapsed = today.getDate();
+  const daysTotal = new Date(
+    today.getFullYear(),
+    today.getMonth() + 1,
+    0
+  ).getDate();
 
-function money(value: number) {
-  return value.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  });
+  const daysLeft = Math.max(daysTotal - daysElapsed, 0);
+  const weeksInMonth = daysTotal / 7;
+
+  return {
+    daysElapsed,
+    daysTotal,
+    daysLeft,
+    weeksInMonth,
+  };
 }
 
 export default function ForecastPage() {
@@ -72,14 +81,14 @@ export default function ForecastPage() {
         return;
       }
 
-      const currentMonth = new Date().toISOString().slice(0, 7) + "-01";
+      const currentMonth = currentMonthStartISO();
 
-    const { data: master, error } = await supabase
-      .from("ben_master_monthly")
-      .select("*")
-      .eq("user_id", session.user.id)
-      .eq("month", currentMonth)
-      .maybeSingle();
+      const { data: master, error } = await supabase
+        .from("ben_master_monthly")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .eq("month", currentMonth)
+        .maybeSingle();
 
       if (error) {
         setMessage(error.message);
@@ -90,41 +99,32 @@ export default function ForecastPage() {
 
       const m = master as BenMasterAny | null;
 
-      const incomeSoFar = num(m?.total_income ?? m?.income);
+      const incomeSoFar = clampMoney(m?.total_income ?? m?.income);
 
       const bills =
-        num(m?.total_bills) ||
-        num(m?.monthly_bills) ||
-        num(m?.bills);
+        clampMoney(m?.total_bills) ||
+        clampMoney(m?.monthly_bills) ||
+        clampMoney(m?.bills);
 
       const debtMinimums =
-        num(m?.total_debt_minimums) ||
-        num(m?.monthly_minimums) ||
-        num(m?.debt_minimums);
+        clampMoney(m?.total_debt_minimums) ||
+        clampMoney(m?.monthly_minimums) ||
+        clampMoney(m?.debt_minimums);
 
       const historicalSpend =
-        num(m?.avg_monthly_spend) ||
-        num(m?.historical_monthly_spend) ||
-        num(m?.average_spend) ||
-        num(m?.total_spend) ||
-        0;
+        clampMoney(m?.avg_monthly_spend) ||
+        clampMoney(m?.historical_monthly_spend) ||
+        clampMoney(m?.average_spend) ||
+        clampMoney(m?.total_spend);
 
-      const monthlyNeed = bills + debtMinimums + historicalSpend;
+      const monthlyNeed = clampMoney(bills + debtMinimums + historicalSpend);
 
-      const today = new Date();
-      const daysElapsed = today.getDate();
-      const daysTotal = new Date(
-        today.getFullYear(),
-        today.getMonth() + 1,
-        0
-      ).getDate();
+      const { daysElapsed, daysTotal, daysLeft, weeksInMonth } =
+        getMonthTiming();
 
-      const daysLeft = Math.max(daysTotal - daysElapsed, 0);
-      const weeksInMonth = daysTotal / 7;
-
-      const dailyNeed = monthlyNeed / daysTotal;
-      const weeklyNeed = monthlyNeed / weeksInMonth;
-      const remainingNeed = Math.max(monthlyNeed - incomeSoFar, 0);
+      const dailyNeed = clampMoney(monthlyNeed / daysTotal);
+      const weeklyNeed = clampMoney(monthlyNeed / weeksInMonth);
+      const remainingNeed = clampMoney(Math.max(monthlyNeed - incomeSoFar, 0));
 
       const result = getForecast({
         name: null,
@@ -208,7 +208,7 @@ export default function ForecastPage() {
 
           <p className="mt-2 text-sm font-semibold text-zinc-700">
             Ben estimates how much income you need daily, weekly, and monthly
-            using bills, debt minimums, and historical spending.
+            using bills, debt minimums, and spending history.
           </p>
 
           <div className="mt-4">
@@ -249,7 +249,7 @@ export default function ForecastPage() {
           <ForecastCard
             label="Income logged so far"
             value={money(breakdown.income)}
-            helper="Income currently logged for this month. Future paychecks may still be missing."
+            helper="Income currently logged for this month."
           />
 
           <ForecastCard
@@ -271,9 +271,9 @@ export default function ForecastPage() {
           />
 
           <ForecastCard
-            label="Historical spend estimate"
+            label="Spending estimate"
             value={money(breakdown.historicalSpend)}
-            helper="Estimated normal spending based on past/current spend."
+            helper="Estimated normal spending based on available data."
           />
 
           <ForecastCard
@@ -325,8 +325,7 @@ export default function ForecastPage() {
 
           <div className="mt-4 space-y-3 text-sm font-semibold text-zinc-700">
             <p>
-              Monthly need = bills + debt minimums + historical spending
-              estimate.
+              Monthly need = bills + debt minimums + spending estimate.
             </p>
 
             <p>
@@ -335,8 +334,12 @@ export default function ForecastPage() {
             </p>
 
             <p>
-              Weekly need = monthly need divided by the approximate number of
-              weeks in the current month.
+              Weekly need = monthly need divided by the number of weeks in the
+              current month.
+            </p>
+
+            <p>
+              Remaining need = monthly need minus income logged so far.
             </p>
           </div>
         </section>
