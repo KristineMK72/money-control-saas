@@ -6,7 +6,6 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type ProfileRow = {
   id: string;
-  email?: string | null;
   full_name?: string | null;
   ben_voice?: string | null;
   dark_mode?: boolean | null;
@@ -14,6 +13,10 @@ type ProfileRow = {
   reduced_motion?: boolean | null;
   is_premium?: boolean | null;
   premium_status?: string | null;
+  xp?: number | null;
+  level?: number | null;
+  reputation?: number | null;
+  ben_avatar?: string | null;
 };
 
 export default function SettingsPage() {
@@ -27,11 +30,16 @@ export default function SettingsPage() {
 
   const [fullName, setFullName] = useState("");
   const [benVoice, setBenVoice] = useState("encouraging");
-  const [darkMode, setDarkMode] = useState(true);
+  const [benAvatar, setBenAvatar] = useState("female_classic");
+  const [darkMode, setDarkMode] = useState(false);
   const [soundEffects, setSoundEffects] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
+
   const [isPremium, setIsPremium] = useState(false);
   const [premiumStatus, setPremiumStatus] = useState("free");
+  const [xp, setXp] = useState(0);
+  const [level, setLevel] = useState(1);
+  const [reputation, setReputation] = useState(0);
 
   const [message, setMessage] = useState("");
 
@@ -59,7 +67,7 @@ export default function SettingsPage() {
     const { data, error } = await supabase
       .from("profiles")
       .select(
-        "id, email, full_name, ben_voice, dark_mode, sound_effects, reduced_motion, is_premium, premium_status"
+        "id, full_name, ben_voice, dark_mode, sound_effects, reduced_motion, is_premium, premium_status, xp, level, reputation, ben_avatar"
       )
       .eq("id", user.id)
       .single<ProfileRow>();
@@ -73,11 +81,15 @@ export default function SettingsPage() {
     if (data) {
       setFullName(data.full_name ?? "");
       setBenVoice(data.ben_voice ?? "encouraging");
-      setDarkMode(data.dark_mode ?? true);
+      setBenAvatar(data.ben_avatar ?? "female_classic");
+      setDarkMode(data.dark_mode ?? false);
       setSoundEffects(data.sound_effects ?? true);
       setReducedMotion(data.reduced_motion ?? false);
       setIsPremium(data.is_premium ?? false);
       setPremiumStatus(data.premium_status ?? "free");
+      setXp(data.xp ?? 0);
+      setLevel(data.level ?? 1);
+      setReputation(data.reputation ?? 0);
     }
 
     setLoading(false);
@@ -91,9 +103,9 @@ export default function SettingsPage() {
 
     const { error } = await supabase.from("profiles").upsert({
       id: userId,
-      email,
       full_name: fullName,
       ben_voice: benVoice,
+      ben_avatar: benAvatar,
       dark_mode: darkMode,
       sound_effects: soundEffects,
       reduced_motion: reducedMotion,
@@ -165,6 +177,14 @@ export default function SettingsPage() {
           ) : null}
         </section>
 
+        <SettingsPanel title="Governor Profile">
+          <div className="grid gap-4 md:grid-cols-3">
+            <StatCard label="Level" value={String(level)} />
+            <StatCard label="XP" value={String(xp)} />
+            <StatCard label="Reputation" value={String(reputation)} />
+          </div>
+        </SettingsPanel>
+
         <SettingsPanel title="Account">
           <label className="block">
             <span className="text-sm font-black text-white/80">Name</span>
@@ -195,9 +215,7 @@ export default function SettingsPage() {
 
         <SettingsPanel title="Ben Personality">
           <label className="block">
-            <span className="text-sm font-black text-white/80">
-              Ben Voice
-            </span>
+            <span className="text-sm font-black text-white/80">Ben Voice</span>
 
             <select
               value={benVoice}
@@ -210,21 +228,31 @@ export default function SettingsPage() {
               <option value="governor">Governor Ben</option>
             </select>
           </label>
+
+          <label className="block">
+            <span className="text-sm font-black text-white/80">Ben Avatar</span>
+
+            <select
+              value={benAvatar}
+              onChange={(e) => setBenAvatar(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-white/20 bg-white px-4 py-3 font-bold text-zinc-950 outline-none"
+            >
+              <option value="female_classic">Classic Ben</option>
+              <option value="ben_colonial">Colonial Ben</option>
+              <option value="ben_mastermind">Mastermind Ben</option>
+              <option value="ben_winning">Victory Ben</option>
+              <option value="ben_thinking">Thinking Ben</option>
+            </select>
+          </label>
         </SettingsPanel>
 
         <SettingsPanel title="Appearance & Experience">
-          <Toggle
-            label="Dark Mode"
-            checked={darkMode}
-            onChange={setDarkMode}
-          />
-
+          <Toggle label="Dark Mode" checked={darkMode} onChange={setDarkMode} />
           <Toggle
             label="Sound Effects"
             checked={soundEffects}
             onChange={setSoundEffects}
           />
-
           <Toggle
             label="Reduced Motion"
             checked={reducedMotion}
@@ -306,6 +334,17 @@ function SettingsPanel({
       <h2 className="text-2xl font-black">{title}</h2>
       <div className="mt-5 grid gap-5">{children}</div>
     </section>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-5">
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200">
+        {label}
+      </p>
+      <p className="mt-2 text-3xl font-black text-white">{value}</p>
+    </div>
   );
 }
 
