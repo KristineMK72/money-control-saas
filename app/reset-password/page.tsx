@@ -1,11 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<ResetPasswordLoading />}>
+      <ResetPasswordForm />
+    </Suspense>
+  );
+}
+
+function ResetPasswordLoading() {
+  return (
+    <main className="min-h-screen bg-transparent px-4 py-10 text-white">
+      <section className="mx-auto max-w-lg rounded-3xl border border-white/20 bg-slate-950/85 p-8 shadow-2xl backdrop-blur-xl">
+        Checking reset link...
+      </section>
+    </main>
+  );
+}
+
+function ResetPasswordForm() {
   const supabase = createSupabaseBrowserClient();
   const searchParams = useSearchParams();
 
