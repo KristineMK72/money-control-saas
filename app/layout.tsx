@@ -1,15 +1,51 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
+import { Inter, Cormorant_Garamond, IM_Fell_English } from "next/font/google";
+
+import AppInitializer from "@/components/AppInitializer";
 import BenWorldBackground from "@/components/BenWorldBackground";
+import SwipeHeader from "@/components/SwipeHeader";
+
+import MobileMenu from "@/components/MobileMenu";
+import LogoutButton from "@/components/LogoutButton";
+import UserGreeting from "@/components/UserGreeting";
+
+import BenPersona from "@/components/BenPersona";
+import GovernorHeader from "@/components/GovernorHeader";
+import GlobalBenAdvisor from "@/components/GlobalBenAdvisor";
+import InstallBanner from "@/components/InstallBanner";
+import OnboardingTour from "@/components/OnboardingTour";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-cormorant",
+});
+
+const imFell = IM_Fell_English({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-im-fell",
+});
 
 export const metadata: Metadata = {
   title: "AskBen",
   description: "Financial triage without judgment.",
 };
 
+export const viewport: Viewport = {
+  themeColor: "#050505",
+};
+
 const navLinks = [
+  { href: "/", label: "Home" },
   { href: "/world", label: "Franklin's Landing" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/income", label: "Income" },
@@ -18,10 +54,25 @@ const navLinks = [
   { href: "/debt", label: "Debt" },
   { href: "/payments", label: "Payments" },
   { href: "/forecast", label: "Forecast" },
-  { href: "/calendar", label: "Calendar" },
   { href: "/chat", label: "Ask Ben" },
-  { href: "/whyben", label: "Why AskBen" },
 ];
+
+function NavLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2 font-bold text-white backdrop-blur"
+    >
+      {children}
+    </a>
+  );
+}
 
 export default function RootLayout({
   children,
@@ -31,201 +82,97 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className="app-shell"
-        style={{
-          margin: 0,
-          minHeight: "100vh",
-          background: "#050505",
-          color: "#fff",
-        }}
+        className={`${inter.variable} ${cormorant.variable} ${imFell.variable} app-shell`}
       >
         <BenWorldBackground />
 
-        <header
-          style={{
-            position: "sticky",
-            top: 0,
-            zIndex: 1000,
-            backdropFilter: "blur(18px)",
-            background: "rgba(5,5,8,0.75)",
-            borderBottom: "1px solid rgba(255,255,255,0.12)",
-          }}
-        >
-          <div
-            style={{
-              maxWidth: 1200,
-              margin: "0 auto",
-              padding: "12px 16px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 12,
-              }}
-            >
-              <a
-                href="/"
-                style={{
-                  textDecoration: "none",
-                  color: "#fff7ed",
-                  fontSize: 32,
-                  fontWeight: 900,
-                }}
-              >
-                AskBen 🖋️
-              </a>
+        <AppInitializer>
+          <SwipeHeader>
+            <div className="mx-auto max-w-7xl px-4 py-3">
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                <a
-                  href="/login"
-                  style={{
-                    padding: "10px 16px",
-                    borderRadius: 12,
-                    textDecoration: "none",
-                    background: "rgba(255,255,255,0.08)",
-                    color: "#fff",
-                    fontWeight: 800,
-                  }}
-                >
-                  Login
-                </a>
+              <div className="flex items-center justify-between gap-3">
 
                 <a
-                  href="/signup"
-                  style={{
-                    padding: "10px 16px",
-                    borderRadius: 12,
-                    textDecoration: "none",
-                    background: "#22d3ee",
-                    color: "#000",
-                    fontWeight: 900,
-                  }}
+                  href="/"
+                  className="flex items-center gap-3 text-white no-underline"
                 >
-                  Sign Up
+                  <img
+                    src="/ben.png"
+                    alt="AskBen"
+                    className="h-14 w-14 rounded-xl object-cover border border-white/20"
+                  />
+
+                  <div>
+                    <div className="text-4xl font-black">
+                      AskBen
+                    </div>
+
+                    <div className="text-xs text-white/70">
+                      Financial triage without judgment
+                    </div>
+                  </div>
                 </a>
 
-                <a
-                  href="/settings"
-                  style={{
-                    padding: "10px 16px",
-                    borderRadius: 12,
-                    textDecoration: "none",
-                    background: "rgba(255,255,255,0.08)",
-                    color: "#fff",
-                    fontWeight: 800,
-                  }}
-                >
-                  ⚙️ Settings
-                </a>
+                <div className="flex items-center gap-2">
+
+                  <a
+                    href="/login"
+                    className="rounded-xl bg-white/10 px-5 py-3 font-bold text-white"
+                  >
+                    Login
+                  </a>
+
+                  <a
+                    href="/signup"
+                    className="rounded-xl bg-cyan-400 px-5 py-3 font-black text-black"
+                  >
+                    Sign Up
+                  </a>
+
+                  <a
+                    href="/settings"
+                    className="rounded-xl bg-white/10 px-4 py-3 text-white"
+                  >
+                    ⚙️
+                  </a>
+
+                  <MobileMenu />
+
+                  <div className="hidden sm:block">
+                    <UserGreeting />
+                  </div>
+
+                  <LogoutButton />
+                </div>
               </div>
+
+              <nav className="mt-4 hidden md:flex gap-2 overflow-x-auto">
+                {navLinks.map((link) => (
+                  <NavLink key={link.href} href={link.href}>
+                    {link.label}
+                  </NavLink>
+                ))}
+              </nav>
+
             </div>
 
-            <nav
-              style={{
-                display: "flex",
-                gap: 8,
-                overflowX: "auto",
-                paddingTop: 12,
-                paddingBottom: 6,
-              }}
-            >
-              {navLinks.map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  style={{
-                    whiteSpace: "nowrap",
-                    textDecoration: "none",
-                    color: "#fff",
-                    padding: "8px 14px",
-                    borderRadius: 999,
-                    background: "rgba(255,255,255,0.08)",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    fontWeight: 700,
-                  }}
-                >
-                  {link.label}
-                </a>
-              ))}
-            </nav>
-          </div>
-        </header>
+            <BenPersona />
+          </SwipeHeader>
 
-        <main
-          style={{
-            position: "relative",
-            zIndex: 1,
-            minHeight: "70vh",
-          }}
-        >
-          {children}
-        </main>
+          <GovernorHeader />
 
-        <a
-          href="/chat"
-          style={{
-            position: "fixed",
-            right: 20,
-            bottom: 20,
-            zIndex: 9999,
-            textDecoration: "none",
-            background: "rgba(5,5,8,0.85)",
-            color: "#fff7ed",
-            padding: "14px 18px",
-            borderRadius: 999,
-            border: "1px solid rgba(255,255,255,0.15)",
-            fontWeight: 900,
-          }}
-        >
-          Ask Ben 💰
-        </a>
+          <GlobalBenAdvisor />
 
-        <footer
-          style={{
-            marginTop: 60,
-            padding: "30px 20px",
-            textAlign: "center",
-            color: "rgba(255,255,255,0.75)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 24,
-              fontWeight: 900,
-              color: "#fef3c7",
-            }}
-          >
-            AskBen 🖋️
+          <main className="relative z-10 min-h-[70vh]">
+            {children}
+          </main>
+
+          <div className="mx-auto max-w-4xl px-4">
+            <InstallBanner />
           </div>
 
-          <p>
-            © 2026 Spatialytics • Financial triage without judgment
-          </p>
-
-          <div
-            style={{
-              marginTop: 10,
-              display: "flex",
-              justifyContent: "center",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <a href="/privacy">Privacy</a>
-            <a href="/security">Security</a>
-            <a href="/terms">Terms</a>
-            <a href="/whyben">Why AskBen</a>
-          </div>
-        </footer>
+          <OnboardingTour />
+        </AppInitializer>
       </body>
     </html>
   );
