@@ -83,6 +83,7 @@ const navLinks = [
   { href: "/dispute-letter", label: "Dispute Letter" },
   { href: "/goodwill-letter", label: "Goodwill Letter" },
   { href: "/signup", label: "Signup" },
+  { href: "/settings", label: "⚙️ Settings" },
   { href: "/login", label: "Login" },
 ];
 
