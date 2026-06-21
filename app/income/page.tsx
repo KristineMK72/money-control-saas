@@ -35,6 +35,13 @@ type IncomeEntryRow = {
   note: string | null;
 };
 
+type ScanIncomeReview = {
+  source_name: string;
+  amount: string;
+  date_iso: string;
+  note: string;
+};
+
 function todayISO() {
   const d = new Date();
   const offset = d.getTimezoneOffset();
@@ -61,6 +68,7 @@ export default function IncomePage() {
 
   const [sources, setSources] = useState<IncomeSourceRow[]>([]);
   const [entries, setEntries] = useState<IncomeEntryRow[]>([]);
+  const [scanReview, setScanReview] = useState<ScanIncomeReview[]>([]);
 
   const [dateISO, setDateISO] = useState(todayISO());
   const [sourceName, setSourceName] = useState("");
@@ -118,50 +126,6 @@ export default function IncomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
-  async function scanIncomeImage(file: File | null) {
-    if (!file) return;
-
-    setScanning(true);
-    setMessage("Scanning income image...");
-
-    try {
-      const ocrResult = await ocrImageFile(file);
-      const parsed = parseTransactionsScreenshot(ocrResult.text);
-      const first = parsed?.[0];
-
-      if (!first) {
-        setMessage(
-          "Scanner could not find an income amount. You can still enter it manually."
-        );
-        setScanning(false);
-        return;
-      }
-
-      const merchant = String(first.merchant || "").trim();
-      const parsedAmount = clampMoney(first.amount);
-
-      if (merchant) setSourceName(merchant);
-
-      if (parsedAmount > 0) {
-        setAmount(String(parsedAmount));
-      }
-
-      if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
-        setDateISO(first.dateText);
-      }
-
-      setImageFile(null);
-      setMessage("Scanner filled what it could. Check it, then tap Add Income.");
-    } catch (error) {
-      console.error("Income scanner error:", error);
-      setMessage(
-        "Scanner had trouble reading that image. Try another photo or enter it manually."
-      );
-    }
-
-    setScanning(false);
-  }
-
   async function ensureSourceExists(uid: string, name: string) {
     const clean = name.trim();
     if (!clean) return;
@@ -178,6 +142,90 @@ export default function IncomePage() {
     });
 
     if (error) throw new Error(error.message);
+  }
+
+  async function scanIncomeImage(file: File | null) {
+    if (!file) return;
+
+    setScanning(true);
+    setMessage("Scanning income image...");
+    setScanReview([]);
+
+    try {
+      const ocrResult = await ocrImageFile(file);
+      const parsed = parseTransactionsScreenshot(ocrResult.text);
+
+      const incomeRows = parsed
+        .filter((row) => clampMoney(row.amount) > 0)
+        .map((row) => ({
+          source_name: String(row.merchant || "Scanned Income").trim(),
+          amount: String(clampMoney(row.amount)),
+          date_iso:
+            row.dateText && /^\d{4}-\d{2}-\d{2}$/.test(row.dateText)
+              ? row.dateText
+              : todayISO(),
+          note: `Scanned from ${file.name}`,
+        }));
+
+      if (incomeRows.length === 0) {
+        setMessage(
+          "Scanner could not find income rows. You can still enter manually."
+        );
+        setScanning(false);
+        return;
+      }
+
+      setScanReview(incomeRows);
+      setImageFile(null);
+      setMessage(
+        `Ben found ${incomeRows.length} possible income deposits. Review before saving.`
+      );
+    } catch (error) {
+      console.error("Income scanner error:", error);
+      setMessage(
+        "Scanner had trouble reading that image. Try another photo or enter it manually."
+      );
+    }
+
+    setScanning(false);
+  }
+
+  async function saveScannedIncomeRows() {
+    if (!userId || scanReview.length === 0) return;
+
+    setSaving(true);
+    setMessage("");
+
+    try {
+      for (const row of scanReview) {
+        const source = row.source_name.trim() || "Scanned Income";
+        const amt = clampMoney(row.amount);
+
+        if (amt <= 0) continue;
+
+        await ensureSourceExists(userId, source);
+
+        const { error } = await supabase.from("income_entries").insert({
+          user_id: userId,
+          source_name: source,
+          amount: amt,
+          date_iso: row.date_iso || todayISO(),
+          note: row.note || null,
+        });
+
+        if (error) throw new Error(error.message);
+      }
+
+      setScanReview([]);
+      await loadData(userId);
+      setMessage("Scanned income saved. The Treasury grows!");
+    } catch (err) {
+      setMessage(
+        err instanceof Error ? err.message : "Failed to save scanned income."
+      );
+    }
+
+    setSaving(false);
   }
 
   async function handleAddIncome() {
@@ -286,6 +334,10 @@ export default function IncomePage() {
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0] || null;
   }, [monthlyEntries]);
 
+  const scannedTotal = useMemo(() => {
+    return scanReview.reduce((sum, row) => sum + clampMoney(row.amount), 0);
+  }, [scanReview]);
+
   const benInsight = BenEngine.getForecastMessage({
     name: null,
     timeframeLabel: "Income",
@@ -381,7 +433,9 @@ export default function IncomePage() {
       <ScrollRevealCard
         title="Scan Income"
         subtitle={
-          scanning ? "Ben is reading the parchment..." : "Use camera, photo, or screenshot"
+          scanning
+            ? "Ben is reading the parchment..."
+            : "Use camera, photo, or screenshot"
         }
         image="/ben-mastermind.png"
       >
@@ -393,6 +447,88 @@ export default function IncomePage() {
           onFileChange={setImageFile}
           onScan={() => void scanIncomeImage(imageFile)}
         />
+
+        {scanReview.length > 0 && (
+          <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-xl font-black">Review Scanned Income</h3>
+                <p className="mt-1 text-sm font-bold text-emerald-800">
+                  {scanReview.length} row(s) found • Total {money(scannedTotal)}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setScanReview([])}
+                disabled={saving}
+                className="rounded-xl bg-white px-4 py-2 text-sm font-black text-emerald-950"
+              >
+                Clear Scan
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              {scanReview.map((row, index) => (
+                <div
+                  key={`${row.source_name}-${index}`}
+                  className="rounded-xl border border-emerald-200 bg-white p-3"
+                >
+                  <input
+                    value={row.source_name}
+                    placeholder="Source"
+                    onChange={(e) => {
+                      const next = [...scanReview];
+                      next[index] = {
+                        ...next[index],
+                        source_name: e.target.value,
+                      };
+                      setScanReview(next);
+                    }}
+                    className={inputClass}
+                  />
+
+                  <input
+                    value={row.amount}
+                    placeholder="Amount"
+                    inputMode="decimal"
+                    onChange={(e) => {
+                      const next = [...scanReview];
+                      next[index] = {
+                        ...next[index],
+                        amount: e.target.value,
+                      };
+                      setScanReview(next);
+                    }}
+                    className={`${inputClass} mt-2`}
+                  />
+
+                  <input
+                    type="date"
+                    value={row.date_iso}
+                    onChange={(e) => {
+                      const next = [...scanReview];
+                      next[index] = {
+                        ...next[index],
+                        date_iso: e.target.value,
+                      };
+                      setScanReview(next);
+                    }}
+                    className={`${inputClass} mt-2`}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={() => void saveScannedIncomeRows()}
+              disabled={saving}
+              className={`${moneyButtonClass} mt-4 w-full`}
+            >
+              {saving ? "Saving..." : "Save All Scanned Income"}
+            </button>
+          </div>
+        )}
       </ScrollRevealCard>
 
       <ScrollRevealCard
