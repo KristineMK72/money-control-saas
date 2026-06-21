@@ -287,28 +287,46 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 </a>
 
                 <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    flexShrink: 0,
-                  }}
-                >
-                  <HeaderIconLink
-                    href="/settings"
-                    label="⚙️"
-                    title="Settings"
-                  />
+  style={{
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 0,
+  }}
+>
+  <HeaderIconLink
+    href="/settings"
+    label="⚙️"
+    title="Settings"
+  />
 
-                  <MobileMenu />
+  <MobileMenu />
 
-                  <div className="hidden sm:block">
-                    <UserGreeting />
-                  </div>
+  <div className="hidden sm:block">
+    <UserGreeting />
+  </div>
 
-                  <LogoutButton />
-                </div>
-              </div>
+  <a
+    href="/login"
+    style={{
+      padding: "12px 18px",
+      borderRadius: 18,
+      textDecoration: "none",
+      fontWeight: 900,
+      color: "#fff",
+      background: "rgba(5,5,8,0.72)",
+      border: "1px solid rgba(255,255,255,0.18)",
+      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+      backdropFilter: "blur(14px)",
+      WebkitBackdropFilter: "blur(14px)",
+      whiteSpace: "nowrap",
+    }}
+  >
+    Login
+  </a>
+
+  <LogoutButton />
+</div>
 
               <nav
                 aria-label="AskBen navigation"
