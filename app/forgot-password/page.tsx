@@ -26,7 +26,7 @@ export default function ForgotPasswordPage() {
     }
 
     const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: "https://www.askben.buzz/reset-password",
     });
 
     if (error) {
@@ -54,11 +54,14 @@ export default function ForgotPasswordPage() {
         <form onSubmit={sendResetLink} className="mt-6 grid gap-4">
           <label>
             <span className="text-sm font-black text-white/80">Email</span>
+
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
+              autoComplete="email"
+              required
               className="mt-2 w-full rounded-xl border border-white/20 bg-white px-4 py-3 font-bold text-zinc-950 outline-none"
             />
           </label>
