@@ -20,6 +20,7 @@ import {
   ocrImageFile,
   parseTransactionsScreenshot,
 } from "@/lib/money/receiptOcr";
+import { clampMoney, money } from "@/lib/money/math";
 
 type IncomeSourceRow = {
   id: string;
@@ -29,21 +30,23 @@ type IncomeSourceRow = {
 type IncomeEntryRow = {
   id: string;
   source_name: string;
-  amount: number;
+  amount: number | string | null;
   date_iso: string;
   note: string | null;
 };
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 10);
 }
 
-function money(n: number) {
-  return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  });
+function currentMonthStartISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
 }
 
 export default function IncomePage() {
@@ -135,12 +138,16 @@ export default function IncomePage() {
       }
 
       const merchant = String(first.merchant || "").trim();
-      const parsedAmount = Number(first.amount || 0);
+      const parsedAmount = clampMoney(first.amount);
 
       if (merchant) setSourceName(merchant);
 
-      if (Number.isFinite(parsedAmount) && parsedAmount > 0) {
+      if (parsedAmount > 0) {
         setAmount(String(parsedAmount));
+      }
+
+      if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
+        setDateISO(first.dateText);
       }
 
       setImageFile(null);
@@ -182,9 +189,9 @@ export default function IncomePage() {
     }
 
     const cleanSource = sourceName.trim();
-    const amt = Number(amount);
+    const amt = clampMoney(amount);
 
-    if (!cleanSource || !Number.isFinite(amt) || amt <= 0) {
+    if (!cleanSource || amt <= 0) {
       setMessage("Enter a valid source and amount.");
       return;
     }
@@ -241,9 +248,19 @@ export default function IncomePage() {
     setMessage("Income deleted.");
   }
 
+  const monthStart = currentMonthStartISO();
+
+  const monthlyEntries = useMemo(() => {
+    return entries.filter((entry) => entry.date_iso >= monthStart);
+  }, [entries, monthStart]);
+
   const totalIncome = useMemo(() => {
-    return entries.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    return entries.reduce((sum, e) => sum + clampMoney(e.amount), 0);
   }, [entries]);
+
+  const monthlyIncome = useMemo(() => {
+    return monthlyEntries.reduce((sum, e) => sum + clampMoney(e.amount), 0);
+  }, [monthlyEntries]);
 
   const latestIncome = entries[0];
 
@@ -252,22 +269,34 @@ export default function IncomePage() {
 
     entries.forEach((entry) => {
       totals[entry.source_name] =
-        (totals[entry.source_name] || 0) + Number(entry.amount || 0);
+        (totals[entry.source_name] || 0) + clampMoney(entry.amount);
     });
 
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0] || null;
   }, [entries]);
 
+  const topMonthlySource = useMemo(() => {
+    const totals: Record<string, number> = {};
+
+    monthlyEntries.forEach((entry) => {
+      totals[entry.source_name] =
+        (totals[entry.source_name] || 0) + clampMoney(entry.amount);
+    });
+
+    return Object.entries(totals).sort((a, b) => b[1] - a[1])[0] || null;
+  }, [monthlyEntries]);
+
   const benInsight = BenEngine.getForecastMessage({
     name: null,
     timeframeLabel: "Income",
     totalNeeded: 0,
-    incomeSoFar: totalIncome,
+    incomeSoFar: monthlyIncome,
     incomeGap: 0,
     dailyIncomeNeeded: 0,
   });
 
-  const incomeMood = totalIncome > 0 ? "/ben-winning.png" : "/ben-thinking.png";
+  const incomeMood =
+    monthlyIncome > 0 ? "/ben-winning.png" : "/ben-thinking.png";
 
   if (loading) {
     return (
@@ -297,9 +326,15 @@ export default function IncomePage() {
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </DarkPanel>
 
-        <section className="mt-5 grid gap-4 md:grid-cols-3">
+        <section className="mt-5 grid gap-4 md:grid-cols-4">
           <MetricCard
-            label="Total income"
+            label="This month"
+            value={money(monthlyIncome)}
+            tone="emerald"
+          />
+
+          <MetricCard
+            label="All-time income"
             value={money(totalIncome)}
             tone="emerald"
           />
@@ -314,10 +349,24 @@ export default function IncomePage() {
           />
         </section>
 
-        {topSource && (
+        {topMonthlySource && (
           <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
-              Top Source
+              Top Source This Month
+            </p>
+            <p className="mt-1 text-2xl font-black text-emerald-950">
+              {topMonthlySource[0]}
+            </p>
+            <p className="text-sm font-bold text-emerald-800">
+              {money(topMonthlySource[1])} recorded
+            </p>
+          </div>
+        )}
+
+        {!topMonthlySource && topSource && (
+          <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+              Top Source All-Time
             </p>
             <p className="mt-1 text-2xl font-black text-emerald-950">
               {topSource[0]}
@@ -331,7 +380,9 @@ export default function IncomePage() {
 
       <ScrollRevealCard
         title="Scan Income"
-        subtitle={scanning ? "Ben is reading the parchment..." : "Use camera, photo, or screenshot"}
+        subtitle={
+          scanning ? "Ben is reading the parchment..." : "Use camera, photo, or screenshot"
+        }
         image="/ben-mastermind.png"
       >
         <PaperScrollScanner
@@ -402,7 +453,7 @@ export default function IncomePage() {
         title="Income Entries"
         subtitle={
           latestIncome
-            ? `${latestIncome.source_name} - ${money(Number(latestIncome.amount || 0))}`
+            ? `${latestIncome.source_name} - ${money(latestIncome.amount)}`
             : "No income yet"
         }
         image="/ben-recovery.png"
@@ -430,7 +481,7 @@ export default function IncomePage() {
 
                 <div className="flex items-center gap-3">
                   <div className="text-lg font-black text-emerald-800">
-                    {money(Number(e.amount || 0))}
+                    {money(e.amount)}
                   </div>
 
                   <button
