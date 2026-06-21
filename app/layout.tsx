@@ -194,6 +194,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   gap: 12,
                 }}
               >
+                {/* Logo + Title */}
                 <a
                   href="/dashboard"
                   style={{
@@ -286,48 +287,51 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   </div>
                 </a>
 
+                {/* Right side controls */}
                 <div
-  style={{
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexShrink: 0,
-  }}
->
-  <HeaderIconLink
-    href="/settings"
-    label="⚙️"
-    title="Settings"
-  />
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    flexShrink: 0,
+                  }}
+                >
+                  <HeaderIconLink
+                    href="/settings"
+                    label="⚙️"
+                    title="Settings"
+                  />
 
-  <MobileMenu />
+                  <MobileMenu />
 
-  <div className="hidden sm:block">
-    <UserGreeting />
-  </div>
+                  <div className="hidden sm:block">
+                    <UserGreeting />
+                  </div>
 
-  <a
-    href="/login"
-    style={{
-      padding: "12px 18px",
-      borderRadius: 18,
-      textDecoration: "none",
-      fontWeight: 900,
-      color: "#fff",
-      background: "rgba(5,5,8,0.72)",
-      border: "1px solid rgba(255,255,255,0.18)",
-      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-      backdropFilter: "blur(14px)",
-      WebkitBackdropFilter: "blur(14px)",
-      whiteSpace: "nowrap",
-    }}
-  >
-    Login
-  </a>
+                  <a
+                    href="/login"
+                    style={{
+                      padding: "12px 18px",
+                      borderRadius: 18,
+                      textDecoration: "none",
+                      fontWeight: 900,
+                      color: "#fff",
+                      background: "rgba(5,5,8,0.72)",
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                      backdropFilter: "blur(14px)",
+                      WebkitBackdropFilter: "blur(14px)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Login
+                  </a>
 
-  <LogoutButton />
-</div>
+                  <LogoutButton />
+                </div>
+              </div>
 
+              {/* Navigation */}
               <nav
                 aria-label="AskBen navigation"
                 className="hidden md:flex"
@@ -364,6 +368,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <InstallBanner />
           </div>
 
+          {/* Floating Ask Ben button */}
           <a
             href="/chat"
             aria-label="Ask Ben"
@@ -414,6 +419,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 "0 22px 70px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
             }}
           >
+            {/* Footer content remains the same */}
             <img
               src="/ben-head.png"
               alt="AskBen"
@@ -530,7 +536,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                       {label}
                     </a>
                   );
-                },
+                }
               )}
             </div>
           </footer>
