@@ -1,6 +1,5 @@
 import Image from "next/image";
 import StripeCheckoutButton from "@/components/StripeCheckoutButton";
-import SubscriptionOptions from "@/components/SubscriptionOptions";
 
 export default function HomePage() {
   return (
@@ -63,8 +62,6 @@ export default function HomePage() {
             <p className="mt-4 text-sm font-semibold text-white/75">
               Start free. Upgrade later when you want smarter planning tools.
             </p>
-
-            <SubscriptionOptions compact className="mt-6" />
           </div>
 
           <div className="flex justify-center lg:justify-end">
