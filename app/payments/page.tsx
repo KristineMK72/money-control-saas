@@ -37,15 +37,14 @@ type PaymentRow = {
 type DebtRow = {
   id: string;
   name: string;
-  remaining_balance?: number | string | null;
-  balance?: number | string | null;
+  balance: number | string | null;
 };
 
 type BillRow = {
   id: string;
   name: string;
   target: number | string | null;
-  monthly_target?: number | string | null;
+  monthly_target: number | string | null;
 };
 
 function todayISO() {
@@ -53,10 +52,6 @@ function todayISO() {
   const offset = d.getTimezoneOffset();
   const local = new Date(d.getTime() - offset * 60 * 1000);
   return local.toISOString().slice(0, 10);
-}
-
-function paymentDate(payment: PaymentRow) {
-  return new Date(`${payment.date_iso || payment.created_at}T00:00:00`);
 }
 
 function monthStartISO() {
@@ -73,6 +68,7 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [bills, setBills] = useState<BillRow[]>([]);
@@ -106,8 +102,8 @@ export default function PaymentsPage() {
 
   async function loadDebts(uid: string) {
     const { data, error } = await supabase
-      .from("debt_status")
-      .select("id, name, remaining_balance, balance")
+      .from("debts")
+      .select("id, name, balance")
       .eq("user_id", uid)
       .order("name");
 
@@ -162,7 +158,6 @@ export default function PaymentsPage() {
     }
 
     void init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
   async function handleScanPayment() {
@@ -228,8 +223,8 @@ export default function PaymentsPage() {
     const { error } = await supabase.from("payments").insert({
       user_id: userId,
       date_iso: dateISO,
-      amount: amt,
       merchant: merchant.trim(),
+      amount: amt,
       note: note.trim() || null,
       debt_id: payType === "debt" ? debtId : null,
       bill_id: payType === "bill" ? billId : null,
@@ -273,7 +268,9 @@ export default function PaymentsPage() {
   }, [monthlyPayments]);
 
   const allTimeTotal = useMemo(() => {
-    return payments.reduce((sum, payment) => sum + clampMoney(payment.amount), 0);
+    return payments.reduce((sum, payment) => {
+      return sum + clampMoney(payment.amount);
+    }, 0);
   }, [payments]);
 
   const latestPayment = payments[0];
@@ -434,11 +431,9 @@ export default function PaymentsPage() {
               {debts.map((debt) => (
                 <option key={debt.id} value={debt.id}>
                   {debt.name}
-                  {debt.remaining_balance != null
-                    ? ` - ${money(debt.remaining_balance)} left`
-                    : debt.balance != null
-                      ? ` - ${money(debt.balance)} balance`
-                      : ""}
+                  {debt.balance != null
+                    ? ` - ${money(debt.balance)} balance`
+                    : ""}
                 </option>
               ))}
             </select>
@@ -452,7 +447,7 @@ export default function PaymentsPage() {
 
               {bills.map((bill) => (
                 <option key={bill.id} value={bill.id}>
-                  {bill.name} - {money(bill.monthly_target ?? bill.target)}
+                  {bill.name} - {money(bill.monthly_target ?? bill.target ?? 0)}
                 </option>
               ))}
             </select>
