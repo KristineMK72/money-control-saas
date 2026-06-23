@@ -17,6 +17,7 @@ import ScrollRevealCard from "@/components/ScrollRevealCard";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/money/utils";
+import { money } from "@/lib/money/math";
 import type { SpendCategory } from "@/lib/money/types";
 import {
   guessCategoryFromMerchant,
@@ -69,14 +70,6 @@ const categoryLabel: Record<SpendCategory, string> = {
 
 const basePaymentMethods = ["Debit", "Cash", "Checking", "Savings"];
 
-function money(n: number) {
-  return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  });
-}
-
 export default function SpendPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
@@ -113,7 +106,7 @@ export default function SpendPage() {
       return;
     }
 
-    setEntries((data || []) as SpendRow[]);
+    setEntries(data || []);
   }
 
   async function reloadPaymentMethods(uid = userId) {
@@ -131,7 +124,7 @@ export default function SpendPage() {
       return;
     }
 
-    setCreditCards((data || []) as DebtOption[]);
+    setCreditCards(data || []);
   }
 
   useEffect(() => {
@@ -375,17 +368,17 @@ export default function SpendPage() {
         </DarkPanel>
 
         <section className="mt-5 grid gap-4 md:grid-cols-3">
-          <MetricCard label="Total spend" value={money(totalSpend)} tone="amber" />
+          <MetricCard label="Total Spend" value={money(totalSpend)} tone="amber" />
 
           <MetricCard
-            label="Top category"
+            label="Top Category"
             value={topCategory ? topCategory[0] : "None yet"}
             helper={topCategory ? money(topCategory[1]) : "No spend logged"}
             tone="sky"
           />
 
           <MetricCard
-            label="Top payment"
+            label="Top Payment Method"
             value={topPaymentMethod ? topPaymentMethod[0] : "None yet"}
             helper={
               topPaymentMethod ? money(topPaymentMethod[1]) : "No method logged"
