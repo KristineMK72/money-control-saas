@@ -21,45 +21,10 @@ import {
   parseTransactionsScreenshot,
 } from "@/lib/money/receiptOcr";
 import { clampMoney, money } from "@/lib/money/math";
+import { todayISO } from "@/lib/money/utils";
+import { currentMonthStartISO } from "@/lib/money/dates";
 
-type PaymentRow = {
-  id: string;
-  user_id: string;
-  date_iso: string;
-  merchant: string | null;
-  amount: number | string | null;
-  note: string | null;
-  created_at: string;
-  debt_id: string | null;
-  bill_id: string | null;
-};
-
-type DebtRow = {
-  id: string;
-  name: string;
-  balance: number | string | null;
-};
-
-type BillRow = {
-  id: string;
-  name: string;
-  target: number | string | null;
-  monthly_target: number | string | null;
-};
-
-function todayISO() {
-  const d = new Date();
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 10);
-}
-
-function monthStartISO() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}-01`;
-}
+import type { Payment, Debt, Bill } from "@/lib/money/types";
 
 export default function PaymentsPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -69,9 +34,9 @@ export default function PaymentsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [debts, setDebts] = useState<DebtRow[]>([]);
-  const [bills, setBills] = useState<BillRow[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [bills, setBills] = useState<Bill[]>([]);
 
   const [dateISO, setDateISO] = useState(todayISO());
   const [merchant, setMerchant] = useState("");
@@ -97,7 +62,7 @@ export default function PaymentsPage() {
       return;
     }
 
-    setPayments((data || []) as PaymentRow[]);
+    setPayments(data || []);
   }
 
   async function loadDebts(uid: string) {
@@ -112,7 +77,7 @@ export default function PaymentsPage() {
       return;
     }
 
-    setDebts((data || []) as DebtRow[]);
+    setDebts(data || []);
   }
 
   async function loadBills(uid: string) {
@@ -127,7 +92,7 @@ export default function PaymentsPage() {
       return;
     }
 
-    setBills((data || []) as BillRow[]);
+    setBills(data || []);
   }
 
   async function reloadAll(uid: string) {
@@ -251,7 +216,7 @@ export default function PaymentsPage() {
     setSaving(false);
   }
 
-  const currentMonthStart = monthStartISO();
+  const currentMonthStart = currentMonthStartISO();
 
   const monthlyPayments = useMemo(() => {
     return payments.filter((payment) => {
@@ -344,7 +309,7 @@ export default function PaymentsPage() {
           />
 
           <MetricCard
-            label="All-time paid"
+            label="All-time Total"
             value={money(allTimeTotal)}
             helper="Cumulative payment total"
             tone="emerald"
