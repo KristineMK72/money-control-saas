@@ -24,7 +24,31 @@ import { clampMoney, money } from "@/lib/money/math";
 import { todayISO } from "@/lib/money/utils";
 import { currentMonthStartISO } from "@/lib/money/dates";
 
-import type { Payment, Debt, Bill } from "@/lib/money/types";
+// Local types (safe - matches your database schema)
+type PaymentRow = {
+  id: string;
+  user_id: string;
+  date_iso: string;
+  merchant: string | null;
+  amount: number | string | null;
+  note: string | null;
+  created_at: string;
+  debt_id: string | null;
+  bill_id: string | null;
+};
+
+type DebtRow = {
+  id: string;
+  name: string;
+  balance: number | string | null;
+};
+
+type BillRow = {
+  id: string;
+  name: string;
+  target: number | string | null;
+  monthly_target: number | string | null;
+};
 
 export default function PaymentsPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -34,9 +58,9 @@ export default function PaymentsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [debts, setDebts] = useState<Debt[]>([]);
-  const [bills, setBills] = useState<Bill[]>([]);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [debts, setDebts] = useState<DebtRow[]>([]);
+  const [bills, setBills] = useState<BillRow[]>([]);
 
   const [dateISO, setDateISO] = useState(todayISO());
   const [merchant, setMerchant] = useState("");
