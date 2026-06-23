@@ -1,535 +1,619 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  AppShell,
-  DarkPanel,
-  MetricCard,
-  Notice,
-  PageHeader,
-  Panel,
-  inputClass,
-  moneyButtonClass,
-} from "@/components/AppFrame";
-import BenBubble from "@/components/BenBubble";
-import PaperScrollScanner from "@/components/PaperScrollScanner";
-import ScrollRevealCard from "@/components/ScrollRevealCard";
-import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import {
-  ocrImageFile,
-  parseTransactionsScreenshot,
-} from "@/lib/money/receiptOcr";
-import { clampMoney, money } from "@/lib/money/math";
-import {
-  currentMonthStartISO,
-  daysUntil,
-  nextDateFromDueDay,
-} from "@/lib/money/dates";
+import { BenEngine } from "@/lib/ben/engine";
+import BenBubble from "@/components/BenBubble";
+import { clampMoney, money, addMoney } from "@/lib/money/math";
+import { currentMonthStartISO, daysUntil } from "@/lib/money/dates";
 import {
   prioritizeMoneyItems,
   type PriorityInput,
+  type PriorityResult,
 } from "@/lib/money/priorityV2";
+import { playCoins, playError, playCashRegister, playWrite } from "@/lib/sounds";
+
+/* ─── Types ─── */
 
 type BillRow = {
-  id: string;
-  user_id: string;
-  name: string;
-  target: number | string | null;
-  category: string | null;
-  due_date: string | null;
-  due?: string | null;
-  due_day: number | string | null;
-  is_monthly: boolean | null;
-  monthly_target: number | string | null;
-  focus?: boolean | null;
-  kind?: string | null;
+  id: string; user_id: string; name: string;
+  target: number | string | null; category: string | null;
+  due_date: string | null; due: string | null;
+  due_day: number | string | null; is_monthly: boolean | null;
+  monthly_target: number | string | null; focus: boolean | null;
+  kind: string | null; created_at: string;
+};
+
+type DebtRow = {
+  id: string; user_id: string; name: string; kind: "credit" | "loan";
+  balance: number | string | null; min_payment: number | string | null;
+  monthly_min_payment: number | string | null; due_date: string | null;
+  apr: number | string | null; credit_limit: number | string | null;
+  note: string | null; is_monthly: boolean | null; due_day: number | null;
   created_at: string;
 };
 
 type PaymentRow = {
-  id: string;
-  amount: number | string | null;
-  bill_id: string | null;
-  date_iso: string;
+  id: string; amount: number | string | null;
+  bill_id: string | null; date_iso: string;
 };
 
-function billAmount(bill: BillRow) {
-  return clampMoney(bill.monthly_target ?? bill.target);
+/* ─── Helpers ─── */
+
+function billAmount(b: BillRow) {
+  return clampMoney(b.monthly_target ?? b.target);
 }
 
-function resolvedBillDueDate(bill: BillRow) {
-  return bill.due_date ?? bill.due ?? nextDateFromDueDay(bill.due_day);
+function debtMin(d: DebtRow) {
+  return clampMoney(d.monthly_min_payment ?? d.min_payment ?? 0);
 }
 
-function monthKey(date: string | null) {
-  if (!date) return "Unscheduled";
-
-  return new Date(`${date}T00:00:00`).toLocaleString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
-}
-
-function dueLabel(date: string | null) {
+function dueChip(date: string | null): { label: string; color: string } {
   const days = daysUntil(date);
-
-  if (days === null) return "No due date";
-  if (days < 0) return `Overdue by ${Math.abs(days)} day(s)`;
-  if (days === 0) return "Due today";
-  if (days === 1) return "Due tomorrow";
-  if (days <= 7) return `Due in ${days} days`;
-
-  return `Due in ${days} days`;
+  if (days === null) return { label: "No due date", color: "#9a7d5a" };
+  if (days < 0)      return { label: `Overdue ${Math.abs(days)}d`, color: "#f87171" };
+  if (days === 0)    return { label: "Due today", color: "#fb923c" };
+  if (days === 1)    return { label: "Due tomorrow", color: "#fbbf24" };
+  if (days <= 7)     return { label: `${days}d left`, color: "#facc15" };
+  return              { label: `${days}d`, color: "#9a7d5a" };
 }
+
+/* ─── Sub-components ─── */
+
+function ColonialCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-xl p-4 ${className}`}
+         style={{ background: "rgba(15,8,4,0.88)", border: "1px solid rgba(107,68,35,0.5)", backdropFilter: "blur(4px)" }}>
+      {children}
+    </div>
+  );
+}
+
+function GoldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[11px] uppercase tracking-widest font-cinzel font-semibold mb-1"
+       style={{ color: "#9a7d5a" }}>{children}</p>
+  );
+}
+
+function ParchmentInput({ type = "text", value, onChange, placeholder, step }: {
+  type?: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; step?: string;
+}) {
+  return (
+    <input type={type} step={step} value={value} placeholder={placeholder}
+           onChange={e => onChange(e.target.value)}
+           className="w-full rounded-md px-3 py-2 focus:outline-none"
+           style={{ background: "#f5e6c8", color: "#2d1810", border: "1px solid #c9a84c",
+                    fontFamily: "EB Garamond, serif", fontSize: "15px" }} />
+  );
+}
+
+function ParchmentSelect({ value, onChange, options }: {
+  value: string; onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)}
+            className="w-full rounded-md px-3 py-2 focus:outline-none appearance-none cursor-pointer"
+            style={{ background: "#f5e6c8", color: "#2d1810", border: "1px solid #c9a84c",
+                     fontFamily: "EB Garamond, serif", fontSize: "15px" }}>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
+function MetricTile({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg p-3"
+         style={{ background: "rgba(107,68,35,0.15)", border: "1px solid rgba(107,68,35,0.3)" }}>
+      <span className="text-2xl shrink-0">{icon}</span>
+      <div>
+        <p className="text-[10px] uppercase tracking-wider font-cinzel" style={{ color: "#9a7d5a" }}>{label}</p>
+        <p className="text-base font-bold" style={{ color: "#c9a84c" }}>{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function ObligationItem({ result, onPay, onDelete }: {
+  result: PriorityResult;
+  onPay?: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const { item, score, resolvedDueDate, amount, reasons } = result;
+  const chip = dueChip(resolvedDueDate);
+  const isBill = item.type === "bill";
+  const isPaid = item.is_paid_this_month;
+
+  const urgencyColor = score > 900 ? "#f87171" : score > 500 ? "#fb923c" : score > 200 ? "#fbbf24" : "#9a7d5a";
+  const urgencyIcon = score > 900 ? "🔥" : score > 500 ? "⚠️" : score > 200 ? "📌" : isBill ? "📋" : "💳";
+
+  return (
+    <div className="flex items-start gap-3 rounded-xl p-3"
+         style={{
+           background: isPaid ? "rgba(45,90,39,0.12)" : "rgba(15,8,4,0.75)",
+           border: isPaid
+             ? "1px solid rgba(74,220,128,0.3)"
+             : score > 500
+             ? `1px solid ${urgencyColor}40`
+             : "1px solid rgba(107,68,35,0.4)",
+         }}>
+      {/* Priority icon */}
+      <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-base"
+           style={{ background: `${urgencyColor}18`, border: `1px solid ${urgencyColor}40` }}>
+        {urgencyIcon}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                style={{
+                  background: isBill ? "rgba(45,90,39,0.3)" : "rgba(107,68,35,0.3)",
+                  color: isBill ? "#4ade80" : "#c9a84c",
+                  border: isBill ? "1px solid rgba(74,220,128,0.3)" : "1px solid rgba(201,168,76,0.3)",
+                }}>
+            {isBill ? "BILL" : "DEBT"}
+          </span>
+          <p className="font-semibold text-sm truncate" style={{ color: "#e8d5b7" }}>{item.name}</p>
+          {isPaid && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full"
+                  style={{ background: "rgba(74,220,128,0.15)", color: "#4ade80", border: "1px solid rgba(74,220,128,0.3)" }}>
+              ✓ Paid
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1 mt-1">
+          {reasons.slice(0, 2).map(r => (
+            <span key={r} className="text-[10px] px-1.5 py-0.5 rounded"
+                  style={{ background: "rgba(107,68,35,0.2)", color: "#9a7d5a" }}>{r}</span>
+          ))}
+          {resolvedDueDate && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded"
+                  style={{ background: "rgba(107,68,35,0.2)", color: chip.color }}>{chip.label}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Amount + actions */}
+      <div className="text-right shrink-0">
+        <p className="text-sm font-bold mb-1" style={{ color: "#c9a84c" }}>{money(amount)}</p>
+        <div className="flex gap-1 justify-end">
+          {isBill && onPay && !isPaid && (
+            <button onClick={() => onPay(item.id)}
+                    className="text-[10px] px-2 py-1 rounded-lg font-bold"
+                    style={{ background: "rgba(45,90,39,0.3)", color: "#4ade80",
+                             border: "1px solid rgba(74,220,128,0.3)" }}>
+              Mark Paid
+            </button>
+          )}
+          <button onClick={() => onDelete(item.id)}
+                  className="text-[10px] px-2 py-1 rounded-lg"
+                  style={{ background: "rgba(248,113,113,0.1)", color: "#f87171",
+                           border: "1px solid rgba(248,113,113,0.2)" }}>
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main Page ─── */
+
+const BILL_CATS = ["household","utilities","transportation","insurance","subscriptions","medical","other"];
 
 export default function BillsPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const [supabase] = useState(() => createSupabaseBrowserClient());
 
-  const [bills, setBills] = useState<BillRow[]>([]);
+  const [bills,    setBills]    = useState<BillRow[]>([]);
+  const [debts,    setDebts]    = useState<DebtRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [userId,   setUserId]   = useState<string | null>(null);
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [message,  setMessage]  = useState("");
+  const [msgType,  setMsgType]  = useState<"ok" | "err">("ok");
+  const [addTab,   setAddTab]   = useState<"bill" | "debt">("bill");
 
-  const [name, setName] = useState("");
-  const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("household");
-  const [dueDate, setDueDate] = useState("");
-  const [monthly, setMonthly] = useState(true);
+  // Bill form
+  const [bName, setBName] = useState("");
+  const [bAmt,  setBAmt]  = useState("");
+  const [bCat,  setBCat]  = useState("household");
+  const [bDue,  setBDue]  = useState("");
+  const [bMo,   setBMo]   = useState(true);
 
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
-    {}
-  );
+  // Debt form
+  const [dName,  setDName]  = useState("");
+  const [dBal,   setDBal]   = useState("");
+  const [dMin,   setDMin]   = useState("");
+  const [dApr,   setDApr]   = useState("");
+  const [dKind,  setDKind]  = useState<"credit" | "loan">("credit");
+  const [dDue,   setDDue]   = useState("");
+  const [dLimit, setDLimit] = useState("");
+
+  useEffect(() => { void init(); }, []);
+
+  async function init() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return; }
+    setUserId(user.id);
+    await Promise.all([loadBills(user.id), loadDebts(user.id), loadPayments(user.id)]);
+    setLoading(false);
+  }
 
   async function loadBills(uid: string) {
-    const { data, error } = await supabase
-      .from("bills")
-      .select("*")
-      .eq("user_id", uid)
+    const { data } = await supabase.from("bills").select("*").eq("user_id", uid)
       .order("due_date", { ascending: true, nullsFirst: false });
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
     setBills((data || []) as BillRow[]);
   }
 
+  async function loadDebts(uid: string) {
+    const { data } = await supabase.from("debts").select("*").eq("user_id", uid)
+      .order("created_at", { ascending: false });
+    setDebts((data || []) as DebtRow[]);
+  }
+
   async function loadPayments(uid: string) {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("id, amount, bill_id, date_iso")
-      .eq("user_id", uid);
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
+    const { data } = await supabase.from("payments")
+      .select("id, amount, bill_id, date_iso").eq("user_id", uid);
     setPayments((data || []) as PaymentRow[]);
   }
 
-  useEffect(() => {
-    async function init() {
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser();
-
-      if (error) {
-        setMessage(error.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!user) {
-        setMessage("Sign in so Ben can stop staring at an empty bill stack.");
-        setLoading(false);
-        return;
-      }
-
-      setUserId(user.id);
-      await Promise.all([loadBills(user.id), loadPayments(user.id)]);
-      setLoading(false);
-    }
-
-    void init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase]);
-
-  async function scanBillImage(file: File | null) {
-    if (!file) return;
-
-    setScanning(true);
-    setMessage("Ben is scanning for a bill name and amount.");
-
-    try {
-      const { text } = await ocrImageFile(file);
-      const parsed = parseTransactionsScreenshot(text);
-      const first = parsed[0];
-
-      if (!first) {
-        setMessage("No clear bill found. Enter it manually and keep moving.");
-        setScanning(false);
-        return;
-      }
-
-      setName(first.merchant || "");
-      if (first.amount) setAmount(String(first.amount));
-
-      if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
-        setDueDate(first.dateText);
-      }
-
-      setMessage("Scanner filled what it could. Give it the human eye.");
-    } catch (error) {
-      console.error("Bill scanner error:", error);
-      setMessage("Scanner had trouble with that image. Manual entry still works.");
-    }
-
-    setScanning(false);
+  function showMsg(text: string, type: "ok" | "err" = "ok") {
+    setMessage(text); setMsgType(type);
+    setTimeout(() => setMessage(""), 4000);
   }
 
   async function addBill() {
-    setMessage("");
-
     if (!userId) return;
-
-    const target = clampMoney(amount);
-
-    if (!name.trim() || target <= 0) {
-      setMessage("Add a bill name and a valid amount.");
-      return;
-    }
-
+    const target = clampMoney(bAmt);
+    if (!bName.trim() || target <= 0) { playError(); showMsg("Enter a name and valid amount.", "err"); return; }
     setSaving(true);
-
-    const dueDay = dueDate
-      ? new Date(`${dueDate}T00:00:00`).getDate()
-      : null;
-
+    const dueDay = bDue ? new Date(`${bDue}T00:00:00`).getDate() : null;
     const { error } = await supabase.from("bills").insert({
-      user_id: userId,
-      name: name.trim(),
-      target,
-      monthly_target: monthly ? target : null,
-      category: category.trim() || null,
-      due_date: dueDate || null,
-      due_day: dueDay,
-      is_monthly: monthly,
+      user_id: userId, name: bName.trim(), target, monthly_target: bMo ? target : null,
+      category: bCat || null, due_date: bDue || null, due_day: dueDay, is_monthly: bMo,
     });
-
-    if (error) {
-      setMessage(error.message);
-      setSaving(false);
-      return;
-    }
-
-    setName("");
-    setAmount("");
-    setCategory("household");
-    setDueDate("");
-    setMonthly(true);
-
-    await Promise.all([loadBills(userId), loadPayments(userId)]);
-    setMessage("Bill added. Ben has placed it on the priority board.");
     setSaving(false);
+    if (error) { playError(); showMsg(error.message, "err"); return; }
+    setBName(""); setBAmt(""); setBCat("household"); setBDue(""); setBMo(true);
+    playWrite();
+    showMsg("Bill added to the ledger.");
+    await loadBills(userId);
+  }
+
+  async function addDebt() {
+    if (!userId) return;
+    const bal = clampMoney(dBal);
+    if (!dName.trim()) { playError(); showMsg("Debt name required.", "err"); return; }
+    setSaving(true);
+    const dueDay = dDue ? new Date(`${dDue}T00:00:00`).getDate() : null;
+    const minAmt = clampMoney(dMin) || null;
+    const { error } = await supabase.from("debts").insert({
+      user_id: userId, name: dName.trim(), kind: dKind, balance: bal,
+      min_payment: minAmt, monthly_min_payment: minAmt,
+      apr: clampMoney(dApr) || null, credit_limit: clampMoney(dLimit) || null,
+      due_date: dDue || null, due_day: dueDay, is_monthly: true,
+    });
+    setSaving(false);
+    if (error) { playError(); showMsg(error.message, "err"); return; }
+    setDName(""); setDBal(""); setDMin(""); setDApr(""); setDKind("credit"); setDDue(""); setDLimit("");
+    playCoins();
+    showMsg("Debt recorded in the ledger.");
+    await loadDebts(userId);
   }
 
   async function deleteBill(id: string) {
     if (!userId) return;
-
-    const { error } = await supabase
-      .from("bills")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", userId);
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setBills((prev) => prev.filter((bill) => bill.id !== id));
-    setMessage("Bill removed.");
+    await supabase.from("bills").delete().eq("id", id).eq("user_id", userId);
+    setBills(p => p.filter(b => b.id !== id));
+    showMsg("Bill removed.");
   }
+
+  async function deleteDebt(id: string) {
+    if (!userId) return;
+    await supabase.from("debts").delete().eq("id", id).eq("user_id", userId);
+    setDebts(p => p.filter(d => d.id !== id));
+    showMsg("Debt removed.");
+  }
+
+  async function markBillPaid(billId: string) {
+    if (!userId) return;
+    const bill = bills.find(b => b.id === billId);
+    if (!bill) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const { error } = await supabase.from("payments").insert({
+      user_id: userId, bill_id: billId, amount: billAmount(bill), date_iso: today,
+    });
+    if (error) { playError(); showMsg(error.message, "err"); return; }
+    playCashRegister();
+    showMsg("Payment recorded — well done, Franklin would approve.");
+    await loadPayments(userId);
+  }
+
+  /* ── Computed ── */
 
   const currentMonthStart = currentMonthStartISO();
 
   const paidThisMonthByBill = useMemo(() => {
-    const paid: Record<string, number> = {};
-
-    payments.forEach((payment) => {
-      if (!payment.bill_id) return;
-      if (payment.date_iso < currentMonthStart) return;
-
-      paid[payment.bill_id] =
-        (paid[payment.bill_id] || 0) + clampMoney(payment.amount);
+    const map: Record<string, number> = {};
+    payments.forEach(p => {
+      if (!p.bill_id || p.date_iso < currentMonthStart) return;
+      map[p.bill_id] = (map[p.bill_id] || 0) + clampMoney(p.amount);
     });
-
-    return paid;
+    return map;
   }, [payments, currentMonthStart]);
 
-  const totalBills = bills.reduce((sum, bill) => {
-    return sum + billAmount(bill);
-  }, 0);
-
-  const totalPaid = payments.reduce((sum, payment) => {
-    return sum + clampMoney(payment.amount);
-  }, 0);
-
-  const remaining = Math.max(0, totalBills - totalPaid);
-
   const priorityItems = useMemo<PriorityInput[]>(() => {
-    return bills.map((bill) => {
-      const amountDue = billAmount(bill);
-      const paidThisMonth = paidThisMonthByBill[bill.id] || 0;
-
+    const billItems: PriorityInput[] = bills.map(b => {
+      const amtDue = billAmount(b);
+      const paid   = paidThisMonthByBill[b.id] || 0;
       return {
-        id: bill.id,
-        type: "bill" as const,
-        name: bill.name,
-        amount: Math.max(0, amountDue - paidThisMonth),
-        due_date: bill.due_date,
-        due: bill.due,
-        due_day: bill.due_day,
-        category: bill.category,
-        kind: bill.kind,
-        focus: bill.focus,
-        is_paid_this_month: paidThisMonth >= amountDue && amountDue > 0,
+        id: b.id, type: "bill", name: b.name,
+        amount: Math.max(0, amtDue - paid),
+        due_date: b.due_date, due: b.due, due_day: b.due_day,
+        category: b.category, kind: b.kind, focus: b.focus,
+        is_paid_this_month: paid >= amtDue && amtDue > 0,
       };
     });
-  }, [bills, paidThisMonthByBill]);
+    const debtItems: PriorityInput[] = debts.map(d => ({
+      id: d.id, type: "debt", name: d.name,
+      amount: debtMin(d), balance: d.balance,
+      due_date: d.due_date, due_day: d.due_day,
+      apr: d.apr, focus: null, is_paid_this_month: false,
+    }));
+    return [...billItems, ...debtItems];
+  }, [bills, debts, paidThisMonthByBill]);
 
-  const rankedBills = useMemo(() => {
-    return prioritizeMoneyItems(priorityItems);
-  }, [priorityItems]);
+  const rankedItems = useMemo(() => prioritizeMoneyItems(priorityItems), [priorityItems]);
 
-  const billsByMonth = useMemo(() => {
-    const groups: Record<string, typeof rankedBills> = {};
-
-    rankedBills.forEach((row) => {
-      const key = monthKey(row.resolvedDueDate);
-      groups[key] = [...(groups[key] || []), row];
-    });
-
-    return Object.entries(groups);
-  }, [rankedBills]);
+  const totalBillsAmt   = useMemo(() => addMoney(bills.map(b => billAmount(b))),     [bills]);
+  const totalDebtMins   = useMemo(() => addMoney(debts.map(d => debtMin(d))),        [debts]);
+  const totalDebtBal    = useMemo(() => addMoney(debts.map(d => clampMoney(d.balance))), [debts]);
+  const paidThisMonth   = useMemo(() =>
+    addMoney(payments.filter(p => p.date_iso >= currentMonthStart).map(p => clampMoney(p.amount))),
+    [payments, currentMonthStart]);
+  const remaining = Math.max(0, totalBillsAmt + totalDebtMins - paidThisMonth);
 
   const ben = BenEngine.getForecastMessage({
-    name: null,
-    timeframeLabel: "Bills",
-    totalNeeded: totalBills,
-    incomeSoFar: totalPaid,
+    name: null, timeframeLabel: "Obligations",
+    totalNeeded: totalBillsAmt + totalDebtMins,
+    incomeSoFar: paidThisMonth,
     incomeGap: remaining,
     dailyIncomeNeeded: Math.ceil(remaining / 30),
   });
 
-  const billMood =
-    remaining > totalBills * 0.75 ? "/ben-overdraft.png" : "/ben-recovery.png";
+  /* ── Render ── */
 
   if (loading) {
     return (
-      <AppShell max="max-w-5xl">
-        <Panel>Loading bills...</Panel>
-      </AppShell>
+      <div className="min-h-screen flex items-center justify-center bg-ben-postoffice bg-cover bg-center">
+        <div style={{ background: "rgba(15,8,4,0.88)", padding: "2rem 3rem",
+                      borderRadius: 12, border: "1px solid #6b4423" }}>
+          <p className="font-cinzel text-lg" style={{ color: "#c9a84c" }}>
+            Consulting the ledger…
+          </p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <AppShell max="max-w-5xl">
-      <PageHeader
-        eyebrow="AskBen Bills"
-        title="Bills"
-        subtitle="Keep the must-pay stuff visible, sorted, and less emotionally loud."
-      />
+    <div className="min-h-screen bg-ben-postoffice bg-cover bg-center bg-fixed"
+         style={{ fontFamily: "EB Garamond, serif" }}>
+      <div className="min-h-screen pb-24" style={{ background: "rgba(10,5,2,0.75)" }}>
+        <div className="mx-auto max-w-4xl px-4 py-6 space-y-5">
 
-      {message && <Notice>{message}</Notice>}
+          {/* Header */}
+          <div className="text-center pt-4 pb-2">
+            <h1 className="font-cinzel text-4xl font-bold" style={{ color: "#c9a84c" }}>
+              Ledger of Obligations
+            </h1>
+            <p className="mt-1 text-sm italic" style={{ color: "#9a7d5a" }}>
+              "Pay what you owe, and owe what you pay." — Benjamin Franklin
+            </p>
+          </div>
 
-      <ScrollRevealCard
-        title="Ben's Bill Briefing"
-        subtitle="A quick read on your obligations"
-        image={billMood}
-        defaultOpen
-      >
-        <DarkPanel>
-          <BenBubble message={ben.text} mood={ben.mood} />
-        </DarkPanel>
+          {/* Ben */}
+          <ColonialCard>
+            <BenBubble message={ben.text} mood={ben.mood} />
+          </ColonialCard>
 
-        <section className="mt-5 grid gap-4 md:grid-cols-3">
-          <MetricCard label="Total bills" value={money(totalBills)} tone="amber" />
-          <MetricCard label="Paid" value={money(totalPaid)} tone="emerald" />
-          <MetricCard label="Remaining" value={money(remaining)} tone="rose" />
-        </section>
-      </ScrollRevealCard>
+          {/* Message */}
+          {message && (
+            <div className="rounded-xl px-4 py-3 text-sm font-cinzel tracking-wide text-center"
+                 style={{
+                   background: msgType === "err" ? "rgba(248,113,113,0.08)" : "rgba(201,168,76,0.08)",
+                   border: `1px solid ${msgType === "err" ? "rgba(248,113,113,0.3)" : "rgba(201,168,76,0.3)"}`,
+                   color: msgType === "err" ? "#f87171" : "#c9a84c",
+                 }}>
+              {msgType === "ok" ? "✦ " : "⚠ "}{message}
+            </div>
+          )}
 
-      <ScrollRevealCard
-        title="Add Bill"
-        subtitle="Create a new obligation for the ledger"
-        image="/ben-thinking.png"
-      >
-        <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-          <Panel>
-            <h2 className="text-2xl font-black">Add Bill</h2>
+          {/* Metrics */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <MetricTile icon="📋" label="Monthly Bills"    value={money(totalBillsAmt)} />
+            <MetricTile icon="💳" label="Debt Minimums"    value={money(totalDebtMins)} />
+            <MetricTile icon="✅" label="Paid This Month"  value={money(paidThisMonth)} />
+            <MetricTile icon="⚖️" label="Still Remaining"  value={money(remaining)} />
+          </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Bill name"
-                className={inputClass}
-              />
+          {/* Debt balance banner */}
+          {totalDebtBal > 0 && (
+            <ColonialCard>
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="font-cinzel text-xs uppercase tracking-widest" style={{ color: "#9a7d5a" }}>
+                    Total Debt Balance
+                  </p>
+                  <p className="text-2xl font-bold" style={{ color: "#f87171" }}>{money(totalDebtBal)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-cinzel text-xs uppercase tracking-widest" style={{ color: "#9a7d5a" }}>
+                    Debts Tracked
+                  </p>
+                  <p className="text-2xl font-bold" style={{ color: "#c9a84c" }}>{debts.length}</p>
+                </div>
+              </div>
+            </ColonialCard>
+          )}
 
-              <input
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="Amount due"
-                inputMode="decimal"
-                className={inputClass}
-              />
+          {/* Priority board */}
+          <ColonialCard>
+            <h2 className="font-cinzel text-xs font-semibold uppercase tracking-widest mb-3 text-center"
+                style={{ color: "#c9a84c" }}>
+              Priority Board — {rankedItems.length} items
+            </h2>
+            {rankedItems.length === 0 ? (
+              <p className="text-center text-sm italic py-8" style={{ color: "#9a7d5a" }}>
+                A rare and suspicious calm. Add your bills and debts below.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {rankedItems.map(r => (
+                  <ObligationItem
+                    key={`${r.item.type}-${r.item.id}`}
+                    result={r}
+                    onPay={r.item.type === "bill" ? markBillPaid : undefined}
+                    onDelete={r.item.type === "bill"
+                      ? () => deleteBill(r.item.id)
+                      : () => deleteDebt(r.item.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </ColonialCard>
 
-              <input
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="Category"
-                className={inputClass}
-              />
-
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className={inputClass}
-              />
-
-              <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-black text-zinc-700 md:col-span-2">
-                <input
-                  type="checkbox"
-                  checked={monthly}
-                  onChange={(e) => setMonthly(e.target.checked)}
-                />
-                Repeat monthly
-              </label>
+          {/* Add form with tabs */}
+          <ColonialCard>
+            <div className="flex gap-2 mb-4">
+              {(["bill", "debt"] as const).map(tab => (
+                <button key={tab} onClick={() => setAddTab(tab)}
+                        className="flex-1 py-2 rounded-lg font-cinzel text-xs font-semibold uppercase tracking-widest transition"
+                        style={{
+                          background: addTab === tab ? "#c9a84c" : "rgba(107,68,35,0.2)",
+                          color: addTab === tab ? "#1a0f0a" : "#9a7d5a",
+                          border: "1px solid rgba(107,68,35,0.4)",
+                        }}>
+                  {tab === "bill" ? "📋 Add Bill" : "💳 Add Debt"}
+                </button>
+              ))}
             </div>
 
-            <button
-              onClick={addBill}
-              disabled={saving || !userId}
-              className={`${moneyButtonClass} mt-5 w-full`}
-            >
-              {saving ? "Saving..." : "Add Bill"}
-            </button>
-          </Panel>
-
-          <PaperScrollScanner
-            title="Scan Bill"
-            description="Upload a statement, utility notice, or screenshot. Ben will try to prefill the bill name, amount, and date."
-            file={imageFile}
-            busy={scanning}
-            onFileChange={setImageFile}
-            onScan={() => void scanBillImage(imageFile)}
-          />
-        </div>
-      </ScrollRevealCard>
-
-      <ScrollRevealCard
-        title="Bill Board"
-        subtitle={`${bills.length} obligations grouped by due month and ranked by priority`}
-        image="/ben-mastermind.png"
-        defaultOpen
-      >
-        <h2 className="text-2xl font-black text-zinc-950">Bill Board</h2>
-
-        <div className="mt-5 space-y-4">
-          {billsByMonth.length === 0 ? (
-            <p className="text-sm font-semibold text-zinc-600">
-              No bills yet. A rare and suspicious calm.
-            </p>
-          ) : (
-            billsByMonth.map(([group, groupBills]) => {
-              const open = expandedGroups[group] ?? true;
-
-              return (
-                <div
-                  key={group}
-                  className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4"
-                >
-                  <button
-                    onClick={() =>
-                      setExpandedGroups((prev) => ({ ...prev, [group]: !open }))
-                    }
-                    className="flex w-full items-center justify-between text-left"
-                  >
-                    <span className="font-black">{group}</span>
-                    <span className="text-sm font-black text-zinc-500">
-                      {open ? "Hide" : "Show"} {groupBills.length}
-                    </span>
-                  </button>
-
-                  {open && (
-                    <div className="mt-4 grid gap-3">
-                      {groupBills.map((row) => {
-                        const bill = bills.find((b) => b.id === row.item.id);
-                        if (!bill) return null;
-
-                        return (
-                          <div
-                            key={bill.id}
-                            className="flex flex-col gap-3 rounded-2xl border border-white bg-white p-4 md:flex-row md:items-center md:justify-between"
-                          >
-                            <div>
-                              <p className="font-black">{bill.name}</p>
-
-                              <p className="text-sm font-semibold text-zinc-600">
-                                {bill.category || "Uncategorized"} •{" "}
-                                {dueLabel(row.resolvedDueDate)}
-                              </p>
-
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {row.reasons.map((reason) => (
-                                  <span
-                                    key={reason}
-                                    className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-black text-zinc-700"
-                                  >
-                                    {reason}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                              <div className="text-right">
-                                <p className="text-lg font-black">
-                                  {money(row.amount)}
-                                </p>
-                                <p className="text-xs font-black uppercase tracking-[0.15em] text-zinc-400">
-                                  Score {row.score}
-                                </p>
-                              </div>
-
-                              <button
-                                onClick={() => void deleteBill(bill.id)}
-                                className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
+            {addTab === "bill" && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <GoldLabel>Bill Name</GoldLabel>
+                    <ParchmentInput value={bName} onChange={setBName} placeholder="e.g. Electric bill" />
+                  </div>
+                  <div>
+                    <GoldLabel>Amount ($)</GoldLabel>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold"
+                            style={{ color: "#2d1810" }}>$</span>
+                      <input type="number" step="0.01" inputMode="decimal"
+                             value={bAmt} onChange={e => setBAmt(e.target.value)} placeholder="0.00"
+                             className="w-full rounded-md pl-7 pr-3 py-2 focus:outline-none"
+                             style={{ background: "#f5e6c8", color: "#2d1810", border: "1px solid #c9a84c",
+                                      fontFamily: "EB Garamond, serif", fontSize: "15px" }} />
                     </div>
-                  )}
+                  </div>
+                  <div>
+                    <GoldLabel>Category</GoldLabel>
+                    <ParchmentSelect value={bCat} onChange={setBCat}
+                      options={BILL_CATS.map(c => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) }))} />
+                  </div>
+                  <div>
+                    <GoldLabel>Due Date</GoldLabel>
+                    <ParchmentInput type="date" value={bDue} onChange={setBDue} />
+                  </div>
                 </div>
-              );
-            })
-          )}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={bMo} onChange={e => setBMo(e.target.checked)}
+                         className="w-4 h-4 accent-amber-500" />
+                  <span className="text-sm" style={{ color: "#e8d5b7" }}>Repeats monthly</span>
+                </label>
+                <button onClick={addBill} disabled={saving || !userId}
+                        className="w-full py-2.5 rounded-lg font-cinzel text-sm font-semibold uppercase tracking-widest disabled:opacity-50"
+                        style={{ background: "#2d5a27", color: "#f5e6c8", border: "1px solid #4a8a42" }}>
+                  {saving ? "Recording…" : "+ Add Bill"}
+                </button>
+              </div>
+            )}
+
+            {addTab === "debt" && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <GoldLabel>Debt Name</GoldLabel>
+                    <ParchmentInput value={dName} onChange={setDName} placeholder="e.g. Capital One" />
+                  </div>
+                  <div>
+                    <GoldLabel>Type</GoldLabel>
+                    <ParchmentSelect value={dKind} onChange={v => setDKind(v as "credit" | "loan")}
+                      options={[{ value: "credit", label: "💳 Credit Card" }, { value: "loan", label: "📄 Loan" }]} />
+                  </div>
+                  <div>
+                    <GoldLabel>Current Balance ($)</GoldLabel>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold"
+                            style={{ color: "#2d1810" }}>$</span>
+                      <input type="number" step="0.01" inputMode="decimal"
+                             value={dBal} onChange={e => setDBal(e.target.value)} placeholder="0.00"
+                             className="w-full rounded-md pl-7 pr-3 py-2 focus:outline-none"
+                             style={{ background: "#f5e6c8", color: "#2d1810", border: "1px solid #c9a84c",
+                                      fontFamily: "EB Garamond, serif", fontSize: "15px" }} />
+                    </div>
+                  </div>
+                  <div>
+                    <GoldLabel>Min. Payment ($)</GoldLabel>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold"
+                            style={{ color: "#2d1810" }}>$</span>
+                      <input type="number" step="0.01" inputMode="decimal"
+                             value={dMin} onChange={e => setDMin(e.target.value)} placeholder="0.00"
+                             className="w-full rounded-md pl-7 pr-3 py-2 focus:outline-none"
+                             style={{ background: "#f5e6c8", color: "#2d1810", border: "1px solid #c9a84c",
+                                      fontFamily: "EB Garamond, serif", fontSize: "15px" }} />
+                    </div>
+                  </div>
+                  <div>
+                    <GoldLabel>APR (%)</GoldLabel>
+                    <ParchmentInput type="number" value={dApr} onChange={setDApr} placeholder="e.g. 24.99" />
+                  </div>
+                  <div>
+                    <GoldLabel>Credit Limit ($) — optional</GoldLabel>
+                    <ParchmentInput type="number" value={dLimit} onChange={setDLimit} placeholder="0.00" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <GoldLabel>Due Date</GoldLabel>
+                    <ParchmentInput type="date" value={dDue} onChange={setDDue} />
+                  </div>
+                </div>
+                <button onClick={addDebt} disabled={saving || !userId}
+                        className="w-full py-2.5 rounded-lg font-cinzel text-sm font-semibold uppercase tracking-widest disabled:opacity-50"
+                        style={{ background: "#6b4423", color: "#f5e6c8", border: "1px solid #c9a84c" }}>
+                  {saving ? "Recording…" : "+ Add Debt"}
+                </button>
+              </div>
+            )}
+          </ColonialCard>
+
+          {/* Quote */}
+          <div className="rounded-xl px-6 py-4 flex items-center gap-3"
+               style={{ background: "rgba(245,230,200,0.08)", border: "1px solid rgba(201,168,76,0.25)" }}>
+            <span className="text-xl shrink-0">🪶</span>
+            <p className="text-sm italic" style={{ color: "#c9a84c" }}>
+              "Creditors have better memories than debtors." — Benjamin Franklin
+            </p>
+          </div>
+
         </div>
-      </ScrollRevealCard>
-    </AppShell>
+      </div>
+    </div>
   );
 }
