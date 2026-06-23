@@ -21,19 +21,10 @@ import {
   parseTransactionsScreenshot,
 } from "@/lib/money/receiptOcr";
 import { clampMoney, money } from "@/lib/money/math";
+import { todayISO } from "@/lib/money/utils";
+import { currentMonthStartISO } from "@/lib/money/dates";
 
-type IncomeSourceRow = {
-  id: string;
-  name: string;
-};
-
-type IncomeEntryRow = {
-  id: string;
-  source_name: string;
-  amount: number | string | null;
-  date_iso: string;
-  note: string | null;
-};
+import type { IncomeSource, IncomeEntry } from "@/lib/money/types";
 
 type ScanIncomeReview = {
   source_name: string;
@@ -41,20 +32,6 @@ type ScanIncomeReview = {
   date_iso: string;
   note: string;
 };
-
-function todayISO() {
-  const d = new Date();
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 10);
-}
-
-function currentMonthStartISO() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}-01`;
-}
 
 export default function IncomePage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -66,8 +43,8 @@ export default function IncomePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
 
-  const [sources, setSources] = useState<IncomeSourceRow[]>([]);
-  const [entries, setEntries] = useState<IncomeEntryRow[]>([]);
+  const [sources, setSources] = useState<IncomeSource[]>([]);
+  const [entries, setEntries] = useState<IncomeEntry[]>([]);
   const [scanReview, setScanReview] = useState<ScanIncomeReview[]>([]);
 
   const [dateISO, setDateISO] = useState(todayISO());
@@ -93,8 +70,8 @@ export default function IncomePage() {
     if (sourcesRes.error) setMessage(sourcesRes.error.message);
     if (entriesRes.error) setMessage(entriesRes.error.message);
 
-    setSources((sourcesRes.data || []) as IncomeSourceRow[]);
-    setEntries((entriesRes.data || []) as IncomeEntryRow[]);
+    setSources(sourcesRes.data || []);
+    setEntries(entriesRes.data || []);
   }
 
   useEffect(() => {
@@ -310,6 +287,24 @@ export default function IncomePage() {
     return monthlyEntries.reduce((sum, e) => sum + clampMoney(e.amount), 0);
   }, [monthlyEntries]);
 
+  // Last month comparison
+  const lastMonthStart = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  }, []);
+
+  const lastMonthIncome = useMemo(() => {
+    return entries
+      .filter((entry) => entry.date_iso >= lastMonthStart && entry.date_iso < monthStart)
+      .reduce((sum, e) => sum + clampMoney(e.amount), 0);
+  }, [entries, lastMonthStart, monthStart]);
+
+  const incomeChange = monthlyIncome - lastMonthIncome;
+  const incomeChangePercent = lastMonthIncome > 0 
+    ? Math.round((incomeChange / lastMonthIncome) * 100) 
+    : null;
+
   const latestIncome = entries[0];
 
   const topSource = useMemo(() => {
@@ -383,10 +378,15 @@ export default function IncomePage() {
             label="This month"
             value={money(monthlyIncome)}
             tone="emerald"
+            helper={
+              incomeChangePercent !== null
+                ? `${incomeChange >= 0 ? "↑" : "↓"} ${Math.abs(incomeChangePercent)}% vs last month`
+                : ""
+            }
           />
 
           <MetricCard
-            label="All-time income"
+            label="All-time Total"
             value={money(totalIncome)}
             tone="emerald"
           />
