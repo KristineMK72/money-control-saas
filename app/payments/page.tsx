@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import BenBubble from "@/components/BenBubble";
 import PaperScrollScanner from "@/components/PaperScrollScanner";
+import DebtZeroCeremony from "@/components/DebtZeroCeremony";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { ocrImageFile, parseTransactionsScreenshot } from "@/lib/money/receiptOcr";
@@ -95,7 +96,10 @@ export default function PaymentsPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [scanning,  setScanning]  = useState(false);
 
-  /* ── Data loading (unchanged) ── */
+  /* ── Debt Zero Ceremony state ── */
+  const [ceremony, setCeremony] = useState<{ debtName: string; amountPaid: number } | null>(null);
+
+  /* ── Data loading ── */
   async function loadPayments(uid: string) {
     const { data, error } = await supabase.from("payments").select("*")
       .eq("user_id", uid).order("date_iso", { ascending: false })
@@ -139,7 +143,7 @@ export default function PaymentsPage() {
     setMessage(msg); setMsgType(type);
   }
 
-  /* ── OCR scan (unchanged) ── */
+  /* ── OCR scan ── */
   async function handleScanPayment() {
     if (!imageFile) return;
     setScanning(true); notify("Ben is reading the payment proof.", "info");
@@ -158,7 +162,7 @@ export default function PaymentsPage() {
     setScanning(false);
   }
 
-  /* ── Add payment (unchanged logic, added sounds) ── */
+  /* ── Add payment — checks for debt zero ── */
   async function handleAddPayment() {
     setMessage("");
     if (!userId) return;
@@ -168,6 +172,19 @@ export default function PaymentsPage() {
     if (payType === "bill" && !billId) { playError(); notify("Select a bill.", "err"); return; }
 
     setSaving(true);
+
+    /* Check if this payment zeros the debt — BEFORE inserting */
+    let triggeredDebt: { name: string; balance: number } | null = null;
+    if (payType === "debt" && debtId) {
+      const target = debts.find(d => d.id === debtId);
+      if (target) {
+        const remaining = clampMoney(target.balance) - amt;
+        if (remaining <= 0) {
+          triggeredDebt = { name: target.name, balance: clampMoney(target.balance) };
+        }
+      }
+    }
+
     const { error } = await supabase.from("payments").insert({
       user_id: userId, date_iso: dateISO, merchant: merchant.trim(),
       amount: amt, note: note.trim() || null,
@@ -177,15 +194,21 @@ export default function PaymentsPage() {
 
     if (error) { playError(); notify(error.message, "err"); setSaving(false); return; }
 
-    playCashRegister();
     setMerchant(""); setAmount(""); setNote(""); setDebtId(""); setBillId("");
     setPayType("debt"); setDateISO(todayISO()); setImageFile(null);
     await reloadAll(userId);
-    notify("Payment recorded. A fine entry for the ledger.", "ok");
+
+    if (triggeredDebt) {
+      /* Ceremony takes priority over normal notice */
+      setCeremony({ debtName: triggeredDebt.name, amountPaid: amt });
+    } else {
+      playCashRegister();
+      notify("Payment recorded. A fine entry for the ledger.", "ok");
+    }
     setSaving(false);
   }
 
-  /* ── Derived (unchanged) ── */
+  /* ── Derived ── */
   const currentMonthStart  = currentMonthStartISO();
   const monthlyPayments    = useMemo(() =>
     payments.filter(p => (p.date_iso || p.created_at || "").slice(0, 10) >= currentMonthStart),
@@ -221,6 +244,16 @@ export default function PaymentsPage() {
   return (
     <div className="min-h-screen bg-ben-merchant bg-cover bg-center bg-fixed"
          style={{ fontFamily: "EB Garamond, serif" }}>
+
+      {/* ── Debt Zero Ceremony overlay ── */}
+      {ceremony && (
+        <DebtZeroCeremony
+          debtName={ceremony.debtName}
+          amountPaid={ceremony.amountPaid}
+          onClose={() => { setCeremony(null); notify("Debt struck from the ledger. Well done, Governor.", "ok"); }}
+        />
+      )}
+
       <div className="min-h-screen pb-28" style={{ background: "rgba(10,5,2,0.72)" }}>
         <div className="mx-auto max-w-5xl px-4 py-6 space-y-5">
 
@@ -368,7 +401,6 @@ export default function PaymentsPage() {
                   const isBill = !!payment.bill_id;
                   const typeLabel = isDebt ? "💳 Debt" : isBill ? "📋 Bill" : "📝";
                   const isThisMonth = (payment.date_iso || "").slice(0, 7) >= currentMonthStart.slice(0, 7);
-
                   return (
                     <div key={payment.id}
                          className="rounded-xl p-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
