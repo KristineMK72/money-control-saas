@@ -1,121 +1,120 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  AppShell,
-  DarkPanel,
-  MetricCard,
-  Notice,
-  PageHeader,
-  Panel,
-  inputClass,
-  moneyButtonClass,
-} from "@/components/AppFrame";
 import BenBubble from "@/components/BenBubble";
 import PaperScrollScanner from "@/components/PaperScrollScanner";
-import ScrollRevealCard from "@/components/ScrollRevealCard";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import {
-  ocrImageFile,
-  parseTransactionsScreenshot,
-} from "@/lib/money/receiptOcr";
+import { ocrImageFile, parseTransactionsScreenshot } from "@/lib/money/receiptOcr";
 import { clampMoney, money } from "@/lib/money/math";
 import { todayISO } from "@/lib/money/utils";
 import { currentMonthStartISO } from "@/lib/money/dates";
+import { playCoins, playError, playCashRegister } from "@/lib/sounds";
 
-// Local types (safe - matches your database schema)
 type PaymentRow = {
-  id: string;
-  user_id: string;
-  date_iso: string;
-  merchant: string | null;
-  amount: number | string | null;
-  note: string | null;
-  created_at: string;
-  debt_id: string | null;
-  bill_id: string | null;
+  id: string; user_id: string; date_iso: string;
+  merchant: string | null; amount: number | string | null;
+  note: string | null; created_at: string;
+  debt_id: string | null; bill_id: string | null;
 };
 
-type DebtRow = {
-  id: string;
-  name: string;
-  balance: number | string | null;
+type DebtRow = { id: string; name: string; balance: number | string | null; };
+type BillRow = { id: string; name: string; target: number | string | null; monthly_target: number | string | null; };
+
+/* ─── UI primitives ─────────────────────────────────────────────── */
+
+const CARD: React.CSSProperties = {
+  background: "rgba(15,8,4,0.88)", border: "1px solid rgba(107,68,35,0.5)",
+  backdropFilter: "blur(4px)", borderRadius: "0.75rem", padding: "1.25rem",
 };
 
-type BillRow = {
-  id: string;
-  name: string;
-  target: number | string | null;
-  monthly_target: number | string | null;
+function Section({ title, subtitle, children }: {
+  title: string; subtitle?: string; children: React.ReactNode;
+}) {
+  return (
+    <div style={CARD}>
+      <div className="mb-4 pb-3" style={{ borderBottom: "1px solid rgba(107,68,35,0.3)" }}>
+        <h2 className="font-cinzel text-lg font-bold" style={{ color: "#c9a84c" }}>{title}</h2>
+        {subtitle && <p className="text-sm mt-0.5 italic" style={{ color: "#9a7d5a" }}>{subtitle}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function MetricTile({ label, value, helper, green = false }: {
+  label: string; value: string; helper?: string; green?: boolean;
+}) {
+  return (
+    <div className="rounded-xl p-4"
+         style={{ background: "rgba(107,68,35,0.15)", border: "1px solid rgba(107,68,35,0.3)" }}>
+      <p className="text-[10px] uppercase tracking-widest font-cinzel mb-1" style={{ color: "#9a7d5a" }}>{label}</p>
+      <p className="text-xl font-bold font-cinzel" style={{ color: green ? "#4ade80" : "#c9a84c" }}>{value}</p>
+      {helper && <p className="text-[11px] mt-1 italic" style={{ color: "#6b4423" }}>{helper}</p>}
+    </div>
+  );
+}
+
+const INPUT: React.CSSProperties = {
+  width: "100%", background: "#f5e6c8", color: "#2d1810",
+  border: "1px solid rgba(201,168,76,0.5)", borderRadius: "0.5rem",
+  padding: "0.625rem 0.875rem", fontFamily: "EB Garamond, serif",
+  fontSize: "15px", outline: "none",
 };
+
+function GoldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[11px] uppercase tracking-widest font-cinzel font-semibold mb-1"
+       style={{ color: "#9a7d5a" }}>{children}</p>
+  );
+}
+
+/* ─── Page ──────────────────────────────────────────────────────── */
 
 export default function PaymentsPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
-  const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [userId,   setUserId]   = useState<string | null>(null);
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [message,  setMessage]  = useState("");
+  const [msgType,  setMsgType]  = useState<"ok" | "err" | "info">("ok");
 
   const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [debts, setDebts] = useState<DebtRow[]>([]);
-  const [bills, setBills] = useState<BillRow[]>([]);
+  const [debts,    setDebts]    = useState<DebtRow[]>([]);
+  const [bills,    setBills]    = useState<BillRow[]>([]);
 
-  const [dateISO, setDateISO] = useState(todayISO());
+  const [dateISO,  setDateISO]  = useState(todayISO());
   const [merchant, setMerchant] = useState("");
-  const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
-  const [payType, setPayType] = useState<"debt" | "bill">("debt");
-  const [debtId, setDebtId] = useState("");
-  const [billId, setBillId] = useState("");
+  const [amount,   setAmount]   = useState("");
+  const [note,     setNote]     = useState("");
+  const [payType,  setPayType]  = useState<"debt" | "bill">("debt");
+  const [debtId,   setDebtId]   = useState("");
+  const [billId,   setBillId]   = useState("");
 
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [scanning, setScanning] = useState(false);
+  const [scanning,  setScanning]  = useState(false);
 
+  /* ── Data loading (unchanged) ── */
   async function loadPayments(uid: string) {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("user_id", uid)
-      .order("date_iso", { ascending: false })
+    const { data, error } = await supabase.from("payments").select("*")
+      .eq("user_id", uid).order("date_iso", { ascending: false })
       .order("created_at", { ascending: false });
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
+    if (error) { notify(error.message, "err"); return; }
     setPayments(data || []);
   }
 
   async function loadDebts(uid: string) {
-    const { data, error } = await supabase
-      .from("debts")
-      .select("id, name, balance")
-      .eq("user_id", uid)
-      .order("name");
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
+    const { data, error } = await supabase.from("debts")
+      .select("id, name, balance").eq("user_id", uid).order("name");
+    if (error) { notify(error.message, "err"); return; }
     setDebts(data || []);
   }
 
   async function loadBills(uid: string) {
-    const { data, error } = await supabase
-      .from("bills")
-      .select("id, name, target, monthly_target")
-      .eq("user_id", uid)
-      .order("name");
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
+    const { data, error } = await supabase.from("bills")
+      .select("id, name, target, monthly_target").eq("user_id", uid).order("name");
+    if (error) { notify(error.message, "err"); return; }
     setBills(data || []);
   }
 
@@ -126,379 +125,302 @@ export default function PaymentsPage() {
   useEffect(() => {
     async function init() {
       const { data, error } = await supabase.auth.getSession();
-
-      if (error) {
-        setMessage(error.message);
-        setLoading(false);
-        return;
-      }
-
+      if (error) { notify(error.message, "err"); setLoading(false); return; }
       const user = data.session?.user;
-
-      if (!user) {
-        setMessage("Sign in so Ben can witness the payments.");
-        setLoading(false);
-        return;
-      }
-
+      if (!user) { notify("Sign in so Ben can witness the payments.", "info"); setLoading(false); return; }
       setUserId(user.id);
       await reloadAll(user.id);
       setLoading(false);
     }
-
     void init();
   }, [supabase]);
 
+  function notify(msg: string, type: "ok" | "err" | "info" = "ok") {
+    setMessage(msg); setMsgType(type);
+  }
+
+  /* ── OCR scan (unchanged) ── */
   async function handleScanPayment() {
     if (!imageFile) return;
-
-    setScanning(true);
-    setMessage("Ben is reading the payment proof.");
-
+    setScanning(true); notify("Ben is reading the payment proof.", "info");
     try {
       const { text } = await ocrImageFile(imageFile);
-      const first = parseTransactionsScreenshot(text)[0];
-
-      if (!first) {
-        setMessage("No clear payment found. Fill it in manually and proceed.");
-        setScanning(false);
-        return;
-      }
-
+      const first    = parseTransactionsScreenshot(text)[0];
+      if (!first) { notify("No clear payment found. Fill it in manually.", "info"); setScanning(false); return; }
       setMerchant(first.merchant || "");
-
-      if (first.amount) {
-        setAmount(String(first.amount));
-      }
-
-      if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
-        setDateISO(first.dateText);
-      }
-
+      if (first.amount) setAmount(String(first.amount));
+      if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) setDateISO(first.dateText);
       setNote("Scanned payment proof");
-      setMessage("Scanner filled what it could. Review before saving.");
-    } catch (error) {
-      console.error("Payment scanner error:", error);
-      setMessage("Scanner had trouble with that proof. Manual entry still works.");
+      notify("Scanner filled what it could. Review before saving.", "info");
+    } catch {
+      notify("Scanner had trouble with that proof. Manual entry still works.", "err");
     }
-
     setScanning(false);
   }
 
+  /* ── Add payment (unchanged logic, added sounds) ── */
   async function handleAddPayment() {
     setMessage("");
-
     if (!userId) return;
-
     const amt = clampMoney(amount);
-
-    if (!merchant.trim() || amt <= 0) {
-      setMessage("Enter a payment name and amount.");
-      return;
-    }
-
-    if (payType === "debt" && !debtId) {
-      setMessage("Select a debt.");
-      return;
-    }
-
-    if (payType === "bill" && !billId) {
-      setMessage("Select a bill.");
-      return;
-    }
+    if (!merchant.trim() || amt <= 0) { playError(); notify("Enter a payment name and amount.", "err"); return; }
+    if (payType === "debt" && !debtId) { playError(); notify("Select a debt.", "err"); return; }
+    if (payType === "bill" && !billId) { playError(); notify("Select a bill.", "err"); return; }
 
     setSaving(true);
-
     const { error } = await supabase.from("payments").insert({
-      user_id: userId,
-      date_iso: dateISO,
-      merchant: merchant.trim(),
-      amount: amt,
-      note: note.trim() || null,
+      user_id: userId, date_iso: dateISO, merchant: merchant.trim(),
+      amount: amt, note: note.trim() || null,
       debt_id: payType === "debt" ? debtId : null,
       bill_id: payType === "bill" ? billId : null,
     });
 
-    if (error) {
-      setMessage(error.message);
-      setSaving(false);
-      return;
-    }
+    if (error) { playError(); notify(error.message, "err"); setSaving(false); return; }
 
-    setMerchant("");
-    setAmount("");
-    setNote("");
-    setDebtId("");
-    setBillId("");
-    setPayType("debt");
-    setDateISO(todayISO());
-    setImageFile(null);
-
+    playCashRegister();
+    setMerchant(""); setAmount(""); setNote(""); setDebtId(""); setBillId("");
+    setPayType("debt"); setDateISO(todayISO()); setImageFile(null);
     await reloadAll(userId);
-
-    setMessage("Payment added. A fine entry for the ledger.");
+    notify("Payment recorded. A fine entry for the ledger.", "ok");
     setSaving(false);
   }
 
-  const currentMonthStart = currentMonthStartISO();
-
-  const monthlyPayments = useMemo(() => {
-    return payments.filter((payment) => {
-      const date = (payment.date_iso || payment.created_at || "").slice(0, 10);
-      return date >= currentMonthStart;
-    });
-  }, [payments, currentMonthStart]);
-
-  const monthlyTotal = useMemo(() => {
-    return monthlyPayments.reduce(
-      (sum, payment) => sum + clampMoney(payment.amount),
-      0
-    );
-  }, [monthlyPayments]);
-
-  const allTimeTotal = useMemo(() => {
-    return payments.reduce((sum, payment) => {
-      return sum + clampMoney(payment.amount);
-    }, 0);
-  }, [payments]);
-
-  const latestPayment = payments[0];
-  const latestMonthlyPayment = monthlyPayments[0];
-
-  const debtPayments = payments.filter((p) => p.debt_id).length;
-  const billPayments = payments.filter((p) => p.bill_id).length;
-
-  const monthlyDebtPayments = monthlyPayments.filter((p) => p.debt_id).length;
-  const monthlyBillPayments = monthlyPayments.filter((p) => p.bill_id).length;
+  /* ── Derived (unchanged) ── */
+  const currentMonthStart  = currentMonthStartISO();
+  const monthlyPayments    = useMemo(() =>
+    payments.filter(p => (p.date_iso || p.created_at || "").slice(0, 10) >= currentMonthStart),
+    [payments, currentMonthStart]);
+  const monthlyTotal       = useMemo(() => monthlyPayments.reduce((s, p) => s + clampMoney(p.amount), 0), [monthlyPayments]);
+  const allTimeTotal       = useMemo(() => payments.reduce((s, p) => s + clampMoney(p.amount), 0), [payments]);
+  const latestMonthly      = monthlyPayments[0];
+  const debtPayments       = payments.filter(p => p.debt_id).length;
+  const billPayments       = payments.filter(p => p.bill_id).length;
+  const monthlyDebtPay     = monthlyPayments.filter(p => p.debt_id).length;
+  const monthlyBillPay     = monthlyPayments.filter(p => p.bill_id).length;
 
   const benInsight = BenEngine.getForecastMessage({
-    name: null,
-    timeframeLabel: "Payments",
-    totalNeeded: allTimeTotal,
-    incomeSoFar: allTimeTotal,
-    incomeGap: 0,
-    dailyIncomeNeeded: 0,
+    name: null, timeframeLabel: "Payments",
+    totalNeeded: allTimeTotal, incomeSoFar: allTimeTotal, incomeGap: 0, dailyIncomeNeeded: 0,
   });
 
-  const paymentMood =
-    allTimeTotal > 0 ? "/ben-winning.png" : "/ben-thinking.png";
+  const msgColor = { ok: "#c9a84c", err: "#f87171", info: "#93c5fd" }[msgType];
+  const msgBg    = { ok: "rgba(201,168,76,0.08)", err: "rgba(248,113,113,0.08)", info: "rgba(147,197,253,0.08)" }[msgType];
 
   if (loading) {
     return (
-      <AppShell max="max-w-5xl">
-        <Panel>Loading payments...</Panel>
-      </AppShell>
+      <div className="min-h-screen flex items-center justify-center bg-ben-merchant bg-cover bg-center">
+        <div style={{ ...CARD, padding: "2rem 3rem", textAlign: "center" }}>
+          <p className="font-cinzel text-lg animate-pulse" style={{ color: "#c9a84c" }}>
+            Ben is consulting the payment ledger&hellip;
+          </p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <AppShell max="max-w-5xl">
-      <PageHeader
-        eyebrow="AskBen Payments"
-        title="Payments"
-        subtitle="Record proof that you handled business. Ben respects evidence."
-      />
+    <div className="min-h-screen bg-ben-merchant bg-cover bg-center bg-fixed"
+         style={{ fontFamily: "EB Garamond, serif" }}>
+      <div className="min-h-screen pb-28" style={{ background: "rgba(10,5,2,0.72)" }}>
+        <div className="mx-auto max-w-5xl px-4 py-6 space-y-5">
 
-      {message && <Notice>{message}</Notice>}
+          {/* ── Header ── */}
+          <div className="pt-4 pb-2">
+            <p className="text-xs uppercase tracking-[0.2em] font-cinzel font-semibold"
+               style={{ color: "#6b4423" }}>AskBen Payments</p>
+            <h1 className="font-cinzel text-4xl font-bold mt-1" style={{ color: "#c9a84c" }}>
+              Payment Ledger
+            </h1>
+            <p className="mt-1 text-sm italic" style={{ color: "#9a7d5a" }}>
+              Record proof that thou handled business. Ben respects evidence.
+            </p>
+          </div>
 
-      <ScrollRevealCard
-        title="Payment Victory Briefing"
-        subtitle="Monthly progress and lifetime totals"
-        image={paymentMood}
-        defaultOpen
-      >
-        <DarkPanel>
-          <BenBubble message={benInsight.text} mood={benInsight.mood} />
-        </DarkPanel>
-
-        <section className="mt-5 grid gap-4 md:grid-cols-2">
-          <MetricCard
-            label="Paid this month"
-            value={money(monthlyTotal)}
-            helper={
-              latestMonthlyPayment
-                ? `${latestMonthlyPayment.merchant || "Latest"} - ${money(
-                    latestMonthlyPayment.amount
-                  )}`
-                : "No payments this month yet"
-            }
-            tone="emerald"
-          />
-
-          <MetricCard
-            label="Payments this month"
-            value={String(monthlyPayments.length)}
-            helper={`${monthlyDebtPayments} debt • ${monthlyBillPayments} bill`}
-            tone="sky"
-          />
-
-          <MetricCard
-            label="All-time Total"
-            value={money(allTimeTotal)}
-            helper="Cumulative payment total"
-            tone="emerald"
-          />
-
-          <MetricCard
-            label="All-time payments"
-            value={String(payments.length)}
-            helper={`${debtPayments} debt • ${billPayments} bill`}
-            tone="zinc"
-          />
-        </section>
-      </ScrollRevealCard>
-
-      <ScrollRevealCard
-        title="Scan Payment Proof"
-        subtitle={
-          scanning
-            ? "Ben is reading the proof..."
-            : "Upload receipt, screenshot, or confirmation"
-        }
-        image="/ben-mastermind.png"
-      >
-        <PaperScrollScanner
-          title="Scan Payment Proof"
-          description="Upload a receipt, bank screenshot, or confirmation. Ben will fill the draft and await thy approval."
-          file={imageFile}
-          busy={scanning}
-          onFileChange={setImageFile}
-          onScan={() => void handleScanPayment()}
-        />
-      </ScrollRevealCard>
-
-      <ScrollRevealCard
-        title="Add Payment"
-        subtitle={merchant || amount ? "Draft ready for review" : "Record a victory"}
-        image="/ben-thinking.png"
-        defaultOpen
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <input
-            type="date"
-            value={dateISO}
-            onChange={(e) => setDateISO(e.target.value)}
-            className={inputClass}
-          />
-
-          <input
-            placeholder="What did you pay?"
-            value={merchant}
-            onChange={(e) => setMerchant(e.target.value)}
-            className={inputClass}
-          />
-
-          <input
-            type="number"
-            placeholder="Amount"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className={inputClass}
-          />
-
-          <select
-            value={payType}
-            onChange={(e) => {
-              setPayType(e.target.value as "debt" | "bill");
-              setDebtId("");
-              setBillId("");
-            }}
-            className={inputClass}
-          >
-            <option value="debt">Debt</option>
-            <option value="bill">Bill</option>
-          </select>
-
-          {payType === "debt" ? (
-            <select
-              value={debtId}
-              onChange={(e) => setDebtId(e.target.value)}
-              className={`${inputClass} md:col-span-2`}
-            >
-              <option value="">Select debt</option>
-
-              {debts.map((debt) => (
-                <option key={debt.id} value={debt.id}>
-                  {debt.name}
-                  {debt.balance != null
-                    ? ` - ${money(debt.balance)} balance`
-                    : ""}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <select
-              value={billId}
-              onChange={(e) => setBillId(e.target.value)}
-              className={`${inputClass} md:col-span-2`}
-            >
-              <option value="">Select bill</option>
-
-              {bills.map((bill) => (
-                <option key={bill.id} value={bill.id}>
-                  {bill.name} - {money(bill.monthly_target ?? bill.target ?? 0)}
-                </option>
-              ))}
-            </select>
+          {/* ── Notice ── */}
+          {message && (
+            <div className="rounded-xl px-4 py-3 text-sm"
+                 style={{ background: msgBg, border: `1px solid ${msgColor}40`, color: msgColor }}>
+              {msgType === "ok" ? "✦" : msgType === "err" ? "⚠" : "◈"} {message}
+            </div>
           )}
 
-          <textarea
-            placeholder="Note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className={`${inputClass} min-h-24 md:col-span-2`}
-          />
+          {/* ── Victory Briefing ── */}
+          <Section title="Payment Victory Briefing" subtitle="Monthly progress and lifetime totals">
+            <BenBubble message={benInsight.text} mood={benInsight.mood} />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <MetricTile label="Paid This Month"     value={money(monthlyTotal)}
+                          helper={latestMonthly ? `${latestMonthly.merchant || "Latest"} — ${money(latestMonthly.amount)}` : "No payments this month yet"}
+                          green />
+              <MetricTile label="Payments This Month" value={String(monthlyPayments.length)}
+                          helper={`${monthlyDebtPay} debt • ${monthlyBillPay} bill`} />
+              <MetricTile label="All-Time Total"      value={money(allTimeTotal)}
+                          helper="Cumulative payment total" green />
+              <MetricTile label="All-Time Count"      value={String(payments.length)}
+                          helper={`${debtPayments} debt • ${billPayments} bill`} />
+            </div>
+          </Section>
 
-          <button
-            onClick={handleAddPayment}
-            disabled={saving}
-            className={`${moneyButtonClass} md:col-span-2`}
-          >
-            {saving ? "Saving..." : "Add Payment"}
-          </button>
-        </div>
-      </ScrollRevealCard>
+          {/* ── Scan Payment Proof ── */}
+          <Section title="Scan Payment Proof"
+                   subtitle={scanning ? "Ben is reading the proof…" : "Upload receipt, screenshot, or confirmation"}>
+            <PaperScrollScanner
+              title="Scan Payment Proof"
+              description="Upload a receipt, bank screenshot, or confirmation. Ben will fill the draft and await thy approval."
+              file={imageFile} busy={scanning}
+              onFileChange={setImageFile}
+              onScan={() => void handleScanPayment()}
+            />
+          </Section>
 
-      <ScrollRevealCard
-        title="Payment History"
-        subtitle={
-          latestPayment
-            ? `${latestPayment.merchant || "Latest payment"} - ${money(
-                latestPayment.amount
-              )}`
-            : "The ledger awaits its first victory"
-        }
-        image="/ben-recovery.png"
-        defaultOpen
-      >
-        <div className="grid gap-3">
-          {payments.length === 0 ? (
-            <p className="text-sm font-semibold text-zinc-600">
-              No payments yet. The ledger awaits its first victory.
-            </p>
-          ) : (
-            payments.map((payment) => (
-              <div
-                key={payment.id}
-                className="flex flex-col gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 md:flex-row md:items-center md:justify-between"
-              >
-                <div>
-                  <p className="font-black">{payment.merchant || "Payment"}</p>
+          {/* ── Add Payment form ── */}
+          <Section title="Add Payment"
+                   subtitle={merchant || amount ? "Draft ready — review and record" : "Record a victory"}>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <GoldLabel>Date</GoldLabel>
+                <input type="date" value={dateISO} onChange={e => setDateISO(e.target.value)} style={INPUT} />
+              </div>
 
-                  <p className="text-sm font-semibold text-zinc-600">
-                    {payment.date_iso}
-                    {payment.debt_id ? " • Debt payment" : ""}
-                    {payment.bill_id ? " • Bill payment" : ""}
-                    {payment.note ? ` • ${payment.note}` : ""}
+              <div>
+                <GoldLabel>Payment Name</GoldLabel>
+                <input placeholder="What did thou pay?" value={merchant}
+                       onChange={e => setMerchant(e.target.value)} style={INPUT} />
+              </div>
+
+              <div>
+                <GoldLabel>Amount</GoldLabel>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold"
+                        style={{ color: "#2d1810" }}>$</span>
+                  <input type="number" step="0.01" inputMode="decimal" placeholder="0.00"
+                         value={amount} onChange={e => setAmount(e.target.value)}
+                         style={{ ...INPUT, paddingLeft: "1.75rem" }} />
+                </div>
+              </div>
+
+              <div>
+                <GoldLabel>Payment Type</GoldLabel>
+                <select value={payType}
+                        onChange={e => { setPayType(e.target.value as "debt" | "bill"); setDebtId(""); setBillId(""); }}
+                        style={INPUT}>
+                  <option value="debt">💳 Debt Payment</option>
+                  <option value="bill">📋 Bill Payment</option>
+                </select>
+              </div>
+
+              {payType === "debt" ? (
+                <div className="md:col-span-2">
+                  <GoldLabel>Select Debt</GoldLabel>
+                  <select value={debtId} onChange={e => setDebtId(e.target.value)} style={INPUT}>
+                    <option value="">Choose a debt…</option>
+                    {debts.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}{d.balance != null ? ` — ${money(d.balance)} balance` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="md:col-span-2">
+                  <GoldLabel>Select Bill</GoldLabel>
+                  <select value={billId} onChange={e => setBillId(e.target.value)} style={INPUT}>
+                    <option value="">Choose a bill…</option>
+                    {bills.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} — {money(b.monthly_target ?? b.target ?? 0)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="md:col-span-2">
+                <GoldLabel>Note (optional)</GoldLabel>
+                <textarea placeholder="Add a note for the ledger…"
+                          value={note} onChange={e => setNote(e.target.value)}
+                          rows={3} style={{ ...INPUT, resize: "vertical" }} />
+              </div>
+
+              <button onClick={handleAddPayment} disabled={saving}
+                      className="md:col-span-2 rounded-xl py-3 font-cinzel text-sm font-bold uppercase tracking-widest transition disabled:opacity-50"
+                      style={{ background: "#2d5a27", color: "#f5e6c8", border: "1px solid #4a8a42" }}>
+                {saving ? "Recording…" : "🪙 Record Payment"}
+              </button>
+            </div>
+          </Section>
+
+          {/* ── Payment History ── */}
+          <Section title="Payment History"
+                   subtitle={payments[0]
+                     ? `${payments[0].merchant || "Latest"} — ${money(payments[0].amount)}`
+                     : "The ledger awaits its first victory"}>
+            <div className="space-y-2">
+              {payments.length === 0 ? (
+                <div className="rounded-xl px-4 py-6 text-center"
+                     style={{ background: "rgba(107,68,35,0.1)", border: "1px solid rgba(107,68,35,0.3)" }}>
+                  <p className="text-sm italic font-cinzel" style={{ color: "#9a7d5a" }}>
+                    No payments yet. The ledger awaits its first victory.
                   </p>
                 </div>
+              ) : (
+                payments.map(payment => {
+                  const isDebt = !!payment.debt_id;
+                  const isBill = !!payment.bill_id;
+                  const typeLabel = isDebt ? "💳 Debt" : isBill ? "📋 Bill" : "📝";
+                  const isThisMonth = (payment.date_iso || "").slice(0, 7) >= currentMonthStart.slice(0, 7);
 
-                <p className="text-lg font-black">{money(payment.amount)}</p>
-              </div>
-            ))
-          )}
+                  return (
+                    <div key={payment.id}
+                         className="rounded-xl p-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                         style={{
+                           background: isThisMonth ? "rgba(74,138,66,0.08)" : "rgba(15,8,4,0.6)",
+                           border: `1px solid ${isThisMonth ? "rgba(74,138,66,0.3)" : "rgba(107,68,35,0.3)"}`,
+                         }}>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-cinzel font-bold text-sm" style={{ color: "#e8d5b7" }}>
+                            {payment.merchant || "Payment"}
+                          </p>
+                          <span className="text-[10px] rounded-full px-2 py-0.5"
+                                style={{ background: "rgba(107,68,35,0.2)", color: "#9a7d5a",
+                                         border: "1px solid rgba(107,68,35,0.3)" }}>
+                            {typeLabel}
+                          </span>
+                          {isThisMonth && (
+                            <span className="text-[10px] rounded-full px-2 py-0.5"
+                                  style={{ background: "rgba(74,138,66,0.15)", color: "#4ade80",
+                                           border: "1px solid rgba(74,138,66,0.3)" }}>
+                              This month
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs mt-0.5" style={{ color: "#6b4423" }}>
+                          {payment.date_iso}
+                          {payment.note ? ` • ${payment.note}` : ""}
+                        </p>
+                      </div>
+                      <p className="font-cinzel text-lg font-bold shrink-0"
+                         style={{ color: isThisMonth ? "#4ade80" : "#c9a84c" }}>
+                        {money(payment.amount)}
+                      </p>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </Section>
+
+          {/* ── Quote ── */}
+          <div className="rounded-xl px-6 py-4 flex items-center gap-3"
+               style={{ background: "rgba(245,230,200,0.06)", border: "1px solid rgba(201,168,76,0.2)" }}>
+            <span className="text-xl shrink-0">🪶</span>
+            <p className="text-sm italic" style={{ color: "#c9a84c" }}>
+              &ldquo;A penny saved is a penny earned.&rdquo; &mdash; Benjamin Franklin
+            </p>
+          </div>
+
         </div>
-      </ScrollRevealCard>
-    </AppShell>
+      </div>
+    </div>
   );
 }
