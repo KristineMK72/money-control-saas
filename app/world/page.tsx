@@ -19,33 +19,25 @@ export default function WorldPage() {
 
   useEffect(() => {
     let mounted = true;
-
     const fetchUser = async () => {
       try {
         const { data: { user: authUser } } = await supabase.auth.getUser();
-        
         if (!authUser) {
           if (mounted) setUser(null);
           return;
         }
-
         const { data: profile } = await supabase
           .from("profiles")
           .select("full_name")
           .eq("id", authUser.id)
           .single();
-
-        if (mounted) {
-          setUser({ name: profile?.full_name ?? null });
-        }
+        if (mounted) setUser({ name: profile?.full_name ?? null });
       } catch (error) {
-        console.error("Failed to load user:", error);
-        if (mounted) setUser(null); // Fail gracefully
+        console.error(error);
+        if (mounted) setUser(null);
       }
     };
-
     fetchUser();
-
     return () => { mounted = false; };
   }, [supabase]);
 
@@ -58,31 +50,26 @@ export default function WorldPage() {
         await document.exitFullscreen();
         setIsFullscreen(false);
       }
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (e) {}
   };
 
   const isLoading = user === "loading";
   const loggedIn = user !== null && user !== "loading";
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#080706]">
-      {/* Full-bleed map */}
+    <main className="relative h-screen w-screen overflow-hidden bg-[#080706]">
+      {/* The Map — Truly Full Screen */}
       <div className="absolute inset-0 z-0">
         <BenWorldMap />
       </div>
 
       <BenWorldWeatherOverlay fog storm={storm} />
 
-      {/* Minimal Top Bar */}
-      <div className="absolute top-3 left-3 right-3 z-50 flex justify-between items-center pointer-events-auto">
-        <div className="flex items-center gap-3 bg-black/70 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-amber-300/30">
-          <img src="/ben-head.png" alt="Ben" className="w-9 h-9" />
-          <div>
-            <div className="text-xl font-bold text-amber-100">AskBen</div>
-            <div className="text-xs text-amber-400 -mt-1">Franklin's Landing</div>
-          </div>
+      {/* Ultra-minimal top bar */}
+      <div className="absolute top-4 left-4 right-4 z-50 flex justify-between items-center pointer-events-auto">
+        <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-amber-300/30">
+          <img src="/ben-head.png" alt="Ben" className="w-8 h-8" />
+          <span className="text-amber-100 font-medium text-lg">AskBen</span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -96,9 +83,9 @@ export default function WorldPage() {
         </div>
       </div>
 
-      <TreasuryCoinMenu />
+      {/* Floating Controls */}
+      {!showHub && <TreasuryCoinMenu />}
 
-      {/* Ask Ben FAB */}
       <Link
         href="/chat"
         className="fixed bottom-8 right-8 z-50 bg-gradient-to-br from-amber-700 to-amber-800 hover:from-amber-600 hover:to-amber-700 text-white px-8 py-4 rounded-3xl flex items-center gap-3 shadow-2xl border border-amber-300/50 text-lg font-medium active:scale-95 transition-all"
@@ -117,12 +104,9 @@ export default function WorldPage() {
 
       {loggedIn && showHub && <ColonyHub user={user as UserMeta} onClose={() => setShowHub(false)} />}
 
-      {/* Loading overlay - only show briefly */}
       {isLoading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70">
-          <p className="text-amber-200 text-xl animate-pulse">
-            Consulting the ancient ledgers...
-          </p>
+          <p className="text-amber-200 text-xl animate-pulse">Consulting the ancient ledgers...</p>
         </div>
       )}
 
@@ -131,10 +115,9 @@ export default function WorldPage() {
   );
 }
 
-/* ColonyHub and LandingHero (same as before) */
+/* ColonyHub and LandingHero */
 function ColonyHub({ user, onClose }: { user: UserMeta; onClose: () => void }) {
   const name = user.name?.split(" ")[0] || "Governor";
-
   const NAV_TILES = [
     { href: "/dashboard", icon: "🏛️", label: "Governor's Office" },
     { href: "/income", icon: "📜", label: "Income Ledger" },
@@ -148,7 +131,7 @@ function ColonyHub({ user, onClose }: { user: UserMeta; onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-lg flex items-end md:items-center justify-center p-4">
-      <div className="bg-[#0a0502] border border-amber-300/40 rounded-3xl w-full max-w-4xl max-h-[88vh] overflow-hidden shadow-2xl">
+      <div className="bg-[#0a0502] border border-amber-300/40 rounded-3xl w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl">
         <div className="flex justify-between items-center px-8 py-6 border-b border-amber-300/20">
           <div>
             <p className="uppercase tracking-widest text-amber-400 text-xs">Welcome back</p>
@@ -165,16 +148,10 @@ function ColonyHub({ user, onClose }: { user: UserMeta; onClose: () => void }) {
               onClick={onClose}
               className="group bg-[#1a120b] hover:bg-[#221a12] border border-amber-300/30 hover:border-amber-400 rounded-2xl p-8 flex flex-col items-center text-center transition-all"
             >
-              <div className="text-6xl mb-6 group-hover:scale-110 transition-transform duration-300">
-                {tile.icon}
-              </div>
+              <div className="text-6xl mb-6 group-hover:scale-110 transition-transform duration-300">{tile.icon}</div>
               <p className="text-xl font-medium text-amber-100">{tile.label}</p>
             </Link>
           ))}
-        </div>
-
-        <div className="px-8 py-6 border-t border-amber-300/20 text-center text-amber-400/70 italic text-sm">
-          “Beware of little expenses; a small leak will sink a great ship.” — Benjamin Franklin
         </div>
       </div>
     </div>
@@ -186,16 +163,10 @@ function LandingHero() {
     <div className="absolute inset-0 z-30 flex items-center justify-center p-6 pointer-events-auto">
       <div className="max-w-lg text-center bg-black/80 backdrop-blur-2xl border border-amber-300/40 rounded-3xl p-12">
         <h1 className="text-5xl md:text-6xl font-bold text-amber-100 mb-6">Thy Financial Colony Awaits</h1>
-        <p className="text-xl text-amber-300 mb-10">
-          Track coins. Earn honor. Let Ben guide thee.
-        </p>
+        <p className="text-xl text-amber-300 mb-10">Track coins. Earn honor. Let Ben guide thee.</p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link href="/signup" className="bg-amber-500 hover:bg-amber-400 text-black font-bold py-4 px-10 rounded-2xl text-lg transition">
-            Found Thy Colony
-          </Link>
-          <Link href="/login" className="border-2 border-amber-400/70 hover:bg-amber-400/10 text-amber-100 font-medium py-4 px-10 rounded-2xl text-lg transition">
-            Sign In
-          </Link>
+          <Link href="/signup" className="bg-amber-500 hover:bg-amber-400 text-black font-bold py-4 px-10 rounded-2xl text-lg transition">Found Thy Colony</Link>
+          <Link href="/login" className="border-2 border-amber-400/70 hover:bg-amber-400/10 text-amber-100 font-medium py-4 px-10 rounded-2xl text-lg transition">Sign In</Link>
         </div>
       </div>
     </div>
