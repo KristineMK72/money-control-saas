@@ -18,18 +18,35 @@ export default function WorldPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
-    void supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        void supabase
+    let mounted = true;
+
+    const fetchUser = async () => {
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        
+        if (!authUser) {
+          if (mounted) setUser(null);
+          return;
+        }
+
+        const { data: profile } = await supabase
           .from("profiles")
           .select("full_name")
-          .eq("id", data.user.id)
-          .single()
-          .then(({ data: p }) => setUser({ name: p?.full_name ?? null }));
-      } else {
-        setUser(null);
+          .eq("id", authUser.id)
+          .single();
+
+        if (mounted) {
+          setUser({ name: profile?.full_name ?? null });
+        }
+      } catch (error) {
+        console.error("Failed to load user:", error);
+        if (mounted) setUser(null); // Fail gracefully
       }
-    });
+    };
+
+    fetchUser();
+
+    return () => { mounted = false; };
   }, [supabase]);
 
   const toggleFullscreen = async () => {
@@ -42,7 +59,7 @@ export default function WorldPage() {
         setIsFullscreen(false);
       }
     } catch (err) {
-      console.error("Fullscreen error:", err);
+      console.error(err);
     }
   };
 
@@ -51,14 +68,14 @@ export default function WorldPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#080706]">
-      {/* Full-bleed immersive map */}
+      {/* Full-bleed map */}
       <div className="absolute inset-0 z-0">
         <BenWorldMap />
       </div>
 
       <BenWorldWeatherOverlay fog storm={storm} />
 
-      {/* Minimal Top HUD */}
+      {/* Minimal Top Bar */}
       <div className="absolute top-3 left-3 right-3 z-50 flex justify-between items-center pointer-events-auto">
         <div className="flex items-center gap-3 bg-black/70 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-amber-300/30">
           <img src="/ben-head.png" alt="Ben" className="w-9 h-9" />
@@ -79,10 +96,9 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* Treasury Coin Menu */}
       <TreasuryCoinMenu />
 
-      {/* Floating Ask Ben Button */}
+      {/* Ask Ben FAB */}
       <Link
         href="/chat"
         className="fixed bottom-8 right-8 z-50 bg-gradient-to-br from-amber-700 to-amber-800 hover:from-amber-600 hover:to-amber-700 text-white px-8 py-4 rounded-3xl flex items-center gap-3 shadow-2xl border border-amber-300/50 text-lg font-medium active:scale-95 transition-all"
@@ -90,7 +106,6 @@ export default function WorldPage() {
         Ask Ben <span className="text-2xl">💰</span>
       </Link>
 
-      {/* Floating Hub Toggle (for logged-in users) */}
       {loggedIn && (
         <button
           onClick={() => setShowHub(!showHub)}
@@ -100,25 +115,23 @@ export default function WorldPage() {
         </button>
       )}
 
-      {/* Collapsible Colony Hub */}
       {loggedIn && showHub && <ColonyHub user={user as UserMeta} onClose={() => setShowHub(false)} />}
 
-      {/* Loading overlay */}
+      {/* Loading overlay - only show briefly */}
       {isLoading && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70">
           <p className="text-amber-200 text-xl animate-pulse">
             Consulting the ancient ledgers...
           </p>
         </div>
       )}
 
-      {/* Logged-out landing */}
       {!isLoading && !loggedIn && <LandingHero />}
     </main>
   );
 }
 
-/* ====================== COLONY HUB ====================== */
+/* ColonyHub and LandingHero (same as before) */
 function ColonyHub({ user, onClose }: { user: UserMeta; onClose: () => void }) {
   const name = user.name?.split(" ")[0] || "Governor";
 
@@ -136,7 +149,6 @@ function ColonyHub({ user, onClose }: { user: UserMeta; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-lg flex items-end md:items-center justify-center p-4">
       <div className="bg-[#0a0502] border border-amber-300/40 rounded-3xl w-full max-w-4xl max-h-[88vh] overflow-hidden shadow-2xl">
-        {/* Header */}
         <div className="flex justify-between items-center px-8 py-6 border-b border-amber-300/20">
           <div>
             <p className="uppercase tracking-widest text-amber-400 text-xs">Welcome back</p>
@@ -145,7 +157,6 @@ function ColonyHub({ user, onClose }: { user: UserMeta; onClose: () => void }) {
           <button onClick={onClose} className="text-4xl text-amber-400 hover:text-white">✕</button>
         </div>
 
-        {/* Navigation Grid */}
         <div className="p-8 grid grid-cols-2 md:grid-cols-4 gap-4">
           {NAV_TILES.map((tile) => (
             <Link
@@ -162,8 +173,7 @@ function ColonyHub({ user, onClose }: { user: UserMeta; onClose: () => void }) {
           ))}
         </div>
 
-        {/* Footer quote */}
-        <div className="px-8 py-6 border-t border-amber-300/20 text-center text-amber-400/70 italic">
+        <div className="px-8 py-6 border-t border-amber-300/20 text-center text-amber-400/70 italic text-sm">
           “Beware of little expenses; a small leak will sink a great ship.” — Benjamin Franklin
         </div>
       </div>
@@ -171,7 +181,6 @@ function ColonyHub({ user, onClose }: { user: UserMeta; onClose: () => void }) {
   );
 }
 
-/* ====================== LOGGED-OUT HERO ====================== */
 function LandingHero() {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center p-6 pointer-events-auto">
@@ -181,16 +190,10 @@ function LandingHero() {
           Track coins. Earn honor. Let Ben guide thee.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link
-            href="/signup"
-            className="bg-amber-500 hover:bg-amber-400 text-black font-bold py-4 px-10 rounded-2xl text-lg transition"
-          >
+          <Link href="/signup" className="bg-amber-500 hover:bg-amber-400 text-black font-bold py-4 px-10 rounded-2xl text-lg transition">
             Found Thy Colony
           </Link>
-          <Link
-            href="/login"
-            className="border-2 border-amber-400/70 hover:bg-amber-400/10 text-amber-100 font-medium py-4 px-10 rounded-2xl text-lg transition"
-          >
+          <Link href="/login" className="border-2 border-amber-400/70 hover:bg-amber-400/10 text-amber-100 font-medium py-4 px-10 rounded-2xl text-lg transition">
             Sign In
           </Link>
         </div>
