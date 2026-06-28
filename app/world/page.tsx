@@ -10,272 +10,182 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type UserMeta = { name: string | null };
 
-const NAV_TILES = [
-  { href: "/dashboard",    icon: "🏛",  label: "Governor's Office",  sub: "Overview & forecast"     },
-  { href: "/income",       icon: "📜",  label: "Income Ledger",      sub: "Log thy earnings"        },
-  { href: "/bills",        icon: "📋",  label: "Obligations",        sub: "Bills & debts"           },
-  { href: "/payments",     icon: "🪙",  label: "Payment Hall",       sub: "Record victories"        },
-  { href: "/achievements", icon: "🏆",  label: "Trophy Room",        sub: "Thy colonial honors"     },
-  { href: "/forecast",     icon: "🔭",  label: "Treasury Forecast",  sub: "What lies ahead"         },
-  { href: "/calendar",     icon: "🗓️",  label: "Colonial Calendar",  sub: "Due dates & events"      },
-  { href: "/settings",     icon: "⚙️",  label: "Settings",           sub: "Govern thy account"      },
-];
-
-const FEATURES = [
-  { icon: "🪙", title: "Track Every Coin",     body: "Log income, bills, debts and payments in one colonial ledger." },
-  { icon: "🏆", title: "Earn XP & Ranks",      body: "Every action builds thy reputation. Rise from Apprentice to Founding Financier." },
-  { icon: "🔥", title: "Protect Thy Streak",   body: "Consecutive days of activity compound thy progress — and thy pride." },
-  { icon: "🪶", title: "Ben Advises Daily",     body: "Ben Franklin gives calm priorities when money feels overwhelming." },
-];
-
 export default function WorldPage() {
   const supabase = createSupabaseBrowserClient();
-  const [user,    setUser]    = useState<UserMeta | null | "loading">("loading");
-  const [storm,   setStorm]   = useState(false);
+  const [user, setUser] = useState<UserMeta | null | "loading">("loading");
+  const [showHub, setShowHub] = useState(false);
+  const [storm, setStorm] = useState(false);
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => {
       if (data.user) {
-        void supabase.from("profiles").select("full_name").eq("id", data.user.id).single()
+        void supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", data.user.id)
+          .single()
           .then(({ data: p }) => setUser({ name: p?.full_name ?? null }));
       } else {
         setUser(null);
       }
     });
-  }, []);
+  }, [supabase]);
 
   const isLoading = user === "loading";
-  const loggedIn  = user !== null && user !== "loading";
+  const loggedIn = user !== null && user !== "loading";
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#080706]"
-          style={{ fontFamily: "EB Garamond, serif" }}>
-
-      {/* ── Existing weather overlay ── */}
-      <BenWorldWeatherOverlay fog storm={storm} />
-
-      {/* ── Existing map ── */}
-      <div className="relative z-10 mx-auto max-w-6xl p-3 md:p-6">
+    <main className="relative min-h-screen overflow-hidden bg-[#080706] font-serif">
+      {/* Full-bleed immersive map */}
+      <div className="absolute inset-0 z-0">
         <BenWorldMap />
       </div>
 
-      {/* ── Existing coin menu ── */}
+      {/* Subtle atmospheric overlay */}
+      <BenWorldWeatherOverlay fog storm={storm} />
+
+      {/* Minimal Top HUD */}
+      <div className="absolute top-4 left-4 right-4 z-30 flex items-center justify-between pointer-events-auto">
+        <div className="flex items-center gap-3">
+          {/* Logo */}
+          <div className="flex items-center gap-3 bg-black/70 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-amber-300/30 shadow-xl">
+            <img src="/ben-head.png" alt="Benjamin Franklin" className="w-9 h-9" />
+            <div>
+              <div className="text-2xl font-bold text-amber-100 tracking-tight">AskBen</div>
+              <div className="text-xs text-amber-400/80 -mt-1">Franklin's Landing</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {loggedIn && <StreakBadge />}
+          
+          {loggedIn && (
+            <button
+              onClick={() => setShowHub(!showHub)}
+              className="bg-amber-900/90 hover:bg-amber-800 transition-all text-amber-100 px-6 py-3 rounded-2xl flex items-center gap-2 border border-amber-400/40 font-medium"
+            >
+              {showHub ? "✕ Hide Controls" : "🗺️ Colony Hub"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Floating Treasury Coin */}
       <TreasuryCoinMenu />
 
-      {/* ── Auth-aware overlay ─────────────────────────────────── */}
+      {/* Floating Ask Ben Button */}
+      <Link
+        href="/chat"
+        className="fixed bottom-8 right-8 z-40 bg-gradient-to-br from-amber-600 to-amber-800 hover:from-amber-500 hover:to-amber-700 text-white px-8 py-4 rounded-3xl flex items-center gap-3 shadow-2xl border border-amber-300/50 text-lg font-medium transition-all active:scale-95"
+      >
+        Ask Ben <span className="text-2xl">💰</span>
+      </Link>
 
-      {!isLoading && !loggedIn && <LandingHero onStormToggle={() => setStorm(s => !s)} />}
-      {!isLoading &&  loggedIn && <ColonyHub user={user as UserMeta} />}
+      {/* Collapsible Colony Hub */}
+      {loggedIn && showHub && (
+        <ColonyHub user={user as UserMeta} onClose={() => setShowHub(false)} />
+      )}
 
-      {/* Loading shimmer */}
+      {/* Loading State */}
       {isLoading && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none">
-          <p className="font-cinzel text-lg animate-pulse" style={{ color: "#c9a84c" }}>
-            Ben is consulting the ledger&hellip;
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70">
+          <p className="text-amber-200 text-xl font-medium animate-pulse">
+            Consulting the ancient ledgers...
           </p>
         </div>
+      )}
+
+      {/* Logged-out Landing Hero (if needed) */}
+      {!isLoading && !loggedIn && (
+        <LandingHero onStormToggle={() => setStorm((s) => !s)} />
       )}
     </main>
   );
 }
 
-/* ─── Landing hero (logged out) ─────────────────────────────────── */
+/* ====================== COLLAPSIBLE HUB ====================== */
+function ColonyHub({ user, onClose }: { user: UserMeta; onClose: () => void }) {
+  const name = user.name?.split(" ")[0] || "Governor";
 
+  const NAV_TILES = [
+    { href: "/dashboard", icon: "🏛️", label: "Governor's Office" },
+    { href: "/income", icon: "📜", label: "Income Ledger" },
+    { href: "/bills", icon: "📋", label: "Obligations" },
+    { href: "/payments", icon: "🪙", label: "Payment Hall" },
+    { href: "/achievements", icon: "🏆", label: "Trophy Room" },
+    { href: "/forecast", icon: "🔭", label: "Treasury Forecast" },
+    { href: "/calendar", icon: "🗓️", label: "Colonial Calendar" },
+    { href: "/settings", icon: "⚙️", label: "Settings" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md flex items-end md:items-center justify-center p-4">
+      <div className="bg-[#0f0a05] border border-amber-300/40 rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-auto shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-amber-300/20 px-8 py-6">
+          <div>
+            <p className="text-amber-400 text-sm tracking-widest">WELCOME BACK</p>
+            <h2 className="text-4xl font-bold text-amber-100">Governor {name}</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-amber-400 hover:text-amber-200 text-3xl leading-none"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Navigation Grid */}
+        <div className="p-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+          {NAV_TILES.map((tile) => (
+            <Link
+              key={tile.href}
+              href={tile.href}
+              onClick={onClose}
+              className="group bg-[#1a140f] hover:bg-[#221c16] border border-amber-300/30 hover:border-amber-400 rounded-2xl p-6 transition-all duration-200 flex flex-col items-center text-center"
+            >
+              <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">
+                {tile.icon}
+              </div>
+              <p className="font-medium text-amber-100 text-lg">{tile.label}</p>
+            </Link>
+          ))}
+        </div>
+
+        {/* Footer Quote */}
+        <div className="px-8 py-6 border-t border-amber-300/20 text-center text-amber-400/80 italic text-sm">
+          “Beware of little expenses; a small leak will sink a great ship.” — Benjamin Franklin
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ====================== LOGGED-OUT HERO ====================== */
 function LandingHero({ onStormToggle }: { onStormToggle: () => void }) {
   return (
-    <>
-      <style>{`
-        @keyframes proclamation-rise {
-          from { opacity: 0; transform: translateY(24px); }
-          to   { opacity: 1; transform: translateY(0);    }
-        }
-        @keyframes gold-shimmer {
-          0%   { background-position: -200% center; }
-          100% { background-position:  200% center; }
-        }
-        .hero-card { animation: proclamation-rise 0.7s ease-out forwards; }
-        .gold-title {
-          background: linear-gradient(90deg, #8b6914, #c9a84c, #e8c96a, #c9a84c, #8b6914);
-          background-size: 200% auto;
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          animation: gold-shimmer 4s linear infinite;
-        }
-      `}</style>
-
-      {/* Dark scrim so hero is readable over the map */}
-      <div className="fixed inset-0 z-20 pointer-events-none"
-           style={{ background: "linear-gradient(to bottom, rgba(5,2,0,0.55) 0%, rgba(5,2,0,0.3) 50%, rgba(5,2,0,0.75) 100%)" }} />
-
-      {/* Hero panel — centered */}
-      <div className="fixed inset-0 z-30 flex flex-col items-center justify-center px-4 pb-8">
-        <div className="hero-card w-full max-w-xl text-center"
-             style={{
-               background:     "rgba(10,5,2,0.93)",
-               border:         "1px solid rgba(201,168,76,0.55)",
-               borderRadius:   "1rem",
-               padding:        "2.5rem 2rem",
-               boxShadow:      "0 0 80px rgba(201,168,76,0.12), 0 30px 60px rgba(0,0,0,0.9)",
-             }}>
-
-          {/* Top rule */}
-          <div className="h-px mb-5"
-               style={{ background: "linear-gradient(90deg,transparent,#c9a84c,transparent)" }} />
-
-          {/* Badge */}
-          <span className="inline-block rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.25em] font-cinzel font-bold mb-4"
-                style={{ background: "rgba(201,168,76,0.12)", border: "1px solid rgba(201,168,76,0.4)",
-                         color: "#9a7d5a" }}>
-            Colonial Financial System · Est. 2025
-          </span>
-
-          {/* Headline */}
-          <h1 className="gold-title font-cinzel text-5xl font-bold leading-tight">
-            AskBen
-          </h1>
-          <p className="mt-2 font-cinzel text-lg font-semibold" style={{ color: "#e8d5b7" }}>
-            Thy Financial Colony Awaits
-          </p>
-          <p className="mt-3 text-base leading-relaxed max-w-sm mx-auto"
-             style={{ color: "#9a7d5a" }}>
-            Track debts, bills, income, and payments. Earn XP. Protect thy streak.
-            Ben Franklin advises — without judgment.
-          </p>
-
-          {/* CTAs */}
-          <div className="mt-7 flex flex-wrap gap-3 justify-center">
-            <Link href="/signup"
-                  className="rounded-xl px-7 py-3 font-cinzel text-sm font-bold uppercase tracking-wider transition hover:opacity-90"
-                  style={{ background: "#c9a84c", color: "#1a0f0a" }}>
-              ✦ Found Thy Colony
-            </Link>
-            <Link href="/login"
-                  className="rounded-xl px-7 py-3 font-cinzel text-sm font-bold uppercase tracking-wider transition"
-                  style={{ background: "rgba(107,68,35,0.2)", border: "1px solid rgba(107,68,35,0.5)",
-                           color: "#9a7d5a" }}>
-              Sign In
-            </Link>
-          </div>
-
-          {/* Features row */}
-          <div className="mt-7 grid grid-cols-2 gap-2 text-left">
-            {FEATURES.map(f => (
-              <div key={f.title} className="rounded-xl p-3"
-                   style={{ background: "rgba(107,68,35,0.1)", border: "1px solid rgba(107,68,35,0.25)" }}>
-                <p className="font-cinzel text-xs font-bold" style={{ color: "#c9a84c" }}>
-                  {f.icon} {f.title}
-                </p>
-                <p className="text-[11px] mt-0.5 leading-relaxed italic"
-                   style={{ color: "#6b4423" }}>{f.body}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Ben quote */}
-          <div className="mt-5 flex items-start gap-2 text-left rounded-xl px-4 py-3"
-               style={{ background: "rgba(245,230,200,0.04)", border: "1px solid rgba(107,68,35,0.25)" }}>
-            <span className="text-lg shrink-0 mt-0.5">🪶</span>
-            <p className="text-xs italic leading-relaxed" style={{ color: "#9a7d5a" }}>
-              &ldquo;An investment in knowledge pays the best interest.&rdquo; &mdash; Benjamin Franklin
-            </p>
-          </div>
-
-          {/* Bottom rule */}
-          <div className="h-px mt-5"
-               style={{ background: "linear-gradient(90deg,transparent,#c9a84c,transparent)" }} />
-        </div>
-
-        {/* Storm toggle — small ambient control */}
-        <button onClick={onStormToggle}
-                className="mt-4 text-[11px] font-cinzel transition"
-                style={{ color: "#4a3020" }}>
-          Toggle storm &nbsp;⛈
-        </button>
-      </div>
-    </>
-  );
-}
-
-/* ─── Colony hub (logged in) ─────────────────────────────────────── */
-
-function ColonyHub({ user }: { user: UserMeta }) {
-  const name = user.name?.split(" ")[0];
-
-  return (
-    <>
-      <style>{`
-        @keyframes hub-fade { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-        .hub-in { animation: hub-fade 0.5s ease-out forwards; }
-      `}</style>
-
-      {/* Thin top scrim */}
-      <div className="fixed inset-0 z-20 pointer-events-none"
-           style={{ background: "linear-gradient(to bottom, rgba(5,2,0,0.5) 0%, rgba(5,2,0,0.0) 40%, rgba(5,2,0,0.6) 100%)" }} />
-
-      {/* Hub overlay */}
-      <div className="hub-in fixed inset-x-0 bottom-0 z-30 p-4 md:p-6">
-        <div className="mx-auto max-w-5xl">
-
-          {/* Welcome + streak row */}
-          <div className="mb-3 flex flex-wrap items-end gap-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] font-cinzel"
-                 style={{ color: "#6b4423" }}>Welcome back</p>
-              <h2 className="font-cinzel text-2xl font-bold" style={{ color: "#c9a84c" }}>
-                {name ? `Governor ${name}` : "Governor"}
-              </h2>
-            </div>
-            {/* Streak inline */}
-            <div className="ml-auto w-56 shrink-0">
-              <StreakBadge />
-            </div>
-          </div>
-
-          {/* Nav tile grid */}
-          <div className="grid grid-cols-4 gap-2 sm:grid-cols-4 md:grid-cols-8">
-            {NAV_TILES.map(tile => (
-              <NavTile key={tile.href} {...tile} />
-            ))}
-          </div>
-
-          {/* Bottom quote strip */}
-          <div className="mt-3 rounded-xl px-4 py-2 flex items-center gap-2"
-               style={{ background: "rgba(10,5,2,0.85)", border: "1px solid rgba(107,68,35,0.3)" }}>
-            <span className="text-base shrink-0">🪶</span>
-            <p className="text-xs italic" style={{ color: "#6b4423" }}>
-              &ldquo;Beware of little expenses; a small leak will sink a great ship.&rdquo; &mdash; Franklin
-            </p>
-          </div>
+    <div className="absolute inset-0 z-20 flex items-center justify-center p-6 pointer-events-auto">
+      <div className="max-w-xl text-center bg-black/80 backdrop-blur-xl border border-amber-300/30 rounded-3xl p-10">
+        <h1 className="text-6xl font-bold text-amber-100 mb-4">Thy Financial Colony Awaits</h1>
+        <p className="text-xl text-amber-300/90 mb-8">
+          Track thy coins. Earn honor. Let Ben guide thee.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <Link
+            href="/signup"
+            className="bg-amber-500 hover:bg-amber-400 text-black font-bold py-4 px-10 rounded-2xl text-lg transition"
+          >
+            Found Thy Colony
+          </Link>
+          <Link
+            href="/login"
+            className="border border-amber-400/60 hover:bg-amber-400/10 text-amber-100 font-medium py-4 px-10 rounded-2xl text-lg transition"
+          >
+            Sign In
+          </Link>
         </div>
       </div>
-    </>
-  );
-}
-
-function NavTile({ href, icon, label, sub }: {
-  href: string; icon: string; label: string; sub: string;
-}) {
-  return (
-    <Link href={href}
-          className="flex flex-col items-center text-center rounded-xl p-2.5 gap-1 transition group"
-          style={{
-            background: "rgba(10,5,2,0.88)",
-            border:     "1px solid rgba(107,68,35,0.4)",
-            backdropFilter: "blur(4px)",
-          }}
-          onMouseEnter={e => {
-            (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(201,168,76,0.5)";
-            (e.currentTarget as HTMLAnchorElement).style.background  = "rgba(20,12,5,0.95)";
-          }}
-          onMouseLeave={e => {
-            (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(107,68,35,0.4)";
-            (e.currentTarget as HTMLAnchorElement).style.background  = "rgba(10,5,2,0.88)";
-          }}>
-      <span className="text-2xl">{icon}</span>
-      <p className="font-cinzel text-[10px] font-bold leading-tight"
-         style={{ color: "#c9a84c" }}>{label}</p>
-      <p className="text-[9px] italic leading-tight hidden sm:block"
-         style={{ color: "#6b4423" }}>{sub}</p>
-    </Link>
+    </div>
   );
 }
