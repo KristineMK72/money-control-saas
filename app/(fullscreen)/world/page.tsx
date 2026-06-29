@@ -10,7 +10,7 @@ const ColonialTown3D = dynamic(
 
 export default function WorldPage() {
   return (
-    <main className="w-screen bg-[#040608]" style={{ height: "100dvh" }}>
+    <main className="fixed inset-0 z-50 bg-[#040608]">
       <Suspense
         fallback={
           <div className="w-full h-full flex items-center justify-center bg-[#040608]">
