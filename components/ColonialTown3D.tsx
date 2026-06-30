@@ -850,6 +850,7 @@ function Scene({
       ))}
 
       <Fountain />
+      <BenNPC position={[0, 0, 4]} />
       <ColonialTrees />
 
       {Object.entries(others).map(([id, p]) => (
@@ -1635,6 +1636,108 @@ function MobileControls({
         </p>
       </div>
     </div>
+  );
+}
+
+function BenNPC({ position }: { position: [number, number, number] }) {
+  const group = useRef<THREE.Group>(null);
+
+  useFrame((state) => {
+    if (!group.current) return;
+
+    const t = state.clock.getElapsedTime();
+    group.current.position.y = Math.sin(t * 2) * 0.03;
+    group.current.rotation.y = Math.sin(t * 0.8) * 0.25;
+  });
+
+  return (
+    <group ref={group} position={position}>
+      {/* Legs */}
+      {[-0.13, 0.13].map((x, i) => (
+        <mesh key={`ben-leg-${i}`} position={[x, 0.45, 0]}>
+          <cylinderGeometry args={[0.07, 0.07, 0.9, 8]} />
+          <meshStandardMaterial color="#1b1b2f" roughness={0.85} />
+        </mesh>
+      ))}
+
+      {/* Coat */}
+      <mesh position={[0, 1.12, 0]}>
+        <cylinderGeometry args={[0.28, 0.22, 0.85, 12]} />
+        <meshStandardMaterial color="#163a63" roughness={0.82} />
+      </mesh>
+
+      {/* Vest */}
+      <mesh position={[0, 1.13, 0.2]}>
+        <boxGeometry args={[0.26, 0.55, 0.05]} />
+        <meshStandardMaterial color="#d9c08a" roughness={0.8} />
+      </mesh>
+
+      {/* Cravat */}
+      <mesh position={[0, 1.48, 0.22]}>
+        <sphereGeometry args={[0.09, 10, 10]} />
+        <meshStandardMaterial color="#f8f1df" roughness={0.65} />
+      </mesh>
+
+      {/* Head */}
+      <mesh position={[0, 1.72, 0]}>
+        <sphereGeometry args={[0.24, 18, 18]} />
+        <meshStandardMaterial color="#d4a876" roughness={0.78} />
+      </mesh>
+
+      {/* Hair */}
+      <mesh position={[0, 1.76, -0.04]}>
+        <sphereGeometry args={[0.255, 14, 14]} />
+        <meshStandardMaterial color="#e8e0cf" roughness={0.9} />
+      </mesh>
+
+      {/* Hat brim */}
+      <mesh position={[0, 1.98, 0]}>
+        <cylinderGeometry args={[0.38, 0.38, 0.045, 20]} />
+        <meshStandardMaterial color="#1b1510" roughness={0.9} />
+      </mesh>
+
+      {/* Hat top */}
+      <mesh position={[0, 2.15, 0]}>
+        <cylinderGeometry args={[0.2, 0.24, 0.32, 14]} />
+        <meshStandardMaterial color="#1b1510" roughness={0.9} />
+      </mesh>
+
+      {/* Arms */}
+      {[-0.34, 0.34].map((x, i) => (
+        <mesh
+          key={`ben-arm-${i}`}
+          position={[x, 1.15, 0]}
+          rotation={[0, 0, x < 0 ? 0.35 : -0.35]}
+        >
+          <cylinderGeometry args={[0.055, 0.065, 0.65, 8]} />
+          <meshStandardMaterial color="#163a63" roughness={0.85} />
+        </mesh>
+      ))}
+
+      {/* Name label */}
+      <Html
+        position={[0, 2.75, 0]}
+        center
+        distanceFactor={5}
+        style={{ pointerEvents: "none", userSelect: "none" }}
+      >
+        <div
+          style={{
+            background: "rgba(0,0,0,0.78)",
+            color: "#fbbf24",
+            padding: "5px 10px",
+            borderRadius: 8,
+            fontSize: 14,
+            fontFamily: "EB Garamond, serif",
+            whiteSpace: "nowrap",
+            border: "1px solid rgba(251,191,36,0.55)",
+            boxShadow: "0 0 16px rgba(251,191,36,0.35)",
+          }}
+        >
+          Ben
+        </div>
+      </Html>
+    </group>
   );
 }
 
