@@ -27,8 +27,6 @@ import { useRouter } from "next/navigation";
 import * as THREE from "three";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-/* ─── Buildings ───────────────────────────────────────────────── */
-
 const BUILDINGS = [
   {
     id: "gov",
@@ -43,7 +41,7 @@ const BUILDINGS = [
     brick: "#3d2214",
     roof: "#1a1210",
     win: "#ffe066",
-    enter: 7,
+    enter: 12,
     collide: 6.5,
     pillars: true,
     large: true,
@@ -61,7 +59,7 @@ const BUILDINGS = [
     brick: "#2e1a10",
     roof: "#16100a",
     win: "#6ee7b7",
-    enter: 5,
+    enter: 10,
     collide: 5,
     pillars: false,
     large: false,
@@ -79,7 +77,7 @@ const BUILDINGS = [
     brick: "#2a180e",
     roof: "#161008",
     win: "#fdba74",
-    enter: 5,
+    enter: 10,
     collide: 5,
     pillars: false,
     large: false,
@@ -97,7 +95,7 @@ const BUILDINGS = [
     brick: "#281a0a",
     roof: "#12100a",
     win: "#fcd34d",
-    enter: 6,
+    enter: 10,
     collide: 5.5,
     pillars: true,
     large: false,
@@ -115,7 +113,7 @@ const BUILDINGS = [
     brick: "#2e0f0f",
     roof: "#160808",
     win: "#fca5a5",
-    enter: 7,
+    enter: 12,
     collide: 6.5,
     pillars: true,
     large: true,
@@ -133,7 +131,7 @@ const BUILDINGS = [
     brick: "#0e1a2e",
     roof: "#080e18",
     win: "#bfdbfe",
-    enter: 5,
+    enter: 10,
     collide: 5,
     pillars: false,
     large: false,
@@ -151,7 +149,7 @@ const BUILDINGS = [
     brick: "#201808",
     roof: "#100e04",
     win: "#c4b5fd",
-    enter: 5,
+    enter: 10,
     collide: 5,
     pillars: false,
     large: false,
@@ -169,7 +167,7 @@ const BUILDINGS = [
     brick: "#181818",
     roof: "#0c0c0c",
     win: "#cbd5e1",
-    enter: 5,
+    enter: 10,
     collide: 5,
     pillars: false,
     large: false,
@@ -177,8 +175,6 @@ const BUILDINGS = [
 ] as const;
 
 type BuildingDef = (typeof BUILDINGS)[number];
-
-/* ─── Avatars ─────────────────────────────────────────────────── */
 
 const AVATARS = [
   { color: "#8b1a1a", title: "Captain", hat: "#1a0a0a" },
@@ -192,8 +188,6 @@ const AVATARS = [
 const SPEED = 8;
 const EYE_HEIGHT = 1.75;
 const CHANNEL = "colonial-world-v2";
-
-/* ─── Door sound ──────────────────────────────────────────────── */
 
 function playDoorSound() {
   try {
@@ -243,8 +237,6 @@ function playDoorSound() {
     }, 500);
   } catch {}
 }
-
-/* ─── Multiplayer ─────────────────────────────────────────────── */
 
 type PlayerState = {
   userId: string;
@@ -322,8 +314,6 @@ function useMultiplayer(
 
   return { others, broadcast };
 }
-
-/* ═══════════════════════════════════════════════════════════════ */
 
 export default function ColonialTown3D() {
   const router = useRouter();
@@ -585,7 +575,7 @@ export default function ColonialTown3D() {
       )}
 
       {(locked || isMobile) && near && !entering && (
-        <div className="absolute inset-x-0 bottom-28 z-40 flex justify-center px-4">
+        <div className="absolute inset-x-0 bottom-36 z-50 flex justify-center px-4">
           <button
             type="button"
             onClick={enter}
@@ -645,7 +635,7 @@ export default function ColonialTown3D() {
         </p>
       )}
 
-      {isMobile && locked && (
+      {isMobile && locked && !entering && (
         <MobileControls moveRef={moveRef} yawRef={mobileYaw} />
       )}
 
@@ -661,8 +651,6 @@ export default function ColonialTown3D() {
     </div>
   );
 }
-
-/* ─── Scene ───────────────────────────────────────────────────── */
 
 function Scene({
   moveRef,
@@ -880,8 +868,6 @@ function Scene({
   );
 }
 
-/* ─── Other player ────────────────────────────────────────────── */
-
 function OtherPlayer({
   x,
   z,
@@ -982,8 +968,6 @@ function OtherPlayer({
   );
 }
 
-/* ─── Ground ──────────────────────────────────────────────────── */
-
 function Ground() {
   const stones = useMemo(() => {
     return Array.from({ length: 30 }, (_, row) =>
@@ -1023,8 +1007,6 @@ function Ground() {
   );
 }
 
-/* ─── Street ──────────────────────────────────────────────────── */
-
 function Street() {
   return (
     <>
@@ -1060,8 +1042,6 @@ function Street() {
     </>
   );
 }
-
-/* ─── Building ────────────────────────────────────────────────── */
 
 function Building({ def, active }: { def: BuildingDef; active: boolean }) {
   const { x, z, w, h, d, brick, roof, win, label, icon, pillars, large } = def;
@@ -1337,9 +1317,9 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
       )}
 
       <Html
-        position={[0, h + 8, 0]}
+        position={[0, h + 2.2, fz + fDir * 1.35]}
         center
-        distanceFactor={10}
+        distanceFactor={4}
         style={{ pointerEvents: "none", userSelect: "none" }}
       >
         <div
@@ -1351,26 +1331,26 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
               ? "0 0 28px rgba(251,191,36,1), 0 0 70px rgba(251,191,36,.8), 0 2px 8px rgba(0,0,0,1)"
               : "0 0 20px rgba(201,168,76,1), 0 2px 6px rgba(0,0,0,1)",
             whiteSpace: "pre-line",
-            background: active ? "rgba(80,45,5,0.78)" : "rgba(0,0,0,0.55)",
-            padding: active ? "9px 14px" : "6px 10px",
-            borderRadius: 10,
+            background: active ? "rgba(80,45,5,0.92)" : "rgba(0,0,0,0.82)",
+            padding: active ? "11px 16px" : "9px 14px",
+            borderRadius: 12,
             border: active
               ? "2px solid rgba(251,191,36,0.9)"
-              : "1px solid rgba(201,168,76,0.4)",
+              : "1px solid rgba(201,168,76,0.5)",
             transform: active ? "scale(1.08)" : "scale(1)",
             transition: "all .2s ease",
           }}
         >
-          <div style={{ fontSize: active ? 38 : 32, lineHeight: 1 }}>
+          <div style={{ fontSize: active ? 54 : 46, lineHeight: 1 }}>
             {icon}
           </div>
 
           <div
             style={{
-              fontSize: active ? 16 : 14,
+              fontSize: active ? 22 : 19,
               fontWeight: "bold",
-              letterSpacing: "0.1em",
-              marginTop: 4,
+              letterSpacing: "0.08em",
+              marginTop: 5,
             }}
           >
             {label}
@@ -1380,8 +1360,6 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
     </group>
   );
 }
-
-/* ─── Lantern post ────────────────────────────────────────────── */
 
 function LanternPost({ position }: { position: [number, number, number] }) {
   const [x, , z] = position;
@@ -1427,8 +1405,6 @@ function LanternPost({ position }: { position: [number, number, number] }) {
     </group>
   );
 }
-
-/* ─── Fountain ────────────────────────────────────────────────── */
 
 function Fountain() {
   return (
@@ -1487,8 +1463,6 @@ function Fountain() {
   );
 }
 
-/* ─── Trees ───────────────────────────────────────────────────── */
-
 function ColonialTrees() {
   const positions: [number, number, number, number][] = [
     [-16, 0, -20, 0.9],
@@ -1528,8 +1502,6 @@ function ColonialTrees() {
     </>
   );
 }
-
-/* ─── Mobile controls ─────────────────────────────────────────── */
 
 function MobileControls({
   moveRef,
@@ -1604,7 +1576,7 @@ function MobileControls({
 
   return (
     <div
-      className="fixed inset-0 z-20"
+      className="fixed inset-0 z-20 pointer-events-auto"
       style={{ touchAction: "none" }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
@@ -1665,8 +1637,6 @@ function MobileControls({
     </div>
   );
 }
-
-/* ─── Entry transition ────────────────────────────────────────── */
 
 function EntryTransition({
   building,
