@@ -931,6 +931,145 @@ function Chain({ position }: { position: [number, number, number] }) {
     </group>
   );
 }
+type BuildingStyle = "civic" | "shop" | "financial" | "home";
+
+function ColonialWindow({
+  position,
+  color,
+  active,
+}: {
+  position: [number, number, number];
+  color: string;
+  active: boolean;
+}) {
+  return (
+    <group position={position}>
+      <mesh>
+        <boxGeometry args={[0.9, 1.15, 0.08]} />
+        <meshStandardMaterial color="#120a05" roughness={0.9} />
+      </mesh>
+
+      <mesh position={[0, 0, 0.05]}>
+        <boxGeometry args={[0.62, 0.86, 0.035]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={active ? 2.6 : 1.4}
+          transparent
+          opacity={0.78}
+        />
+      </mesh>
+
+      <mesh position={[0, 0, 0.08]}>
+        <boxGeometry args={[0.62, 0.035, 0.025]} />
+        <meshStandardMaterial color="#120a05" />
+      </mesh>
+
+      <mesh position={[0, 0, 0.08]}>
+        <boxGeometry args={[0.035, 0.86, 0.025]} />
+        <meshStandardMaterial color="#120a05" />
+      </mesh>
+    </group>
+  );
+}
+
+function ColonialDoor({
+  h,
+  win,
+  active,
+}: {
+  h: number;
+  win: string;
+  active: boolean;
+}) {
+  return (
+    <group>
+      <mesh>
+        <boxGeometry args={[1.65, h * 0.45, 0.13]} />
+        <meshStandardMaterial color="#160904" roughness={0.9} />
+      </mesh>
+
+      <mesh position={[0, 0, 0.07]}>
+        <boxGeometry args={[1.28, h * 0.38, 0.06]} />
+        <meshStandardMaterial color="#2b1207" roughness={0.82} />
+      </mesh>
+
+      <mesh position={[0.48, -0.08, 0.12]}>
+        <sphereGeometry args={[0.06, 10, 10]} />
+        <meshStandardMaterial
+          color="#d6a23a"
+          emissive="#d6a23a"
+          emissiveIntensity={active ? 1 : 0.35}
+          metalness={0.9}
+          roughness={0.25}
+        />
+      </mesh>
+
+      <mesh position={[0, h * 0.21, 0.1]}>
+        <boxGeometry args={[1.25, 0.42, 0.05]} />
+        <meshStandardMaterial
+          color={win}
+          emissive={win}
+          emissiveIntensity={active ? 2.2 : 1.1}
+          transparent
+          opacity={0.72}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+function Chimney({
+  position,
+  large,
+  roof,
+}: {
+  position: [number, number, number];
+  large: boolean;
+  roof: string;
+}) {
+  return (
+    <group position={position}>
+      <mesh castShadow>
+        <boxGeometry args={[0.65, large ? 3.4 : 2.4, 0.65]} />
+        <meshStandardMaterial color={roof} roughness={0.95} />
+      </mesh>
+
+      <mesh position={[0, large ? 1.8 : 1.3, 0]}>
+        <boxGeometry args={[0.85, 0.18, 0.85]} />
+        <meshStandardMaterial color="#0b0704" roughness={1} />
+      </mesh>
+
+      <Sparkles
+        count={8}
+        scale={[0.5, 2, 0.5]}
+        position={[0, large ? 2.3 : 1.8, 0]}
+        size={5}
+        speed={0.35}
+        color="#aaa"
+        opacity={0.22}
+      />
+    </group>
+  );
+}
+
+function FlowerBox({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position}>
+      <mesh>
+        <boxGeometry args={[1.15, 0.14, 0.18]} />
+        <meshStandardMaterial color="#2b1608" roughness={0.9} />
+      </mesh>
+
+      {[-0.35, 0, 0.35].map((x) => (
+        <mesh key={x} position={[x, 0.12, 0]}>
+          <sphereGeometry args={[0.08, 8, 8]} />
+          <meshStandardMaterial color="#b91c1c" emissive="#5a0a0a" emissiveIntensity={0.2} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
 function Building({ def, active }: { def: BuildingDef; active: boolean }) {
   const { x, z, w, h, d, brick, roof, win, label, icon, pillars, large } = def;
 
@@ -938,128 +1077,200 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
   const fz = left ? d / 2 : -(d / 2);
   const fDir = left ? 1 : -1;
 
+  const frontZ = fz + fDir * 0.08;
+  const signZ = fz + fDir * 0.62;
+
+  const lowerWindows = large
+    ? [-w * 0.34, 0, w * 0.34]
+    : [-w * 0.3, w * 0.3];
+
+  const upperWindows = large ? [-w * 0.28, w * 0.28] : [0];
+
   return (
     <group position={[x, 0, z]}>
+      {/* Foundation */}
       <mesh position={[0, 0.22, 0]} receiveShadow castShadow>
-        <boxGeometry args={[w + 0.8, 0.44, d + 0.8]} />
-        <meshStandardMaterial color="#141008" roughness={0.98} metalness={0.02} />
+        <boxGeometry args={[w + 1, 0.44, d + 1]} />
+        <meshStandardMaterial color="#120d07" roughness={0.98} metalness={0.02} />
       </mesh>
 
+      {/* Main body */}
       <mesh position={[0, h / 2 + 0.44, 0]} receiveShadow castShadow>
         <boxGeometry args={[w, h, d]} />
-        <meshStandardMaterial color={brick} roughness={0.88} metalness={0.01} />
+        <meshStandardMaterial
+          color={brick}
+          roughness={0.88}
+          metalness={0.01}
+          envMapIntensity={0.4}
+        />
       </mesh>
 
-      {Array.from({ length: Math.floor(h / 0.28) }, (_, i) => (
+      {/* Brick / clapboard lines on front */}
+      {Array.from({ length: Math.floor(h / 0.32) }, (_, i) => (
         <mesh
-          key={`brick-line-${i}`}
-          position={[0, 0.44 + i * 0.28, fz + fDir * 0.01]}
+          key={`front-line-${i}`}
+          position={[0, 0.62 + i * 0.32, fz + fDir * 0.014]}
         >
-          <planeGeometry args={[w, 0.02]} />
-          <meshStandardMaterial color="#0a0704" transparent opacity={0.35} />
+          <planeGeometry args={[w * 0.96, 0.025]} />
+          <meshStandardMaterial
+            color="#070403"
+            transparent
+            opacity={0.34}
+            roughness={1}
+          />
         </mesh>
       ))}
 
-      <mesh position={[0, h + 0.44 + (large ? 2.8 : 2.2), 0]} castShadow>
-        <coneGeometry args={[Math.max(w, d) * 0.78, large ? 5.5 : 4.5, 4]} />
-        <meshStandardMaterial color={roof} roughness={0.95} metalness={0.04} />
+      {/* Roof */}
+      <mesh position={[0, h + 0.44 + (large ? 2.8 : 2.25), 0]} castShadow>
+        <coneGeometry args={[Math.max(w, d) * 0.82, large ? 5.6 : 4.5, 4]} />
+        <meshStandardMaterial
+          color={roof}
+          roughness={0.96}
+          metalness={0.05}
+          envMapIntensity={0.25}
+        />
       </mesh>
 
+      {/* Roof lip */}
       <mesh position={[0, h + 0.44, 0]} castShadow>
-        <boxGeometry args={[w + 0.8, 0.2, d + 0.8]} />
-        <meshStandardMaterial color={roof} roughness={0.96} />
+        <boxGeometry args={[w + 1.05, 0.22, d + 1.05]} />
+        <meshStandardMaterial color={roof} roughness={0.95} />
       </mesh>
 
-      {(large ? [-w * 0.32, 0, w * 0.32] : [-w * 0.28, w * 0.28]).map(
-        (wx, wi) => (
-          <group
-            key={`window-${wi}`}
-            position={[wx, h * 0.62 + 0.44, fz + fDir * 0.08]}
-          >
-            <mesh>
-              <boxGeometry args={[1.15, 1.55, 0.12]} />
-              <meshStandardMaterial color="#1a1208" roughness={0.95} />
-            </mesh>
-            <mesh position={[0, 0, 0.06]}>
-              <boxGeometry args={[0.82, 1.15, 0.04]} />
-              <meshStandardMaterial
-                color={win}
-                emissive={win}
-                emissiveIntensity={active ? 2.8 : 1.7}
-                transparent
-                opacity={0.78}
-              />
-            </mesh>
-          </group>
-        )
-      )}
+      {/* Chimneys */}
+      <Chimney
+        position={[-w * 0.28, h + 0.44, -d * 0.18]}
+        large={large}
+        roof={roof}
+      />
+      <Chimney
+        position={[w * 0.3, h + 0.44, d * 0.15]}
+        large={large}
+        roof={roof}
+      />
 
-      <group position={[0, h * 0.22 + 0.44, fz + fDir * 0.08]}>
-        <mesh>
-          <boxGeometry args={[1.8, h * 0.46, 0.14]} />
-          <meshStandardMaterial color="#1a1208" roughness={0.95} />
-        </mesh>
-
-        <mesh position={[0, 0, 0.08]}>
-          <boxGeometry args={[1.42, h * 0.42, 0.06]} />
-          <meshStandardMaterial color="#1e0a04" roughness={0.85} />
-        </mesh>
-
-        <mesh position={[0.55, -0.1, 0.14]}>
-          <sphereGeometry args={[0.06, 8, 8]} />
-          <meshStandardMaterial
-            color="#c9a84c"
-            emissive="#c9a84c"
-            emissiveIntensity={active ? 1 : 0.4}
-            metalness={0.9}
+      {/* Windows */}
+      {lowerWindows.map((wx, wi) => (
+        <group key={`lower-window-${wi}`}>
+          <ColonialWindow
+            position={[wx, h * 0.6 + 0.44, frontZ]}
+            color={win}
+            active={active}
           />
-        </mesh>
+          <FlowerBox position={[wx, h * 0.6 - 0.35 + 0.44, frontZ + fDir * 0.08]} />
+        </group>
+      ))}
 
-        {[0, 1].map((si) => (
+      {upperWindows.map((wx, wi) => (
+        <ColonialWindow
+          key={`upper-window-${wi}`}
+          position={[wx, h * 0.84 + 0.44, frontZ]}
+          color={win}
+          active={active}
+        />
+      ))}
+
+      {/* Door */}
+      <group position={[0, h * 0.22 + 0.44, frontZ]}>
+        <ColonialDoor h={h} win={win} active={active} />
+
+        {[0, 1, 2].map((si) => (
           <mesh
             key={`step-${si}`}
-            position={[0, -h * 0.21 - 0.1 - si * 0.14, fDir * (0.25 + si * 0.25) + 0.08]}
+            position={[
+              0,
+              -h * 0.21 - 0.1 - si * 0.13,
+              fDir * (0.28 + si * 0.25),
+            ]}
             receiveShadow
           >
-            <boxGeometry args={[2 + si * 0.4, 0.14, 0.55]} />
+            <boxGeometry args={[2.1 + si * 0.45, 0.13, 0.55]} />
             <meshStandardMaterial color="#141008" roughness={0.97} />
           </mesh>
         ))}
       </group>
 
+      {/* Pillars for civic buildings */}
       {pillars &&
-        [-w * 0.32, -w * 0.12, w * 0.12, w * 0.32].map((px, pi) => (
+        [-w * 0.34, -w * 0.13, w * 0.13, w * 0.34].map((px, pi) => (
           <mesh
             key={`pillar-${pi}`}
-            position={[px, h * 0.3 + 0.44, fz + fDir * 0.5]}
+            position={[px, h * 0.3 + 0.44, fz + fDir * 0.55]}
             castShadow
           >
-            <cylinderGeometry args={[0.18, 0.22, h * 0.6, 10]} />
-            <meshStandardMaterial color="#221808" roughness={0.88} />
+            <cylinderGeometry args={[0.18, 0.23, h * 0.6, 12]} />
+            <meshStandardMaterial color="#241706" roughness={0.86} />
           </mesh>
         ))}
 
+      {pillars && (
+        <mesh position={[0, h * 0.6 + 0.44, fz + fDir * 0.53]}>
+          <boxGeometry args={[w * 0.88, 0.32, 0.55]} />
+          <meshStandardMaterial color="#1e1408" roughness={0.9} />
+        </mesh>
+      )}
+
+      {/* Corner stones / trim */}
+      {[-w / 2, w / 2].map((qx, qi) =>
+        Array.from({ length: Math.floor(h / 1.35) }, (_, ri) => (
+          <mesh
+            key={`corner-${qi}-${ri}`}
+            position={[
+              qx + (qx > 0 ? 0.055 : -0.055),
+              ri * 1.35 + 0.95,
+              0,
+            ]}
+            castShadow
+          >
+            <boxGeometry args={[0.14, 0.52, d + 0.12]} />
+            <meshStandardMaterial
+              color={`hsl(30,${24 + ri * 2}%,${12 + ri}%)`}
+              roughness={0.93}
+            />
+          </mesh>
+        ))
+      )}
+
+      {/* Door / window lighting */}
       <pointLight
-        position={[0, h * 0.6, fz + fDir * 1.8]}
-        intensity={active ? 7 : 3.5}
+        position={[0, h * 0.58, fz + fDir * 1.8]}
+        intensity={active ? 7.5 : 3.4}
         distance={active ? 15 : 10}
         color={win}
         decay={2}
       />
 
+      <pointLight
+        position={[0, h * 0.64, 0]}
+        intensity={active ? 1.35 : 0.75}
+        distance={7}
+        color={win}
+        decay={2}
+      />
+
+      {/* Active navigation ring */}
       {active && (
         <>
           <mesh
-            position={[0, 0.055, fz + fDir * 1.3]}
+            position={[0, 0.06, fz + fDir * 1.35]}
             rotation={[-Math.PI / 2, 0, 0]}
           >
-            <ringGeometry args={[1.6, 2.25, 48]} />
-            <meshBasicMaterial color="#fbbf24" transparent opacity={0.5} />
+            <ringGeometry args={[1.65, 2.32, 48]} />
+            <meshBasicMaterial color="#fbbf24" transparent opacity={0.55} />
           </mesh>
 
+          <pointLight
+            position={[0, 2.2, fz + fDir * 1.65]}
+            intensity={9}
+            distance={12}
+            color="#fbbf24"
+            decay={2}
+          />
+
           <Sparkles
-            count={35}
-            scale={[3, 3, 2]}
+            count={38}
+            scale={[3.2, 3.1, 2]}
             position={[0, 2.2, fz + fDir * 1.8]}
             size={3}
             speed={0.9}
@@ -1069,11 +1280,12 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
         </>
       )}
 
+      {/* Hanging sign */}
       <ColonialSign
         label={label}
         icon={icon}
         active={active}
-        position={[0, h * 0.68 + 0.44, fz + fDir * 0.55]}
+        position={[0, h * 0.72 + 0.44, signZ]}
       />
     </group>
   );
