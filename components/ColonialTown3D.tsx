@@ -1158,7 +1158,7 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
         roof={roof}
       />
 
-      {/* Windows */}
+      {/* Windows on front */}
       {lowerWindows.map((wx, wi) => (
         <group key={`lower-window-${wi}`}>
           <ColonialWindow
@@ -1177,6 +1177,24 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
           color={win}
           active={active}
         />
+      ))}
+
+      {/* Extra windows on the LONG street sides (left & right) */}
+      {[-w * 0.45, w * 0.45].map((sideX, sideIdx) => (
+        <group key={`side-windows-${sideIdx}`}>
+          <ColonialWindow
+            position={[sideX, h * 0.55, 0]}
+            color={win}
+            active={active}
+          />
+          {large && (
+            <ColonialWindow
+              position={[sideX, h * 0.85, 0]}
+              color={win}
+              active={active}
+            />
+          )}
+        </group>
       ))}
 
       {/* Door */}
@@ -1240,7 +1258,7 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
         ))
       )}
 
-      {/* Door / window lighting */}
+      {/* Lighting */}
       <pointLight
         position={[0, h * 0.58, fz + fDir * 1.8]}
         intensity={active ? 7.5 : 3.4}
@@ -1249,15 +1267,7 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
         decay={2}
       />
 
-      <pointLight
-        position={[0, h * 0.64, 0]}
-        intensity={active ? 1.35 : 0.75}
-        distance={7}
-        color={win}
-        decay={2}
-      />
-
-      {/* Active navigation ring */}
+      {/* Active navigation ring + sparkles */}
       {active && (
         <>
           <mesh
@@ -1288,13 +1298,34 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
         </>
       )}
 
-      {/* Hanging sign */}
+      {/* Main hanging sign (front) */}
       <ColonialSign
         label={label}
         icon={icon}
         active={active}
         position={[0, h * 0.72 + 0.44, signZ]}
       />
+
+      {/* Extra street-side signs (on the long sides) */}
+      {[-w * 0.5 - 0.15, w * 0.5 + 0.15].map((sx, i) => (
+        <group key={i} position={[sx, h * 0.6, 0]} rotation={[0, i === 0 ? 1.57 : -1.57, 0]}>
+          <mesh>
+            <boxGeometry args={[0.15, 1.4, 1.8]} />
+            <meshStandardMaterial color="#1a1208" roughness={0.9} />
+          </mesh>
+          <Text
+            position={[0, 0, 0.08]}
+            fontSize={0.18}
+            anchorX="center"
+            anchorY="middle"
+            color="#d4af37"
+            outlineWidth={0.012}
+            outlineColor="#000"
+          >
+            {label.split("\n")[0]}
+          </Text>
+        </group>
+      ))}
     </group>
   );
 }
