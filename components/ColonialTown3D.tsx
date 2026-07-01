@@ -581,17 +581,16 @@ function Scene({
 
   return (
     <>
-      <Sky
-        distance={4500}
-        sunPosition={[60, 8, -80]}
-        inclination={0.52}
-        azimuth={0.22}
-        turbidity={8}
-        rayleigh={1.2}
-        mieCoefficient={0.006}
-        mieDirectionalG={0.82}
-      />
-
+     <Sky
+    distance={4500}
+    sunPosition={[80, 60, -100]}
+    inclination={0.45}
+    azimuth={0.9}
+    turbidity={6}
+    rayleigh={0.8}
+    mieCoefficient={0.005}
+  />
+<fog attach="fog" args={["#1a0f06", 60, 280]} />
       <Environment preset="sunset" background={false} />
       <fog attach="fog" args={["#1a0f06", 40, 200]} />
 
@@ -638,10 +637,19 @@ function Scene({
         </group>
       ))}
 
-      <Fountain />
+       <Fountain />
       <BenNPC position={[0, 0, 4]} />
       <CinematicTownLife />
       <ColonialTrees />
+
+      {/* Ocean + Harbor Ships */}
+      <Ocean />
+
+      {/* Sailing ships in the distance */}
+      <Ship position={[-35, 0, -55]} rotation={0.4} />
+      <Ship position={[25, 0, -70]} rotation={-0.6} />
+      <Ship position={[-50, 0, -85]} rotation={0.2} />
+      <Ship position={[45, 0, -95]} rotation={0.8} />
 
       {Object.entries(others).map(([id, p]) => (
         <OtherPlayer
@@ -1558,7 +1566,68 @@ function ColonialTrees() {
     </>
   );
 }
+function Ocean() {
+  return (
+    <group>
+      {/* Main water plane */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.3, -45]} receiveShadow>
+        <planeGeometry args={[180, 120]} />
+        <meshStandardMaterial
+          color="#0f2a4a"
+          roughness={0.1}
+          metalness={0.85}
+          envMapIntensity={0.6}
+        />
+      </mesh>
 
+      {/* Subtle waves (using multiple planes with slight offset) */}
+      {Array.from({ length: 6 }, (_, i) => (
+        <mesh
+          key={i}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, -0.25 + i * 0.008, -45 + i * 8]}
+        >
+          <planeGeometry args={[160, 110]} />
+          <meshStandardMaterial
+            color="#1a3a5f"
+            roughness={0.2}
+            metalness={0.7}
+            transparent
+            opacity={0.6 - i * 0.08}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function Ship({ position, rotation = 0 }: { position: [number, number, number]; rotation?: number }) {
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      {/* Hull */}
+      <mesh position={[0, 1.2, 0]} castShadow>
+        <boxGeometry args={[4.5, 1.8, 12]} />
+        <meshStandardMaterial color="#3a2a1a" roughness={0.9} />
+      </mesh>
+      {/* Deck */}
+      <mesh position={[0, 2.4, 0]} castShadow>
+        <boxGeometry args={[4, 0.3, 10]} />
+        <meshStandardMaterial color="#8b6f47" roughness={0.85} />
+      </mesh>
+      {/* Mast */}
+      <mesh position={[0, 6, 0]} castShadow>
+        <cylinderGeometry args={[0.12, 0.12, 9, 8]} />
+        <meshStandardMaterial color="#2a2a2a" roughness={0.95} />
+      </mesh>
+      {/* Sails */}
+      <mesh position={[0, 5.5, -1]} rotation={[0.3, 0, 0]}>
+        <planeGeometry args={[3.5, 6]} />
+        <meshStandardMaterial color="#f5f0d8" side={2} transparent opacity={0.9} />
+      </mesh>
+      <pointLight position={[0, 4, 2]} intensity={1.5} color="#ffddaa" distance={12} />
+    </group>
+  );
+}
 function OtherPlayer({
   x,
   z,
