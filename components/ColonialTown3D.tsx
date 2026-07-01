@@ -640,6 +640,7 @@ function Scene({
 
       <Fountain />
       <BenNPC position={[0, 0, 4]} />
+      <CinematicTownLife />
       <ColonialTrees />
 
       {Object.entries(others).map(([id, p]) => (
@@ -1411,6 +1412,147 @@ function OtherPlayer({
   );
 }
 
+function CinematicTownLife() {
+  return (
+    <>
+      <Wagon position={[2.8, 0, -2]} rotation={[0, -0.45, 0]} />
+      <Horse position={[1.5, 0, -3.2]} rotation={[0, -0.45, 0]} />
+      <Citizen name="Merchant" position={[-2.5, 0, -1.6]} color="#4a2e0e" />
+      <Citizen name="Postmaster" position={[-3.2, 0, 5]} color="#1a3a6b" />
+      <Citizen name="Blacksmith" position={[3.2, 0, 13]} color="#1a1a1a" />
+    </>
+  );
+}
+
+function Citizen({
+  name,
+  position,
+  color,
+}: {
+  name: string;
+  position: [number, number, number];
+  color: string;
+}) {
+  const group = useRef<THREE.Group>(null);
+
+  useFrame((state) => {
+    if (!group.current) return;
+    const t = state.clock.getElapsedTime();
+    group.current.position.y = Math.sin(t * 2) * 0.025;
+    group.current.rotation.y = Math.sin(t * 0.7) * 0.18;
+  });
+
+  return (
+    <group ref={group} position={position}>
+      <mesh position={[0, 1.05, 0]}>
+        <cylinderGeometry args={[0.22, 0.18, 0.8, 10]} />
+        <meshStandardMaterial color={color} roughness={0.85} />
+      </mesh>
+
+      <mesh position={[0, 1.58, 0]}>
+        <sphereGeometry args={[0.2, 12, 12]} />
+        <meshStandardMaterial color="#d4a876" roughness={0.85} />
+      </mesh>
+
+      <mesh position={[0, 1.82, 0]}>
+        <cylinderGeometry args={[0.28, 0.28, 0.04, 12]} />
+        <meshStandardMaterial color="#160d08" roughness={0.9} />
+      </mesh>
+
+      <mesh position={[0, 1.98, 0]}>
+        <cylinderGeometry args={[0.15, 0.18, 0.26, 10]} />
+        <meshStandardMaterial color="#160d08" roughness={0.9} />
+      </mesh>
+
+      <Html position={[0, 2.55, 0]} center distanceFactor={7}>
+        <div
+          style={{
+            background: "rgba(0,0,0,0.72)",
+            color: "#fbbf24",
+            padding: "3px 8px",
+            borderRadius: 6,
+            fontSize: 10,
+            fontFamily: "EB Garamond, serif",
+            border: "1px solid rgba(251,191,36,.35)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {name}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+function Horse({
+  position,
+  rotation,
+}: {
+  position: [number, number, number];
+  rotation: [number, number, number];
+}) {
+  return (
+    <group position={position} rotation={rotation}>
+      <mesh position={[0, 1, 0]} castShadow>
+        <boxGeometry args={[1.15, 0.5, 0.38]} />
+        <meshStandardMaterial color="#4a2a14" roughness={0.9} />
+      </mesh>
+
+      <mesh position={[0.65, 1.22, 0]} castShadow>
+        <boxGeometry args={[0.38, 0.32, 0.3]} />
+        <meshStandardMaterial color="#4a2a14" roughness={0.9} />
+      </mesh>
+
+      {[-0.42, -0.15, 0.28, 0.52].map((x, i) => (
+        <mesh key={i} position={[x, 0.55, i % 2 ? 0.13 : -0.13]} castShadow>
+          <cylinderGeometry args={[0.045, 0.055, 0.75, 8]} />
+          <meshStandardMaterial color="#241206" roughness={0.95} />
+        </mesh>
+      ))}
+
+      <mesh position={[-0.72, 1.1, 0]} rotation={[0, 0, 0.5]}>
+        <cylinderGeometry args={[0.035, 0.02, 0.65, 8]} />
+        <meshStandardMaterial color="#1a0e06" roughness={0.95} />
+      </mesh>
+    </group>
+  );
+}
+
+function Wagon({
+  position,
+  rotation,
+}: {
+  position: [number, number, number];
+  rotation: [number, number, number];
+}) {
+  return (
+    <group position={position} rotation={rotation}>
+      <mesh position={[0, 0.75, 0]} castShadow>
+        <boxGeometry args={[1.4, 0.55, 0.85]} />
+        <meshStandardMaterial color="#3a210e" roughness={0.9} />
+      </mesh>
+
+      <mesh position={[0, 1.15, 0]} castShadow>
+        <boxGeometry args={[1.55, 0.12, 0.95]} />
+        <meshStandardMaterial color="#241206" roughness={0.9} />
+      </mesh>
+
+      {[-0.55, 0.55].map((x) =>
+        [-0.48, 0.48].map((z) => (
+          <mesh key={`${x}-${z}`} position={[x, 0.35, z]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.22, 0.035, 10, 20]} />
+            <meshStandardMaterial color="#140b05" roughness={0.95} />
+          </mesh>
+        ))
+      )}
+
+      <mesh position={[-1.0, 0.75, 0]} rotation={[0, 0, 0.2]}>
+        <cylinderGeometry args={[0.035, 0.035, 1.2, 8]} />
+        <meshStandardMaterial color="#241206" roughness={0.9} />
+      </mesh>
+    </group>
+  );
+}
 function EntryTransition({
   building,
   onDone,
