@@ -1,38 +1,32 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { BenEngine } from "@/lib/ben/engine";
-import BenBubble from "@/components/BenBubble";
 import { clampMoney, money, addMoney } from "@/lib/money/math";
 import { currentMonthStartISO, daysUntil } from "@/lib/money/dates";
 import {
   prioritizeMoneyItems,
   type PriorityInput,
-  type PriorityResult,
 } from "@/lib/money/priorityV2";
 import { playCoins, playError, playCashRegister, playWrite } from "@/lib/sounds";
 
-/* ─── Background image ─── */
-
 const POST_OFFICE_BG = "/D3F7077D-703F-49EE-8F9C-7709C1485D7B.png";
-
-/* ─── Types ─── */
 
 type BillRow = {
   id: string;
   user_id: string;
   name: string;
   target: number | string | null;
+  monthly_target: number | string | null;
   category: string | null;
   due_date: string | null;
   due: string | null;
   due_day: number | string | null;
   is_monthly: boolean | null;
-  monthly_target: number | string | null;
   focus: boolean | null;
   kind: string | null;
-  created_at: string;
 };
 
 type DebtRow = {
@@ -44,12 +38,8 @@ type DebtRow = {
   min_payment: number | string | null;
   monthly_min_payment: number | string | null;
   due_date: string | null;
-  apr: number | string | null;
-  credit_limit: number | string | null;
-  note: string | null;
-  is_monthly: boolean | null;
   due_day: number | null;
-  created_at: string;
+  apr: number | string | null;
 };
 
 type PaymentRow = {
@@ -58,299 +48,6 @@ type PaymentRow = {
   bill_id: string | null;
   date_iso: string;
 };
-
-/* ─── Helpers ─── */
-
-function billAmount(b: BillRow) {
-  return clampMoney(b.monthly_target ?? b.target);
-}
-
-function debtMin(d: DebtRow) {
-  return clampMoney(d.monthly_min_payment ?? d.min_payment ?? 0);
-}
-
-function dueChip(date: string | null): { label: string; color: string } {
-  const days = daysUntil(date);
-  if (days === null) return { label: "No due date", color: "#9a7d5a" };
-  if (days < 0) return { label: `Overdue ${Math.abs(days)}d`, color: "#f87171" };
-  if (days === 0) return { label: "Due today", color: "#fb923c" };
-  if (days === 1) return { label: "Due tomorrow", color: "#fbbf24" };
-  if (days <= 7) return { label: `${days}d left`, color: "#facc15" };
-  return { label: `${days}d`, color: "#9a7d5a" };
-}
-
-/* ─── Sub-components ─── */
-
-function ColonialCard({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={`rounded-xl p-4 ${className}`}
-      style={{
-        background: "rgba(15,8,4,0.88)",
-        border: "1px solid rgba(107,68,35,0.55)",
-        backdropFilter: "blur(6px)",
-        boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function GoldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p
-      className="mb-1 font-cinzel text-[11px] font-semibold uppercase tracking-widest"
-      style={{ color: "#9a7d5a" }}
-    >
-      {children}
-    </p>
-  );
-}
-
-function ParchmentInput({
-  type = "text",
-  value,
-  onChange,
-  placeholder,
-  step,
-}: {
-  type?: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  step?: string;
-}) {
-  return (
-    <input
-      type={type}
-      step={step}
-      value={value}
-      placeholder={placeholder}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-md px-3 py-2 focus:outline-none"
-      style={{
-        background: "#f5e6c8",
-        color: "#2d1810",
-        border: "1px solid #c9a84c",
-        fontFamily: "EB Garamond, serif",
-        fontSize: "15px",
-      }}
-    />
-  );
-}
-
-function ParchmentSelect({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full cursor-pointer appearance-none rounded-md px-3 py-2 focus:outline-none"
-      style={{
-        background: "#f5e6c8",
-        color: "#2d1810",
-        border: "1px solid #c9a84c",
-        fontFamily: "EB Garamond, serif",
-        fontSize: "15px",
-      }}
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-function MetricTile({
-  icon,
-  label,
-  value,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div
-      className="flex items-center gap-3 rounded-lg p-3"
-      style={{
-        background: "rgba(107,68,35,0.18)",
-        border: "1px solid rgba(201,168,76,0.25)",
-      }}
-    >
-      <span className="shrink-0 text-2xl">{icon}</span>
-      <div>
-        <p
-          className="font-cinzel text-[10px] uppercase tracking-wider"
-          style={{ color: "#9a7d5a" }}
-        >
-          {label}
-        </p>
-        <p className="text-base font-bold" style={{ color: "#c9a84c" }}>
-          {value}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function ObligationItem({
-  result,
-  onPay,
-  onDelete,
-}: {
-  result: PriorityResult;
-  onPay?: (id: string) => void;
-  onDelete: (id: string) => void;
-}) {
-  const { item, score, resolvedDueDate, amount, reasons } = result;
-  const chip = dueChip(resolvedDueDate);
-  const isBill = item.type === "bill";
-  const isPaid = item.is_paid_this_month;
-
-  const urgencyColor =
-    score > 900 ? "#f87171" : score > 500 ? "#fb923c" : score > 200 ? "#fbbf24" : "#9a7d5a";
-
-  const urgencyIcon =
-    score > 900 ? "🔥" : score > 500 ? "⚠️" : score > 200 ? "📌" : isBill ? "📋" : "💳";
-
-  return (
-    <div
-      className="flex items-start gap-3 rounded-xl p-3"
-      style={{
-        background: isPaid ? "rgba(45,90,39,0.12)" : "rgba(15,8,4,0.78)",
-        border: isPaid
-          ? "1px solid rgba(74,220,128,0.3)"
-          : score > 500
-            ? `1px solid ${urgencyColor}40`
-            : "1px solid rgba(107,68,35,0.4)",
-      }}
-    >
-      <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base"
-        style={{
-          background: `${urgencyColor}18`,
-          border: `1px solid ${urgencyColor}40`,
-        }}
-      >
-        {urgencyIcon}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-            style={{
-              background: isBill ? "rgba(45,90,39,0.3)" : "rgba(107,68,35,0.3)",
-              color: isBill ? "#4ade80" : "#c9a84c",
-              border: isBill
-                ? "1px solid rgba(74,220,128,0.3)"
-                : "1px solid rgba(201,168,76,0.3)",
-            }}
-          >
-            {isBill ? "Bill" : "Debt"}
-          </span>
-
-          <p className="truncate text-sm font-semibold" style={{ color: "#e8d5b7" }}>
-            {item.name}
-          </p>
-
-          {isPaid && (
-            <span
-              className="rounded-full px-1.5 py-0.5 text-[10px]"
-              style={{
-                background: "rgba(74,220,128,0.15)",
-                color: "#4ade80",
-                border: "1px solid rgba(74,220,128,0.3)",
-              }}
-            >
-              ✓ Paid
-            </span>
-          )}
-        </div>
-
-        <div className="mt-1 flex flex-wrap gap-1">
-          {reasons.slice(0, 2).map((r) => (
-            <span
-              key={r}
-              className="rounded px-1.5 py-0.5 text-[10px]"
-              style={{
-                background: "rgba(107,68,35,0.2)",
-                color: "#9a7d5a",
-              }}
-            >
-              {r}
-            </span>
-          ))}
-
-          {resolvedDueDate && (
-            <span
-              className="rounded px-1.5 py-0.5 text-[10px]"
-              style={{
-                background: "rgba(107,68,35,0.2)",
-                color: chip.color,
-              }}
-            >
-              {chip.label}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="shrink-0 text-right">
-        <p className="mb-1 text-sm font-bold" style={{ color: "#c9a84c" }}>
-          {money(amount)}
-        </p>
-
-        <div className="flex justify-end gap-1">
-          {isBill && onPay && !isPaid && (
-            <button
-              onClick={() => onPay(item.id)}
-              className="rounded-lg px-2 py-1 text-[10px] font-bold"
-              style={{
-                background: "rgba(45,90,39,0.3)",
-                color: "#4ade80",
-                border: "1px solid rgba(74,220,128,0.3)",
-              }}
-            >
-              Mark Paid
-            </button>
-          )}
-
-          <button
-            onClick={() => onDelete(item.id)}
-            className="rounded-lg px-2 py-1 text-[10px]"
-            style={{
-              background: "rgba(248,113,113,0.1)",
-              color: "#f87171",
-              border: "1px solid rgba(248,113,113,0.2)",
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Main Page ─── */
 
 const BILL_CATS = [
   "household",
@@ -362,8 +59,30 @@ const BILL_CATS = [
   "other",
 ];
 
+function billAmount(b: BillRow) {
+  return clampMoney(b.monthly_target ?? b.target);
+}
+
+function debtMin(d: DebtRow) {
+  return clampMoney(d.monthly_min_payment ?? d.min_payment ?? 0);
+}
+
+function dueLabel(date: string | null) {
+  const d = daysUntil(date);
+  if (d === null) return "No due date posted";
+  if (d < 0) return `Overdue ${Math.abs(d)} days`;
+  if (d === 0) return "Due today";
+  if (d === 1) return "Due tomorrow";
+  return `Due in ${d} days`;
+}
+
 export default function BillsPage() {
+  const router = useRouter();
   const [supabase] = useState(() => createSupabaseBrowserClient());
+
+  const [activeTab, setActiveTab] = useState<"bill" | "debt">("bill");
+  const [cardIndex, setCardIndex] = useState(0);
+  const [showAdd, setShowAdd] = useState(false);
 
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
@@ -372,8 +91,6 @@ export default function BillsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [msgType, setMsgType] = useState<"ok" | "err">("ok");
-  const [addTab, setAddTab] = useState<"bill" | "debt">("bill");
 
   const [bName, setBName] = useState("");
   const [bAmt, setBAmt] = useState("");
@@ -384,10 +101,8 @@ export default function BillsPage() {
   const [dName, setDName] = useState("");
   const [dBal, setDBal] = useState("");
   const [dMin, setDMin] = useState("");
-  const [dApr, setDApr] = useState("");
   const [dKind, setDKind] = useState<"credit" | "loan">("credit");
   const [dDue, setDDue] = useState("");
-  const [dLimit, setDLimit] = useState("");
 
   useEffect(() => {
     void init();
@@ -409,22 +124,12 @@ export default function BillsPage() {
   }
 
   async function loadBills(uid: string) {
-    const { data } = await supabase
-      .from("bills")
-      .select("*")
-      .eq("user_id", uid)
-      .order("due_date", { ascending: true, nullsFirst: false });
-
+    const { data } = await supabase.from("bills").select("*").eq("user_id", uid);
     setBills((data || []) as BillRow[]);
   }
 
   async function loadDebts(uid: string) {
-    const { data } = await supabase
-      .from("debts")
-      .select("*")
-      .eq("user_id", uid)
-      .order("created_at", { ascending: false });
-
+    const { data } = await supabase.from("debts").select("*").eq("user_id", uid);
     setDebts((data || []) as DebtRow[]);
   }
 
@@ -437,20 +142,18 @@ export default function BillsPage() {
     setPayments((data || []) as PaymentRow[]);
   }
 
-  function showMsg(text: string, type: "ok" | "err" = "ok") {
+  function showMsg(text: string) {
     setMessage(text);
-    setMsgType(type);
-    setTimeout(() => setMessage(""), 4000);
+    setTimeout(() => setMessage(""), 3500);
   }
 
   async function addBill() {
     if (!userId) return;
 
-    const target = clampMoney(bAmt);
-
-    if (!bName.trim() || target <= 0) {
+    const amount = clampMoney(bAmt);
+    if (!bName.trim() || amount <= 0) {
       playError();
-      showMsg("Enter a name and valid amount.", "err");
+      showMsg("Enter a bill name and amount.");
       return;
     }
 
@@ -461,9 +164,9 @@ export default function BillsPage() {
     const { error } = await supabase.from("bills").insert({
       user_id: userId,
       name: bName.trim(),
-      target,
-      monthly_target: bMo ? target : null,
-      category: bCat || null,
+      target: amount,
+      monthly_target: bMo ? amount : null,
+      category: bCat,
       due_date: bDue || null,
       due_day: dueDay,
       is_monthly: bMo,
@@ -473,7 +176,7 @@ export default function BillsPage() {
 
     if (error) {
       playError();
-      showMsg(error.message, "err");
+      showMsg(error.message);
       return;
     }
 
@@ -482,37 +185,34 @@ export default function BillsPage() {
     setBCat("household");
     setBDue("");
     setBMo(true);
+    setShowAdd(false);
 
     playWrite();
-    showMsg("Bill added to the post office ledger.");
+    showMsg("Bill posted to the ledger.");
     await loadBills(userId);
   }
 
   async function addDebt() {
     if (!userId) return;
 
-    const bal = clampMoney(dBal);
-
     if (!dName.trim()) {
       playError();
-      showMsg("Debt name required.", "err");
+      showMsg("Enter a debt name.");
       return;
     }
 
     setSaving(true);
 
     const dueDay = dDue ? new Date(`${dDue}T00:00:00`).getDate() : null;
-    const minAmt = clampMoney(dMin) || null;
+    const min = clampMoney(dMin) || null;
 
     const { error } = await supabase.from("debts").insert({
       user_id: userId,
       name: dName.trim(),
       kind: dKind,
-      balance: bal,
-      min_payment: minAmt,
-      monthly_min_payment: minAmt,
-      apr: clampMoney(dApr) || null,
-      credit_limit: clampMoney(dLimit) || null,
+      balance: clampMoney(dBal),
+      min_payment: min,
+      monthly_min_payment: min,
       due_date: dDue || null,
       due_day: dueDay,
       is_monthly: true,
@@ -522,97 +222,82 @@ export default function BillsPage() {
 
     if (error) {
       playError();
-      showMsg(error.message, "err");
+      showMsg(error.message);
       return;
     }
 
     setDName("");
     setDBal("");
     setDMin("");
-    setDApr("");
     setDKind("credit");
     setDDue("");
-    setDLimit("");
+    setShowAdd(false);
 
     playCoins();
-    showMsg("Debt recorded in the post office ledger.");
+    showMsg("Debt posted to the ledger.");
     await loadDebts(userId);
   }
 
-  async function deleteBill(id: string) {
+  async function markBillPaid(id: string) {
     if (!userId) return;
 
-    await supabase.from("bills").delete().eq("id", id).eq("user_id", userId);
-    setBills((p) => p.filter((b) => b.id !== id));
-    showMsg("Bill removed.");
-  }
-
-  async function deleteDebt(id: string) {
-    if (!userId) return;
-
-    await supabase.from("debts").delete().eq("id", id).eq("user_id", userId);
-    setDebts((p) => p.filter((d) => d.id !== id));
-    showMsg("Debt removed.");
-  }
-
-  async function markBillPaid(billId: string) {
-    if (!userId) return;
-
-    const bill = bills.find((b) => b.id === billId);
+    const bill = bills.find((b) => b.id === id);
     if (!bill) return;
-
-    const today = new Date().toISOString().slice(0, 10);
 
     const { error } = await supabase.from("payments").insert({
       user_id: userId,
-      bill_id: billId,
+      bill_id: id,
       amount: billAmount(bill),
-      date_iso: today,
+      date_iso: new Date().toISOString().slice(0, 10),
     });
 
     if (error) {
       playError();
-      showMsg(error.message, "err");
+      showMsg(error.message);
       return;
     }
 
     playCashRegister();
-    showMsg("Payment recorded — the ledger is pleased.");
+    showMsg("Payment recorded.");
     await loadPayments(userId);
   }
 
   const currentMonthStart = currentMonthStartISO();
 
-  const paidThisMonthByBill = useMemo(() => {
-    const map: Record<string, number> = {};
+  const paidThisMonth = useMemo(
+    () =>
+      addMoney(
+        payments
+          .filter((p) => p.date_iso >= currentMonthStart)
+          .map((p) => clampMoney(p.amount))
+      ),
+    [payments, currentMonthStart]
+  );
 
-    payments.forEach((p) => {
-      if (!p.bill_id || p.date_iso < currentMonthStart) return;
-      map[p.bill_id] = (map[p.bill_id] || 0) + clampMoney(p.amount);
-    });
+  const totalBillsAmt = useMemo(() => addMoney(bills.map(billAmount)), [bills]);
+  const totalDebtMins = useMemo(() => addMoney(debts.map(debtMin)), [debts]);
+  const totalDebtBal = useMemo(
+    () => addMoney(debts.map((d) => clampMoney(d.balance))),
+    [debts]
+  );
 
-    return map;
-  }, [payments, currentMonthStart]);
+  const totalDue = totalBillsAmt + totalDebtMins;
+  const remaining = Math.max(0, totalDue - paidThisMonth);
 
   const priorityItems = useMemo<PriorityInput[]>(() => {
-    const billItems: PriorityInput[] = bills.map((b) => {
-      const amtDue = billAmount(b);
-      const paid = paidThisMonthByBill[b.id] || 0;
-
-      return {
-        id: b.id,
-        type: "bill",
-        name: b.name,
-        amount: Math.max(0, amtDue - paid),
-        due_date: b.due_date,
-        due: b.due,
-        due_day: b.due_day,
-        category: b.category,
-        kind: b.kind,
-        focus: b.focus,
-        is_paid_this_month: paid >= amtDue && amtDue > 0,
-      };
-    });
+    const billItems: PriorityInput[] = bills.map((b) => ({
+      id: b.id,
+      type: "bill",
+      name: b.name,
+      amount: billAmount(b),
+      due_date: b.due_date,
+      due: b.due,
+      due_day: b.due_day,
+      category: b.category,
+      kind: b.kind,
+      focus: b.focus,
+      is_paid_this_month: false,
+    }));
 
     const debtItems: PriorityInput[] = debts.map((d) => ({
       id: d.id,
@@ -628,30 +313,34 @@ export default function BillsPage() {
     }));
 
     return [...billItems, ...debtItems];
-  }, [bills, debts, paidThisMonthByBill]);
+  }, [bills, debts]);
 
   const rankedItems = useMemo(() => prioritizeMoneyItems(priorityItems), [priorityItems]);
+  const roomItems = rankedItems.filter((r) => r.item.type === activeTab);
+  const activeItem = roomItems[cardIndex] ?? null;
 
-  const totalBillsAmt = useMemo(() => addMoney(bills.map((b) => billAmount(b))), [bills]);
-  const totalDebtMins = useMemo(() => addMoney(debts.map((d) => debtMin(d))), [debts]);
-  const totalDebtBal = useMemo(() => addMoney(debts.map((d) => clampMoney(d.balance))), [debts]);
-
-  const paidThisMonth = useMemo(
-    () =>
-      addMoney(
-        payments
-          .filter((p) => p.date_iso >= currentMonthStart)
-          .map((p) => clampMoney(p.amount))
-      ),
-    [payments, currentMonthStart]
+  const overdue = addMoney(
+    rankedItems
+      .filter((r) => {
+        const d = daysUntil(r.resolvedDueDate);
+        return d !== null && d < 0;
+      })
+      .map((r) => r.amount)
   );
 
-  const remaining = Math.max(0, totalBillsAmt + totalDebtMins - paidThisMonth);
+  const dueSoon = addMoney(
+    rankedItems
+      .filter((r) => {
+        const d = daysUntil(r.resolvedDueDate);
+        return d !== null && d >= 0 && d <= 7;
+      })
+      .map((r) => r.amount)
+  );
 
   const ben = BenEngine.getForecastMessage({
     name: null,
-    timeframeLabel: "Post Office",
-    totalNeeded: totalBillsAmt + totalDebtMins,
+    timeframeLabel: "Post Office of Debts & Bills",
+    totalNeeded: totalDue,
     incomeSoFar: paidThisMonth,
     incomeGap: remaining,
     dailyIncomeNeeded: Math.ceil(remaining / 30),
@@ -659,343 +348,343 @@ export default function BillsPage() {
 
   if (loading) {
     return (
-      <div
-        className="flex min-h-screen items-center justify-center bg-cover bg-center"
-        style={{ backgroundImage: `url(${POST_OFFICE_BG})` }}
-      >
-        <div
-          style={{
-            background: "rgba(15,8,4,0.9)",
-            padding: "2rem 3rem",
-            borderRadius: 12,
-            border: "1px solid #6b4423",
-          }}
-        >
-          <p className="font-cinzel text-lg" style={{ color: "#c9a84c" }}>
-            Sorting the bills and debts…
-          </p>
-        </div>
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <p className="text-[#c9a84c] font-cinzel">Opening the post office ledger…</p>
       </div>
     );
   }
 
   return (
-    <div
-      className="min-h-screen bg-cover bg-center bg-fixed"
-      style={{
-        fontFamily: "EB Garamond, serif",
-        backgroundImage: `url(${POST_OFFICE_BG})`,
-      }}
+    <main
+      className="min-h-screen bg-black text-[#f5e6c8]"
+      style={{ fontFamily: "EB Garamond, serif" }}
     >
-      <div
-        className="min-h-screen pb-24"
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(10,5,2,0.55), rgba(10,5,2,0.88))",
-        }}
-      >
-        <div className="mx-auto max-w-4xl space-y-5 px-4 py-6">
-          <div className="pt-4 pb-2 text-center">
-            <p
-              className="font-cinzel text-xs uppercase tracking-[0.35em]"
-              style={{ color: "#d6a23a" }}
-            >
-              Franklin&apos;s Landing
-            </p>
+      <section className="relative mx-auto max-w-5xl">
+        <img
+          src={POST_OFFICE_BG}
+          alt="Post Office of Debts and Bills"
+          className="w-full h-auto block"
+        />
 
-            <h1
-              className="font-cinzel text-4xl font-bold"
-              style={{
-                color: "#f5e6c8",
-                textShadow: "0 2px 18px rgba(0,0,0,0.9)",
-              }}
-            >
-              Post Office of Bills & Debts
-            </h1>
+        <button
+          onClick={() => router.push("/world")}
+          className="absolute left-4 top-4 rounded-full px-4 py-2 text-sm"
+          style={{
+            background: "rgba(0,0,0,.72)",
+            border: "1px solid rgba(201,168,76,.45)",
+            color: "#f5e6c8",
+          }}
+        >
+          ← Back to Town
+        </button>
 
-            <p className="mt-1 text-sm italic" style={{ color: "#d6c09a" }}>
-              Letters, parcels, payments, accounts, receipts, and ledgers.
-            </p>
-          </div>
+        <div className="absolute inset-x-0 top-4 text-center pointer-events-none px-20">
+          <h1 className="font-cinzel text-2xl sm:text-4xl font-bold tracking-wide text-[#f5e6c8] drop-shadow">
+            Post Office of Debts & Bills
+          </h1>
+          <p className="hidden sm:block italic text-[#d6c09a]">
+            Letters, parcels, payments, accounts, receipts, and ledgers.
+          </p>
+        </div>
+      </section>
 
-          <ColonialCard>
-            <BenBubble message={ben.text} mood={ben.mood} />
-          </ColonialCard>
-
-          {message && (
-            <div
-              className="rounded-xl px-4 py-3 text-center font-cinzel text-sm tracking-wide"
-              style={{
-                background:
-                  msgType === "err"
-                    ? "rgba(248,113,113,0.08)"
-                    : "rgba(201,168,76,0.08)",
-                border: `1px solid ${
-                  msgType === "err"
-                    ? "rgba(248,113,113,0.3)"
-                    : "rgba(201,168,76,0.3)"
-                }`,
-                color: msgType === "err" ? "#f87171" : "#c9a84c",
-              }}
-            >
-              {msgType === "ok" ? "✦ " : "⚠ "}
-              {message}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <MetricTile icon="📋" label="Monthly Bills" value={money(totalBillsAmt)} />
-            <MetricTile icon="💳" label="Debt Minimums" value={money(totalDebtMins)} />
-            <MetricTile icon="✅" label="Paid This Month" value={money(paidThisMonth)} />
-            <MetricTile icon="⚖️" label="Still Remaining" value={money(remaining)} />
-          </div>
-
-          {totalDebtBal > 0 && (
-            <ColonialCard>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p
-                    className="font-cinzel text-xs uppercase tracking-widest"
-                    style={{ color: "#9a7d5a" }}
-                  >
-                    Debts Remaining
-                  </p>
-                  <p className="text-2xl font-bold" style={{ color: "#f87171" }}>
-                    {money(totalDebtBal)}
-                  </p>
-                </div>
-
-                <div className="text-right">
-                  <p
-                    className="font-cinzel text-xs uppercase tracking-widest"
-                    style={{ color: "#9a7d5a" }}
-                  >
-                    Accounts Posted
-                  </p>
-                  <p className="text-2xl font-bold" style={{ color: "#c9a84c" }}>
-                    {debts.length}
-                  </p>
-                </div>
-              </div>
-            </ColonialCard>
-          )}
-
-          <ColonialCard>
-            <h2
-              className="mb-3 text-center font-cinzel text-xs font-semibold uppercase tracking-widest"
-              style={{ color: "#c9a84c" }}
-            >
-              Priority Board — {rankedItems.length} items
-            </h2>
-
-            {rankedItems.length === 0 ? (
-              <p className="py-8 text-center text-sm italic" style={{ color: "#9a7d5a" }}>
-                A rare and suspicious calm. Add your bills and debts below.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {rankedItems.map((r) => (
-                  <ObligationItem
-                    key={`${r.item.type}-${r.item.id}`}
-                    result={r}
-                    onPay={r.item.type === "bill" ? markBillPaid : undefined}
-                    onDelete={
-                      r.item.type === "bill"
-                        ? () => deleteBill(r.item.id)
-                        : () => deleteDebt(r.item.id)
-                    }
-                  />
-                ))}
-              </div>
-            )}
-          </ColonialCard>
-
-          <ColonialCard>
-            <div className="mb-4 flex gap-2">
-              {(["bill", "debt"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setAddTab(tab)}
-                  className="flex-1 rounded-lg py-2 font-cinzel text-xs font-semibold uppercase tracking-widest transition"
-                  style={{
-                    background: addTab === tab ? "#c9a84c" : "rgba(107,68,35,0.2)",
-                    color: addTab === tab ? "#1a0f0a" : "#9a7d5a",
-                    border: "1px solid rgba(107,68,35,0.4)",
-                  }}
-                >
-                  {tab === "bill" ? "📋 Add Bill" : "💳 Add Debt"}
-                </button>
-              ))}
-            </div>
-
-            {addTab === "bill" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <GoldLabel>Bill Name</GoldLabel>
-                    <ParchmentInput
-                      value={bName}
-                      onChange={setBName}
-                      placeholder="e.g. Electric bill"
-                    />
-                  </div>
-
-                  <div>
-                    <GoldLabel>Amount ($)</GoldLabel>
-                    <ParchmentInput
-                      type="number"
-                      step="0.01"
-                      value={bAmt}
-                      onChange={setBAmt}
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  <div>
-                    <GoldLabel>Category</GoldLabel>
-                    <ParchmentSelect
-                      value={bCat}
-                      onChange={setBCat}
-                      options={BILL_CATS.map((c) => ({
-                        value: c,
-                        label: c.charAt(0).toUpperCase() + c.slice(1),
-                      }))}
-                    />
-                  </div>
-
-                  <div>
-                    <GoldLabel>Due Date</GoldLabel>
-                    <ParchmentInput type="date" value={bDue} onChange={setBDue} />
-                  </div>
-                </div>
-
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={bMo}
-                    onChange={(e) => setBMo(e.target.checked)}
-                    className="h-4 w-4 accent-amber-500"
-                  />
-                  <span className="text-sm" style={{ color: "#e8d5b7" }}>
-                    Repeats monthly
-                  </span>
-                </label>
-
-                <button
-                  onClick={addBill}
-                  disabled={saving || !userId}
-                  className="w-full rounded-lg py-2.5 font-cinzel text-sm font-semibold uppercase tracking-widest disabled:opacity-50"
-                  style={{
-                    background: "#2d5a27",
-                    color: "#f5e6c8",
-                    border: "1px solid #4a8a42",
-                  }}
-                >
-                  {saving ? "Recording…" : "+ Add Bill"}
-                </button>
-              </div>
-            )}
-
-            {addTab === "debt" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <GoldLabel>Debt Name</GoldLabel>
-                    <ParchmentInput
-                      value={dName}
-                      onChange={setDName}
-                      placeholder="e.g. Capital One"
-                    />
-                  </div>
-
-                  <div>
-                    <GoldLabel>Type</GoldLabel>
-                    <ParchmentSelect
-                      value={dKind}
-                      onChange={(v) => setDKind(v as "credit" | "loan")}
-                      options={[
-                        { value: "credit", label: "💳 Credit Card" },
-                        { value: "loan", label: "📄 Loan" },
-                      ]}
-                    />
-                  </div>
-
-                  <div>
-                    <GoldLabel>Current Balance ($)</GoldLabel>
-                    <ParchmentInput
-                      type="number"
-                      value={dBal}
-                      onChange={setDBal}
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  <div>
-                    <GoldLabel>Min. Payment ($)</GoldLabel>
-                    <ParchmentInput
-                      type="number"
-                      value={dMin}
-                      onChange={setDMin}
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  <div>
-                    <GoldLabel>APR (%)</GoldLabel>
-                    <ParchmentInput
-                      type="number"
-                      value={dApr}
-                      onChange={setDApr}
-                      placeholder="e.g. 24.99"
-                    />
-                  </div>
-
-                  <div>
-                    <GoldLabel>Credit Limit ($) — optional</GoldLabel>
-                    <ParchmentInput
-                      type="number"
-                      value={dLimit}
-                      onChange={setDLimit}
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <GoldLabel>Due Date</GoldLabel>
-                    <ParchmentInput type="date" value={dDue} onChange={setDDue} />
-                  </div>
-                </div>
-
-                <button
-                  onClick={addDebt}
-                  disabled={saving || !userId}
-                  className="w-full rounded-lg py-2.5 font-cinzel text-sm font-semibold uppercase tracking-widest disabled:opacity-50"
-                  style={{
-                    background: "#6b4423",
-                    color: "#f5e6c8",
-                    border: "1px solid #c9a84c",
-                  }}
-                >
-                  {saving ? "Recording…" : "+ Add Debt"}
-                </button>
-              </div>
-            )}
-          </ColonialCard>
-
+      <section className="relative z-10 mx-auto max-w-5xl px-4 pb-24 -mt-4 sm:-mt-10">
+        <div
+          className="rounded-3xl p-4 sm:p-5"
+          style={{
+            background: "linear-gradient(180deg, rgba(8,5,3,.92), rgba(0,0,0,.98))",
+            border: "1px solid rgba(201,168,76,.35)",
+            boxShadow: "0 -30px 80px rgba(0,0,0,.85)",
+          }}
+        >
           <div
-            className="flex items-center gap-3 rounded-xl px-6 py-4"
+            className="mb-5 flex gap-3 rounded-2xl p-3"
             style={{
-              background: "rgba(245,230,200,0.08)",
-              border: "1px solid rgba(201,168,76,0.25)",
+              background: "#fff7df",
+              border: "1px solid rgba(201,168,76,.65)",
+              color: "#1a0f0a",
             }}
           >
-            <span className="shrink-0 text-xl">🪶</span>
-            <p className="text-sm italic" style={{ color: "#c9a84c" }}>
-              “Creditors have better memories than debtors.” — Benjamin Franklin
-            </p>
+            <img
+              src="/ben.png"
+              alt="Ben"
+              className="h-16 w-16 rounded-xl object-cover border border-[#c9a84c]"
+            />
+            <div>
+              <p className="font-cinzel text-xs uppercase tracking-[0.25em] text-[#8a3a12]">
+                Ben&apos;s Almanack
+              </p>
+              <p className="text-lg font-bold leading-snug">
+                Ben says: {ben.text}
+              </p>
+            </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            {(["bill", "debt"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => {
+                  setActiveTab(tab);
+                  setCardIndex(0);
+                }}
+                className="rounded-xl py-3 font-cinzel text-xl font-bold"
+                style={{
+                  background:
+                    activeTab === tab
+                      ? "linear-gradient(180deg, rgba(201,168,76,.42), rgba(70,40,10,.45))"
+                      : "rgba(0,0,0,.45)",
+                  border:
+                    activeTab === tab
+                      ? "1px solid rgba(251,191,36,.85)"
+                      : "1px solid rgba(201,168,76,.25)",
+                  color: activeTab === tab ? "#f5e6c8" : "#c9a84c",
+                }}
+              >
+                {tab === "bill" ? "📋 Bills" : "💳 Debts"}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-[72px_1fr_72px] items-center gap-2 sm:gap-4 mb-4">
+            <button
+              onClick={() => setCardIndex((i) => Math.max(0, i - 1))}
+              className="h-16 rounded-full font-cinzel"
+              style={{ border: "1px solid rgba(201,168,76,.45)" }}
+            >
+              ◀
+            </button>
+
+            <div
+              className="rounded-2xl p-5 text-center min-h-[220px]"
+              style={{
+                background: "rgba(0,0,0,.68)",
+                border: "1px solid rgba(201,168,76,.45)",
+              }}
+            >
+              {activeItem ? (
+                <>
+                  <p className="text-sm text-[#c9a84c]">
+                    {cardIndex + 1} of {roomItems.length}
+                  </p>
+                  <h2 className="mt-2 font-cinzel text-3xl font-bold">
+                    {activeItem.item.name}
+                  </h2>
+                  <p className="mt-2 text-[#d6c09a]">
+                    {dueLabel(activeItem.resolvedDueDate)}
+                  </p>
+                  <p className="mt-4 text-4xl font-bold text-[#c9a84c]">
+                    {money(activeItem.amount)}
+                  </p>
+                  <p className="mt-3 inline-block rounded-md bg-emerald-700 px-3 py-1 text-sm">
+                    {activeTab === "bill" ? "Upcoming Bill" : "Debt Minimum"}
+                  </p>
+
+                  {activeTab === "bill" && (
+                    <button
+                      onClick={() => markBillPaid(activeItem.item.id)}
+                      className="mt-4 block mx-auto rounded-xl px-5 py-2 font-bold"
+                      style={{
+                        background: "#166534",
+                        border: "1px solid #4ade80",
+                      }}
+                    >
+                      Mark Paid
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="pt-16 text-[#9a7d5a]">
+                  No {activeTab === "bill" ? "bills" : "debts"} posted yet.
+                </p>
+              )}
+            </div>
+
+            <button
+              onClick={() =>
+                setCardIndex((i) => Math.min(roomItems.length - 1, i + 1))
+              }
+              className="h-16 rounded-full font-cinzel"
+              style={{ border: "1px solid rgba(201,168,76,.45)" }}
+            >
+              ▶
+            </button>
+          </div>
+
+          <div className="flex justify-center gap-2 mb-6">
+            {roomItems.slice(0, 8).map((_, i) => (
+              <span
+                key={i}
+                className="h-3 w-3 rounded-full"
+                style={{ background: i === cardIndex ? "#c9a84c" : "#5f5748" }}
+              />
+            ))}
+          </div>
+
+          <div
+            className="grid grid-cols-2 sm:grid-cols-4 rounded-2xl overflow-hidden mb-6"
+            style={{
+              border: "1px solid rgba(201,168,76,.4)",
+              background: "rgba(0,0,0,.58)",
+            }}
+          >
+            <Metric icon="🪙" label="This Month Paid" value={money(paidThisMonth)} color="#4ade80" />
+            <Metric icon="📋" label="Total Due" value={money(totalDue)} />
+            <Metric icon="⏳" label="Overdue" value={money(overdue)} color="#ef4444" />
+            <Metric icon="📅" label="Due Soon" value={money(dueSoon)} />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <button
+              onClick={() => router.push("/payments")}
+              className="rounded-xl py-4 font-cinzel text-lg"
+              style={{ border: "1px solid rgba(201,168,76,.35)" }}
+            >
+              ✍️ Make a Payment
+            </button>
+
+            <button
+              onClick={() => setShowAdd((v) => !v)}
+              className="rounded-xl py-4 font-cinzel text-lg"
+              style={{ background: "#166534", border: "1px solid #4ade80" }}
+            >
+              + Add New {activeTab === "bill" ? "Bill" : "Debt"}
+            </button>
+
+            <button
+              onClick={() => router.push("/world")}
+              className="rounded-xl py-4 font-cinzel text-lg"
+              style={{ border: "1px solid rgba(201,168,76,.35)" }}
+            >
+              ↪ Exit to Town
+            </button>
+          </div>
+
+          {showAdd && (
+            <div
+              className="mt-5 rounded-2xl p-4"
+              style={{
+                background: "rgba(15,8,4,.9)",
+                border: "1px solid rgba(201,168,76,.35)",
+              }}
+            >
+              {activeTab === "bill" ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input label="Bill Name" value={bName} onChange={setBName} />
+                  <Input label="Amount" value={bAmt} onChange={setBAmt} type="number" />
+                  <Select label="Category" value={bCat} onChange={setBCat} options={BILL_CATS} />
+                  <Input label="Due Date" value={bDue} onChange={setBDue} type="date" />
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={bMo} onChange={(e) => setBMo(e.target.checked)} />
+                    Repeats monthly
+                  </label>
+                  <button onClick={addBill} disabled={saving} className="rounded-xl bg-green-800 py-3 font-bold">
+                    Save Bill
+                  </button>
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input label="Debt Name" value={dName} onChange={setDName} />
+                  <Input label="Balance" value={dBal} onChange={setDBal} type="number" />
+                  <Input label="Minimum Payment" value={dMin} onChange={setDMin} type="number" />
+                  <Input label="Due Date" value={dDue} onChange={setDDue} type="date" />
+                  <Select label="Type" value={dKind} onChange={(v) => setDKind(v as "credit" | "loan")} options={["credit", "loan"]} />
+                  <button onClick={addDebt} disabled={saving} className="rounded-xl bg-green-800 py-3 font-bold">
+                    Save Debt
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {message && (
+            <p className="mt-4 rounded-xl bg-[#c9a84c]/20 px-4 py-3 text-center text-[#f5e6c8]">
+              {message}
+            </p>
+          )}
+
+          <p className="mt-6 text-center italic text-[#c9a84c]">
+            “Well done is better than well said.” — Benjamin Franklin
+          </p>
         </div>
-      </div>
+      </section>
+    </main>
+  );
+}
+
+function Metric({
+  icon,
+  label,
+  value,
+  color = "#c9a84c",
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  color?: string;
+}) {
+  return (
+    <div className="p-4 text-center border-b sm:border-b-0 sm:border-r border-[#c9a84c]/20 last:border-r-0">
+      <div className="text-3xl">{icon}</div>
+      <p className="mt-2 text-xs uppercase tracking-widest text-[#d6c09a]">{label}</p>
+      <p className="mt-1 text-2xl font-bold" style={{ color }}>
+        {value}
+      </p>
     </div>
+  );
+}
+
+function Input({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs uppercase tracking-widest text-[#c9a84c]">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full rounded-lg px-3 py-2 text-black"
+        style={{ background: "#f5e6c8" }}
+      />
+    </label>
+  );
+}
+
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs uppercase tracking-widest text-[#c9a84c]">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full rounded-lg px-3 py-2 text-black"
+        style={{ background: "#f5e6c8" }}
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
