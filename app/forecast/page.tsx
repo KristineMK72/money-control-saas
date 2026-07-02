@@ -4,13 +4,34 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getForecast } from "@/lib/ben/forecast";
-import type { BenMasterRow } from "@/lib/ben/viewTypes";
-import { clampMoney, money } from "@/lib/money/math";
-import { currentMonthStartISO } from "@/lib/money/dates";
+import { clampMoney, money, addMoney } from "@/lib/money/math";
 
 const OBSERVATORY_BG = "/3F884A47-5FC6-4FEC-8F4C-7EF673CB444F.png";
 
-type BenMasterAny = BenMasterRow & Record<string, unknown>;
+type TrendRow = {
+  month: string;
+  label: string;
+  income: number;
+  spend: number;
+  net: number;
+};
+
+function monthStart(offset = 0) {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() + offset, 1);
+}
+
+function isoDate(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+function monthKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function monthLabel(d: Date) {
+  return d.toLocaleDateString(undefined, { month: "short" });
+}
 
 function getMonthTiming() {
   const today = new Date();
@@ -43,23 +64,14 @@ function Metric({
   );
 }
 
-function SmallBox({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl p-3 text-center" style={{ background: "rgba(201,168,76,.1)", border: "1px solid rgba(201,168,76,.25)" }}>
-      <p className="text-[10px] uppercase tracking-widest text-[#9a7d5a]">{label}</p>
-      <p className="text-2xl font-bold text-[#c9a84c]">{value}</p>
-    </div>
-  );
-}
-
 export default function ForecastPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [loading, setLoading] = useState(true);
-  const [forecast, setForecast] = useState<ReturnType<typeof getForecast> | null>(null);
   const [message, setMessage] = useState("");
   const [showBenNotice, setShowBenNotice] = useState(false);
+  const [trend, setTrend] = useState<TrendRow[]>([]);
 
   const [breakdown, setBreakdown] = useState({
     income: 0,
@@ -73,6 +85,15 @@ export default function ForecastPage() {
     daysTotal: 0,
     daysElapsed: 0,
     daysLeft: 0,
+  });
+
+  const forecast = getForecast({
+    name: null,
+    timeframeLabel: "This Month",
+    totalNeeded: breakdown.monthlyNeed,
+    incomeSoFar: breakdown.income,
+    daysElapsed: breakdown.daysElapsed || 1,
+    daysTotal: breakdown.daysTotal || 30,
   });
 
   useEffect(() => {
@@ -97,62 +118,119 @@ export default function ForecastPage() {
         return;
       }
 
-      const currentMonth = currentMonthStartISO();
+      const userId = session.user.id;
+      const nowStart = monthStart(0);
+      const nextStart = monthStart(1);
+      const firstTrendMonth = monthStart(-5);
 
-      const { data: master, error } = await supabase
-        .from("ben_master_monthly")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .eq("month", currentMonth)
-        .maybeSingle();
+      const [
+        incomeRes,
+        spendRes,
+        billsRes,
+        debtsRes,
+      ] = await Promise.all([
+        supabase
+          .from("income_entries")
+          .select("amount, date_iso")
+          .eq("user_id", userId)
+          .gte("date_iso", isoDate(firstTrendMonth))
+          .lt("date_iso", isoDate(nextStart)),
 
-      if (error) {
-        setMessage(error.message);
-        setForecast(null);
-        setLoading(false);
-        return;
-      }
+        supabase
+          .from("spend_entries")
+          .select("amount, date_iso")
+          .eq("user_id", userId)
+          .gte("date_iso", isoDate(firstTrendMonth))
+          .lt("date_iso", isoDate(nextStart)),
 
-      const m = master as BenMasterAny | null;
+        supabase
+          .from("bills")
+          .select("target, monthly_target")
+          .eq("user_id", userId),
 
-      const incomeSoFar = clampMoney(m?.total_income ?? m?.income);
-      const bills =
-        clampMoney(m?.total_bills) ||
-        clampMoney(m?.monthly_bills) ||
-        clampMoney(m?.bills);
+        supabase
+          .from("debts")
+          .select("min_payment, monthly_min_payment")
+          .eq("user_id", userId),
+      ]);
 
-      const debtMinimums =
-        clampMoney(m?.total_debt_minimums) ||
-        clampMoney(m?.monthly_minimums) ||
-        clampMoney(m?.debt_minimums);
+      if (incomeRes.error) setMessage(incomeRes.error.message);
+      if (spendRes.error) setMessage(spendRes.error.message);
+      if (billsRes.error) setMessage(billsRes.error.message);
+      if (debtsRes.error) setMessage(debtsRes.error.message);
 
-      const historicalSpend =
-        clampMoney(m?.avg_monthly_spend) ||
-        clampMoney(m?.historical_monthly_spend) ||
-        clampMoney(m?.average_spend) ||
-        clampMoney(m?.total_spend);
+      const incomeRows = incomeRes.data || [];
+      const spendRows = spendRes.data || [];
 
-      const monthlyNeed = clampMoney(bills + debtMinimums + historicalSpend);
-      const { daysElapsed, daysTotal, daysLeft, weeksInMonth } = getMonthTiming();
+      const currentIncome = addMoney(
+        incomeRows
+          .filter((r) => r.date_iso >= isoDate(nowStart))
+          .map((r) => clampMoney(r.amount))
+      );
 
-      const dailyNeed = clampMoney(monthlyNeed / daysTotal);
-      const weeklyNeed = clampMoney(monthlyNeed / weeksInMonth);
-      const remainingNeed = clampMoney(Math.max(monthlyNeed - incomeSoFar, 0));
+      const currentSpend = addMoney(
+        spendRows
+          .filter((r) => r.date_iso >= isoDate(nowStart))
+          .map((r) => clampMoney(r.amount))
+      );
 
-      const result = getForecast({
-        name: null,
-        timeframeLabel: "This Month",
-        totalNeeded: monthlyNeed,
-        incomeSoFar,
-        daysElapsed,
-        daysTotal,
+      const monthlyBills = addMoney(
+        (billsRes.data || []).map((b) => clampMoney(b.monthly_target ?? b.target))
+      );
+
+      const debtMinimums = addMoney(
+        (debtsRes.data || []).map((d) =>
+          clampMoney(d.monthly_min_payment ?? d.min_payment)
+        )
+      );
+
+      const months: TrendRow[] = Array.from({ length: 6 }, (_, i) => {
+        const start = monthStart(i - 5);
+        const end = monthStart(i - 4);
+        const startIso = isoDate(start);
+        const endIso = isoDate(end);
+
+        const income = addMoney(
+          incomeRows
+            .filter((r) => r.date_iso >= startIso && r.date_iso < endIso)
+            .map((r) => clampMoney(r.amount))
+        );
+
+        const spend = addMoney(
+          spendRows
+            .filter((r) => r.date_iso >= startIso && r.date_iso < endIso)
+            .map((r) => clampMoney(r.amount))
+        );
+
+        return {
+          month: monthKey(start),
+          label: monthLabel(start),
+          income,
+          spend,
+          net: income - spend,
+        };
       });
 
+      const pastSpendMonths = months.slice(0, 5).filter((m) => m.spend > 0);
+      const avgHistoricalSpend =
+        pastSpendMonths.length > 0
+          ? clampMoney(addMoney(pastSpendMonths.map((m) => m.spend)) / pastSpendMonths.length)
+          : currentSpend;
+
+      const { daysElapsed, daysTotal, daysLeft, weeksInMonth } = getMonthTiming();
+
+      const monthlyNeed = clampMoney(monthlyBills + debtMinimums + avgHistoricalSpend);
+      const dailyNeed = clampMoney(monthlyNeed / daysTotal);
+      const weeklyNeed = clampMoney(monthlyNeed / weeksInMonth);
+      const remainingNeed = clampMoney(Math.max(monthlyNeed - currentIncome, 0));
+
+      setTrend(months);
+
       setBreakdown({
-        income: incomeSoFar,
-        bills,
+        income: currentIncome,
+        bills: monthlyBills,
         debtMinimums,
-        historicalSpend,
+        historicalSpend: avgHistoricalSpend,
         monthlyNeed,
         weeklyNeed,
         dailyNeed,
@@ -162,7 +240,6 @@ export default function ForecastPage() {
         daysLeft,
       });
 
-      setForecast(result);
       setLoading(false);
     }
 
@@ -177,7 +254,7 @@ export default function ForecastPage() {
     );
   }
 
-  const isOnTrack = forecast?.projectedOnTrack ?? false;
+  const isOnTrack = forecast.projectedOnTrack;
 
   const progressPct =
     breakdown.monthlyNeed > 0
@@ -192,11 +269,7 @@ export default function ForecastPage() {
         <button
           onClick={() => router.push("/world")}
           className="absolute left-4 top-4 rounded-full px-4 py-2 text-sm"
-          style={{
-            background: "rgba(0,0,0,.72)",
-            border: "1px solid rgba(201,168,76,.45)",
-            color: "#f5e6c8",
-          }}
+          style={{ background: "rgba(0,0,0,.72)", border: "1px solid rgba(201,168,76,.45)" }}
         >
           ← Back to Town
         </button>
@@ -204,11 +277,7 @@ export default function ForecastPage() {
         <button
           onClick={() => setShowBenNotice(true)}
           className="absolute right-4 top-4 rounded-full px-4 py-2 text-sm"
-          style={{
-            background: "rgba(0,0,0,.72)",
-            border: "1px solid rgba(201,168,76,.45)",
-            color: "#f5e6c8",
-          }}
+          style={{ background: "rgba(0,0,0,.72)", border: "1px solid rgba(201,168,76,.45)" }}
         >
           Ben&apos;s Forecast
         </button>
@@ -231,130 +300,98 @@ export default function ForecastPage() {
               The Observatory Forecast
             </h1>
             <p className="text-sm italic text-[#d6c09a]">
-              Ben consults the stars, the ledger, and the month ahead.
+              Ben consults the stars, the ledger, and thy past months.
             </p>
           </div>
 
           {message && (
-            <div
-              className="mb-4 rounded-xl px-4 py-3 text-center text-sm"
-              style={{
-                background: "rgba(201,168,76,.12)",
-                border: "1px solid rgba(201,168,76,.35)",
-                color: "#c9a84c",
-              }}
-            >
+            <div className="mb-4 rounded-xl px-4 py-3 text-center text-sm text-[#c9a84c]"
+              style={{ background: "rgba(201,168,76,.12)", border: "1px solid rgba(201,168,76,.35)" }}>
               ✦ {message}
             </div>
           )}
 
           <div
-            className="mb-5 flex flex-col gap-4 rounded-2xl p-5 sm:flex-row sm:items-center"
+            className="mb-5 rounded-2xl p-5 text-center"
             style={{
               background: isOnTrack ? "rgba(74,222,128,.08)" : "rgba(248,113,113,.08)",
               border: `1px solid ${isOnTrack ? "rgba(74,222,128,.35)" : "rgba(248,113,113,.35)"}`,
             }}
           >
-            <div className="flex-1 text-center sm:text-left">
-              <p className="font-cinzel text-xs uppercase tracking-widest text-[#9a7d5a]">
-                Monthly Status
-              </p>
-              <p
-                className="font-cinzel text-4xl font-bold"
-                style={{ color: isOnTrack ? "#4ade80" : "#f87171" }}
-              >
-                {isOnTrack ? "On Track ✦" : "Behind ⚠"}
-              </p>
-              <p className="text-sm italic text-[#d6c09a]">
-                {progressPct}% of monthly need covered so far
-              </p>
-            </div>
-
-            <div className="mx-auto h-24 w-24 rounded-full p-2"
-              style={{
-                background: `conic-gradient(${isOnTrack ? "#4ade80" : "#f87171"} ${progressPct * 3.6}deg, rgba(107,68,35,.35) 0deg)`,
-              }}
-            >
-              <div className="flex h-full w-full items-center justify-center rounded-full bg-black">
-                <span className="font-cinzel font-bold" style={{ color: isOnTrack ? "#4ade80" : "#f87171" }}>
-                  {progressPct}%
-                </span>
-              </div>
-            </div>
+            <p className="font-cinzel text-xs uppercase tracking-widest text-[#9a7d5a]">
+              Monthly Status
+            </p>
+            <p className="font-cinzel text-4xl font-bold" style={{ color: isOnTrack ? "#4ade80" : "#f87171" }}>
+              {isOnTrack ? "On Track ✦" : "Behind ⚠"}
+            </p>
+            <p className="text-sm italic text-[#d6c09a]">{progressPct}% of monthly need covered so far</p>
           </div>
 
-          <div
-            className="mb-6 grid grid-cols-1 overflow-hidden rounded-2xl sm:grid-cols-3"
-            style={{ border: "1px solid rgba(201,168,76,.4)", background: "rgba(0,0,0,.58)" }}
-          >
+          <div className="mb-6 grid grid-cols-1 overflow-hidden rounded-2xl sm:grid-cols-3"
+            style={{ border: "1px solid rgba(201,168,76,.4)", background: "rgba(0,0,0,.58)" }}>
             <Metric icon="☀️" label="Daily Needed" value={money(breakdown.dailyNeed)} />
             <Metric icon="🌙" label="Weekly Needed" value={money(breakdown.weeklyNeed)} />
             <Metric icon="⭐" label="Monthly Needed" value={money(breakdown.monthlyNeed)} />
           </div>
 
-          <div
-            className="mb-6 grid grid-cols-2 overflow-hidden rounded-2xl sm:grid-cols-4"
-            style={{ border: "1px solid rgba(201,168,76,.4)", background: "rgba(0,0,0,.58)" }}
-          >
+          <div className="mb-6 grid grid-cols-2 overflow-hidden rounded-2xl sm:grid-cols-4"
+            style={{ border: "1px solid rgba(201,168,76,.4)", background: "rgba(0,0,0,.58)" }}>
             <Metric icon="🪙" label="Income Logged" value={money(breakdown.income)} color="#4ade80" />
             <Metric icon="📜" label="Bills" value={money(breakdown.bills)} />
             <Metric icon="⚖️" label="Debt Minimums" value={money(breakdown.debtMinimums)} />
             <Metric icon="🔥" label="Remaining Need" value={money(breakdown.remainingNeed)} color={breakdown.remainingNeed > 0 ? "#f87171" : "#4ade80"} />
           </div>
 
-          <div
-            className="mb-6 rounded-2xl p-5"
-            style={{ border: "1px solid rgba(201,168,76,.35)", background: "rgba(0,0,0,.55)" }}
-          >
-            <h2 className="mb-3 font-cinzel text-lg font-bold text-[#c9a84c]">
-              Month Timeline
+          <div className="mb-6 rounded-2xl p-5"
+            style={{ border: "1px solid rgba(201,168,76,.35)", background: "rgba(0,0,0,.55)" }}>
+            <h2 className="mb-4 font-cinzel text-lg font-bold text-[#c9a84c]">
+              Six-Month Trend
             </h2>
 
-            <div className="mb-3 flex justify-between text-[10px] uppercase tracking-widest text-[#9a7d5a]">
-              <span>Day 1</span>
-              <span>Today: Day {breakdown.daysElapsed}</span>
-              <span>Day {breakdown.daysTotal}</span>
+            <div className="space-y-3">
+              {trend.map((m) => {
+                const max = Math.max(...trend.map((t) => Math.max(t.income, t.spend)), 1);
+                const incomePct = Math.min((m.income / max) * 100, 100);
+                const spendPct = Math.min((m.spend / max) * 100, 100);
+
+                return (
+                  <div key={m.month}>
+                    <div className="mb-1 flex justify-between text-xs text-[#d6c09a]">
+                      <span className="font-cinzel">{m.label}</span>
+                      <span>{money(m.net)} net</span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="h-2 overflow-hidden rounded-full bg-[#1f1207]">
+                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${incomePct}%` }} />
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-[#1f1207]">
+                        <div className="h-full rounded-full bg-red-500" style={{ width: `${spendPct}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="h-3 overflow-hidden rounded-full bg-[#3a210e]">
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.round((breakdown.daysElapsed / breakdown.daysTotal) * 100)}%`,
-                  background: "linear-gradient(90deg, #8b6914, #c9a84c)",
-                }}
-              />
-            </div>
-
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              <SmallBox label="Elapsed" value={breakdown.daysElapsed} />
-              <SmallBox label="Left" value={breakdown.daysLeft} />
-              <SmallBox label="Month" value={breakdown.daysTotal} />
-            </div>
+            <p className="mt-3 text-xs italic text-[#9a7d5a]">
+              Green = income. Red = spending. Ben uses past spending to estimate future need.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <button
-              onClick={() => router.push("/income")}
-              className="rounded-xl py-4 font-cinzel text-lg"
-              style={{ background: "#166534", border: "1px solid #4ade80" }}
-            >
+            <button onClick={() => router.push("/income")} className="rounded-xl py-4 font-cinzel text-lg"
+              style={{ background: "#166534", border: "1px solid #4ade80" }}>
               + Add Income
             </button>
 
-            <button
-              onClick={() => setShowBenNotice(true)}
-              className="rounded-xl py-4 font-cinzel text-lg"
-              style={{ border: "1px solid rgba(201,168,76,.35)" }}
-            >
+            <button onClick={() => setShowBenNotice(true)} className="rounded-xl py-4 font-cinzel text-lg"
+              style={{ border: "1px solid rgba(201,168,76,.35)" }}>
               🔭 How Ben Calculated
             </button>
 
-            <button
-              onClick={() => router.push("/world")}
-              className="rounded-xl py-4 font-cinzel text-lg"
-              style={{ border: "1px solid rgba(201,168,76,.35)" }}
-            >
+            <button onClick={() => router.push("/world")} className="rounded-xl py-4 font-cinzel text-lg"
+              style={{ border: "1px solid rgba(201,168,76,.35)" }}>
               ↪ Exit to Town
             </button>
           </div>
@@ -367,34 +404,24 @@ export default function ForecastPage() {
 
       {showBenNotice && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 px-4">
-          <div
-            className="max-w-md rounded-3xl p-5"
-            style={{
-              background: "#fff7df",
-              border: "2px solid #c9a84c",
-              color: "#1a0f0a",
-              boxShadow: "0 30px 80px rgba(0,0,0,.7)",
-            }}
-          >
+          <div className="max-w-md rounded-3xl p-5"
+            style={{ background: "#fff7df", border: "2px solid #c9a84c", color: "#1a0f0a" }}>
             <p className="font-cinzel text-xs uppercase tracking-[0.25em] text-[#8a3a12]">
               Ben&apos;s Forecast
             </p>
 
             <p className="mt-3 text-lg font-bold leading-snug">
-              {forecast?.ben.text ?? "Ben is still studying the stars."}
+              {forecast.ben.text}
             </p>
 
             <div className="mt-4 space-y-2 text-sm">
-              <p><b>Monthly need</b> = bills + debt minimums + spending estimate.</p>
-              <p><b>Daily need</b> = monthly need divided by days in the month.</p>
-              <p><b>Remaining need</b> = monthly need minus income logged so far.</p>
+              <p><b>Monthly need</b> = bills + debt minimums + historical spending average.</p>
+              <p><b>Historical spending</b> comes from the previous months in your spend ledger.</p>
+              <p><b>Remaining need</b> = monthly need minus income logged this month.</p>
             </div>
 
-            <button
-              onClick={() => setShowBenNotice(false)}
-              className="mt-5 w-full rounded-xl py-3 font-bold"
-              style={{ background: "#1a0f0a", color: "#f5e6c8" }}
-            >
+            <button onClick={() => setShowBenNotice(false)} className="mt-5 w-full rounded-xl py-3 font-bold"
+              style={{ background: "#1a0f0a", color: "#f5e6c8" }}>
               Close
             </button>
           </div>
