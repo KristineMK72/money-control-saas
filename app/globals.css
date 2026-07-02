@@ -149,6 +149,92 @@ textarea {
   animation: lightning 9s infinite;
 }
 
+/* MOBILE ROOM FIXES ONLY */
+@media (max-width: 768px) {
+  .room-hero,
+  .income-room-hero,
+  .building-room-hero {
+    min-height: 520px !important;
+    background-position: center top !important;
+    padding-top: 88px !important;
+  }
+
+  .room-title-wrap,
+  .income-title-wrap,
+  .building-title-wrap {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
+    text-align: center !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 18px !important;
+    margin: 0 auto !important;
+    z-index: 5 !important;
+  }
+
+  .room-eyebrow,
+  .income-eyebrow,
+  .building-eyebrow {
+    font-size: 12px !important;
+    letter-spacing: 6px !important;
+    line-height: 1.2 !important;
+  }
+
+  .room-title,
+  .income-title,
+  .building-title,
+  h1.room-title,
+  h1.income-title,
+  h1.building-title {
+    font-size: clamp(40px, 12vw, 62px) !important;
+    line-height: 0.95 !important;
+    max-width: 100% !important;
+    margin: 8px auto 0 !important;
+    text-align: center !important;
+  }
+
+  .room-top-left,
+  .income-top-left,
+  .building-top-left {
+    top: 18px !important;
+    left: 14px !important;
+    z-index: 20 !important;
+  }
+
+  .room-side-buttons,
+  .income-side-buttons,
+  .building-side-buttons {
+    top: 155px !important;
+    right: 10px !important;
+    gap: 10px !important;
+    z-index: 20 !important;
+  }
+
+  .room-side-buttons button,
+  .room-side-buttons a,
+  .income-side-buttons button,
+  .income-side-buttons a,
+  .building-side-buttons button,
+  .building-side-buttons a {
+    font-size: 15px !important;
+    padding: 11px 15px !important;
+    min-height: 48px !important;
+  }
+
+  .room-content,
+  .income-room-content,
+  .building-room-content {
+    margin-top: -32px !important;
+    padding: 18px !important;
+    border-radius: 28px 28px 0 0 !important;
+    position: relative !important;
+    z-index: 30 !important;
+  }
+}
+
 @keyframes coinFloat {
   0%, 100% {
     transform: translateY(0);
