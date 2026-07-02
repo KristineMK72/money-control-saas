@@ -70,26 +70,19 @@ export const viewport: Viewport = {
   themeColor: "#050505",
 };
 
+// 1. Updated navigation names ('Franklin’s Landing') and cleaned out secondary redundant items
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/world", label: "Franklin’s Landing" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/spend", label: "Spend" },
   { href: "/income", label: "Income" },
-  { href: "/income-plan", label: "Income Plan" },
   { href: "/bills", label: "Bills" },
-  { href: "/debt", label: "Debt" },
   { href: "/payments", label: "Payments" },
   { href: "/forecast", label: "Forecast" },
   { href: "/calendar", label: "Calendar" },
-  { href: "/credit-health", label: "Credit Health" },
-  { href: "/credit-recovery", label: "Credit Recovery" },
-  { href: "/crisis", label: "Crisis" },
   { href: "/chat", label: "Ask Ben" },
   { href: "/settings", label: "⚙️ Settings" },
-  { href: "/whyben", label: "Why AskBen" },
-  { href: "/dispute-letter", label: "Dispute Letter" },
-  { href: "/goodwill-letter", label: "Goodwill Letter" },
 ];
 
 function NavLink({ href, children }: { href: string; children: ReactNode }) {
@@ -351,6 +344,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </SwipeHeader>
 
           <GovernorHeader />
+          
+          {/* 
+            GlobalBenAdvisor handles layout context alerts. Ensure its internal markup 
+            is adjusted to render components as overlay modal pop-ups rather than fixed context banners.
+          */}
           <GlobalBenAdvisor />
 
           <main style={{ 
@@ -396,7 +394,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             Ask Ben 💰
           </a>
 
-          {/* Footer - Now properly pushed down */}
+          {/* 2. Compact, slimmed-down footer */}
           <footer
             style={{
               position: "relative",
@@ -404,141 +402,78 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               marginTop: "auto",
               marginLeft: "auto",
               marginRight: "auto",
-              marginBottom: 40,
-              maxWidth: 1000,
-              padding: "32px 22px",
+              marginBottom: 20,
+              maxWidth: 900,
+              padding: "16px 20px",
               textAlign: "center",
-              fontSize: 13,
+              fontSize: 12,
               color: "#f8fafc",
               fontFamily: "var(--font-inter), system-ui, sans-serif",
-              background:
-                "linear-gradient(180deg, rgba(15,23,42,0.95), rgba(15,23,42,0.9))",
-              border: "1px solid rgba(255,255,255,0.14)",
-              borderRadius: 28,
-              backdropFilter: "blur(20px)",
-              WebkitBackdropFilter: "blur(20px)",
-              boxShadow: "0 22px 70px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
-              width: "100%",
+              background: "rgba(15,23,42,0.95)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: 18,
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
+              boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
+              width: "calc(100% - 32px)",
             }}
           >
-            <img
-              src="/ben-head.png"
-              alt="AskBen"
-              style={{
-                width: 88,
-                height: 88,
-                objectFit: "contain",
-                margin: "0 auto 14px",
-                display: "block",
-                borderRadius: 24,
-                background: "rgba(255,255,255,0.94)",
-                border: "1px solid rgba(251,191,36,0.35)",
-                padding: 8,
-                boxShadow: "0 14px 35px rgba(0,0,0,0.35)",
-              }}
-            />
-
             <div
               style={{
-                fontFamily: "var(--font-cormorant), Georgia, serif",
-                fontSize: 24,
-                fontWeight: 900,
-                color: "#fef3c7",
-                letterSpacing: "0.04em",
-              }}
-            >
-              AskBen 🖋️
-            </div>
-
-            <div
-              style={{
-                marginTop: 6,
-                color: "rgba(255,255,255,0.86)",
-                fontWeight: 700,
-              }}
-            >
-              © 2026 Spatialytics — Built with ❤️ in Minnesota
-            </div>
-
-            <div
-              style={{
-                marginTop: 8,
-                fontFamily: "var(--font-im-fell), Georgia, serif",
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
-                color: "#fcd34d",
-              }}
-            >
-              Spend wisely.
-            </div>
-
-            <div
-              style={{
-                margin: "18px auto 0",
-                maxWidth: 720,
-                padding: "14px 18px",
-                borderRadius: 18,
-                background: "rgba(251,191,36,0.08)",
-                border: "1px solid rgba(251,191,36,0.2)",
-                color: "#fde68a",
-                fontSize: 13,
-                fontWeight: 800,
-                lineHeight: 1.7,
-              }}
-            >
-              🏛️ Secure login • Encrypted connection • No bank login required •
-              Your finances remain under your control
-            </div>
-
-            <div
-              style={{
-                marginTop: 16,
                 display: "flex",
-                justifyContent: "center",
                 alignItems: "center",
-                gap: 10,
+                justifyContent: "space-between",
                 flexWrap: "wrap",
-                fontSize: 12,
-                fontWeight: 800,
+                gap: 12,
               }}
             >
-              {["Privacy", "Security", "Terms", "Why AskBen", "Settings"].map(
-                (label) => {
+              <div style={{ textAlign: "left" }}>
+                <span
+                  style={{
+                    fontFamily: "var(--font-cormorant), Georgia, serif",
+                    fontSize: 18,
+                    fontWeight: 900,
+                    color: "#fef3c7",
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  AskBen 🖋️
+                </span>
+                <span style={{ marginLeft: 12, color: "rgba(255,255,255,0.6)", fontSize: 11.5 }}>
+                  © 2026 Spatialytics — Built with ❤️ in MN
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  fontSize: 11.5,
+                }}
+              >
+                {["Privacy", "Terms", "Why AskBen"].map((label) => {
                   const href =
                     label === "Privacy"
                       ? "/privacy"
-                      : label === "Security"
-                        ? "/security"
-                        : label === "Terms"
-                          ? "/terms"
-                          : label === "Settings"
-                            ? "/settings"
-                            : "/whyben";
+                      : label === "Terms"
+                        ? "/terms"
+                        : "/whyben";
 
                   return (
                     <a
                       key={href}
                       href={href}
                       style={{
-                        color: "#fff7ed",
+                        color: "#fcd34d",
                         textDecoration: "none",
-                        padding: "8px 10px",
-                        borderRadius: 999,
-                        background:
-                          href === "/whyben" || href === "/settings"
-                            ? "rgba(251,191,36,0.12)"
-                            : "rgba(255,255,255,0.08)",
-                        border:
-                          href === "/whyben" || href === "/settings"
-                            ? "1px solid rgba(251,191,36,0.22)"
-                            : "1px solid rgba(255,255,255,0.12)",
+                        fontWeight: 600,
                       }}
                     >
                       {label}
                     </a>
                   );
-                }
-              )}
+                })}
+              </div>
             </div>
           </footer>
         </AppInitializer>
