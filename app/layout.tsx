@@ -346,8 +346,75 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <BenPersona />
           </SwipeHeader>
 
-          <GovernorHeader />
-          <GlobalBenAdvisor />
+          <details
+  style={{
+    position: "fixed",
+    top: 92,
+    right: 14,
+    zIndex: 9998,
+  }}
+>
+  <summary
+    style={{
+      listStyle: "none",
+      cursor: "pointer",
+      padding: "10px 14px",
+      borderRadius: 999,
+      background: "rgba(5,5,8,.9)",
+      color: "#fff7ed",
+      border: "1px solid rgba(255,255,255,.2)",
+      fontWeight: 900,
+    }}
+  >
+    🏛️ Status
+  </summary>
+
+  <div
+    style={{
+      marginTop: 10,
+      width: "min(92vw, 520px)",
+      maxHeight: "70vh",
+      overflowY: "auto",
+    }}
+  >
+    <GovernorHeader />
+  </div>
+</details>
+
+<details
+  style={{
+    position: "fixed",
+    top: 144,
+    right: 14,
+    zIndex: 9998,
+  }}
+>
+  <summary
+    style={{
+      listStyle: "none",
+      cursor: "pointer",
+      padding: "10px 14px",
+      borderRadius: 999,
+      background: "rgba(5,5,8,.9)",
+      color: "#fff7ed",
+      border: "1px solid rgba(255,255,255,.2)",
+      fontWeight: 900,
+    }}
+  >
+    🪶 Ben
+  </summary>
+
+  <div
+    style={{
+      marginTop: 10,
+      width: "min(92vw, 620px)",
+      maxHeight: "70vh",
+      overflowY: "auto",
+    }}
+  >
+    <GlobalBenAdvisor />
+  </div>
+</details>
 
           <main style={{ 
             position: "relative", 
