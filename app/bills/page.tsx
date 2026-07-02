@@ -83,6 +83,7 @@ export default function BillsPage() {
   const [activeTab, setActiveTab] = useState<"bill" | "debt">("bill");
   const [cardIndex, setCardIndex] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
+  const [showBenNotice, setShowBenNotice] = useState(false);
 
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
@@ -276,11 +277,6 @@ export default function BillsPage() {
 
   const totalBillsAmt = useMemo(() => addMoney(bills.map(billAmount)), [bills]);
   const totalDebtMins = useMemo(() => addMoney(debts.map(debtMin)), [debts]);
-  const totalDebtBal = useMemo(
-    () => addMoney(debts.map((d) => clampMoney(d.balance))),
-    [debts]
-  );
-
   const totalDue = totalBillsAmt + totalDebtMins;
   const remaining = Math.max(0, totalDue - paidThisMonth);
 
@@ -348,8 +344,8 @@ export default function BillsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <p className="text-[#c9a84c] font-cinzel">Opening the post office ledger…</p>
+      <div className="flex min-h-screen items-center justify-center bg-black">
+        <p className="font-cinzel text-[#c9a84c]">Opening the post office ledger…</p>
       </div>
     );
   }
@@ -360,15 +356,30 @@ export default function BillsPage() {
       style={{ fontFamily: "EB Garamond, serif" }}
     >
       <section className="relative mx-auto max-w-5xl">
+        <div
+          className="px-4 py-3 text-center"
+          style={{
+            background: "linear-gradient(180deg, rgba(0,0,0,.98), rgba(15,8,4,.92))",
+            borderBottom: "1px solid rgba(201,168,76,.25)",
+          }}
+        >
+          <p className="font-cinzel text-xs uppercase tracking-[0.35em] text-[#c9a84c]">
+            Franklin&apos;s Landing
+          </p>
+          <h1 className="font-cinzel text-2xl font-bold tracking-wide text-[#f5e6c8] sm:text-4xl">
+            Post Office of Debts & Bills
+          </h1>
+        </div>
+
         <img
           src={POST_OFFICE_BG}
           alt="Post Office of Debts and Bills"
-          className="w-full h-auto block"
+          className="block h-auto w-full"
         />
 
         <button
           onClick={() => router.push("/world")}
-          className="absolute left-4 top-4 rounded-full px-4 py-2 text-sm"
+          className="absolute left-4 top-20 rounded-full px-4 py-2 text-sm sm:top-24"
           style={{
             background: "rgba(0,0,0,.72)",
             border: "1px solid rgba(201,168,76,.45)",
@@ -378,49 +389,29 @@ export default function BillsPage() {
           ← Back to Town
         </button>
 
-        <div className="absolute inset-x-0 top-4 text-center pointer-events-none px-20">
-          <h1 className="font-cinzel text-2xl sm:text-4xl font-bold tracking-wide text-[#f5e6c8] drop-shadow">
-            Post Office of Debts & Bills
-          </h1>
-          <p className="hidden sm:block italic text-[#d6c09a]">
-            Letters, parcels, payments, accounts, receipts, and ledgers.
-          </p>
-        </div>
+        <button
+          onClick={() => setShowBenNotice(true)}
+          className="absolute right-4 top-20 rounded-full px-4 py-2 text-sm sm:top-24"
+          style={{
+            background: "rgba(0,0,0,.72)",
+            border: "1px solid rgba(201,168,76,.45)",
+            color: "#f5e6c8",
+          }}
+        >
+          Ben&apos;s Notice
+        </button>
       </section>
 
-      <section className="relative z-10 mx-auto max-w-5xl px-4 pb-24 -mt-4 sm:-mt-10">
+      <section className="relative z-10 mx-auto max-w-5xl px-4 pb-24 -mt-2 sm:-mt-8">
         <div
           className="rounded-3xl p-4 sm:p-5"
           style={{
-            background: "linear-gradient(180deg, rgba(8,5,3,.92), rgba(0,0,0,.98))",
+            background: "linear-gradient(180deg, rgba(8,5,3,.94), rgba(0,0,0,.99))",
             border: "1px solid rgba(201,168,76,.35)",
-            boxShadow: "0 -30px 80px rgba(0,0,0,.85)",
+            boxShadow: "0 -30px 80px rgba(0,0,0,.9)",
           }}
         >
-          <div
-            className="mb-5 flex gap-3 rounded-2xl p-3"
-            style={{
-              background: "#fff7df",
-              border: "1px solid rgba(201,168,76,.65)",
-              color: "#1a0f0a",
-            }}
-          >
-            <img
-              src="/ben.png"
-              alt="Ben"
-              className="h-16 w-16 rounded-xl object-cover border border-[#c9a84c]"
-            />
-            <div>
-              <p className="font-cinzel text-xs uppercase tracking-[0.25em] text-[#8a3a12]">
-                Ben&apos;s Almanack
-              </p>
-              <p className="text-lg font-bold leading-snug">
-                Ben says: {ben.text}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className="mb-5 grid grid-cols-2 gap-3">
             {(["bill", "debt"] as const).map((tab) => (
               <button
                 key={tab}
@@ -446,17 +437,17 @@ export default function BillsPage() {
             ))}
           </div>
 
-          <div className="grid grid-cols-[72px_1fr_72px] items-center gap-2 sm:gap-4 mb-4">
+          <div className="mb-4 grid grid-cols-[56px_1fr_56px] items-center gap-2 sm:grid-cols-[72px_1fr_72px] sm:gap-4">
             <button
               onClick={() => setCardIndex((i) => Math.max(0, i - 1))}
-              className="h-16 rounded-full font-cinzel"
+              className="h-14 rounded-full font-cinzel sm:h-16"
               style={{ border: "1px solid rgba(201,168,76,.45)" }}
             >
               ◀
             </button>
 
             <div
-              className="rounded-2xl p-5 text-center min-h-[220px]"
+              className="min-h-[210px] rounded-2xl p-5 text-center"
               style={{
                 background: "rgba(0,0,0,.68)",
                 border: "1px solid rgba(201,168,76,.45)",
@@ -483,7 +474,7 @@ export default function BillsPage() {
                   {activeTab === "bill" && (
                     <button
                       onClick={() => markBillPaid(activeItem.item.id)}
-                      className="mt-4 block mx-auto rounded-xl px-5 py-2 font-bold"
+                      className="mx-auto mt-4 block rounded-xl px-5 py-2 font-bold"
                       style={{
                         background: "#166534",
                         border: "1px solid #4ade80",
@@ -502,16 +493,16 @@ export default function BillsPage() {
 
             <button
               onClick={() =>
-                setCardIndex((i) => Math.min(roomItems.length - 1, i + 1))
+                setCardIndex((i) => Math.min(Math.max(roomItems.length - 1, 0), i + 1))
               }
-              className="h-16 rounded-full font-cinzel"
+              className="h-14 rounded-full font-cinzel sm:h-16"
               style={{ border: "1px solid rgba(201,168,76,.45)" }}
             >
               ▶
             </button>
           </div>
 
-          <div className="flex justify-center gap-2 mb-6">
+          <div className="mb-6 flex justify-center gap-2">
             {roomItems.slice(0, 8).map((_, i) => (
               <span
                 key={i}
@@ -522,7 +513,7 @@ export default function BillsPage() {
           </div>
 
           <div
-            className="grid grid-cols-2 sm:grid-cols-4 rounded-2xl overflow-hidden mb-6"
+            className="mb-6 grid grid-cols-2 overflow-hidden rounded-2xl sm:grid-cols-4"
             style={{
               border: "1px solid rgba(201,168,76,.4)",
               background: "rgba(0,0,0,.58)",
@@ -534,7 +525,7 @@ export default function BillsPage() {
             <Metric icon="📅" label="Due Soon" value={money(dueSoon)} />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <button
               onClick={() => router.push("/payments")}
               className="rounded-xl py-4 font-cinzel text-lg"
@@ -608,6 +599,53 @@ export default function BillsPage() {
           </p>
         </div>
       </section>
+
+      {showBenNotice && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 px-4">
+          <div
+            className="max-w-md rounded-3xl p-5"
+            style={{
+              background: "#fff7df",
+              border: "2px solid #c9a84c",
+              color: "#1a0f0a",
+              boxShadow: "0 30px 80px rgba(0,0,0,.7)",
+            }}
+          >
+            <div className="flex gap-3">
+              <img
+                src="/ben.png"
+                alt="Ben"
+                className="h-16 w-16 rounded-xl border border-[#c9a84c] object-cover"
+              />
+
+              <div>
+                <p className="font-cinzel text-xs uppercase tracking-[0.25em] text-[#8a3a12]">
+                  Ben&apos;s Almanack
+                </p>
+
+                <p className="mt-2 text-lg font-bold leading-snug">
+                  Ben says: I see {bills.length} bills in the colony. Keeping due dates visible prevents ambushes.
+                </p>
+
+                <p className="mt-3 text-sm">
+                  {ben.text}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowBenNotice(false)}
+              className="mt-5 w-full rounded-xl py-3 font-bold"
+              style={{
+                background: "#1a0f0a",
+                color: "#f5e6c8",
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -624,7 +662,7 @@ function Metric({
   color?: string;
 }) {
   return (
-    <div className="p-4 text-center border-b sm:border-b-0 sm:border-r border-[#c9a84c]/20 last:border-r-0">
+    <div className="border-b border-[#c9a84c]/20 p-4 text-center last:border-r-0 sm:border-b-0 sm:border-r">
       <div className="text-3xl">{icon}</div>
       <p className="mt-2 text-xs uppercase tracking-widest text-[#d6c09a]">{label}</p>
       <p className="mt-1 text-2xl font-bold" style={{ color }}>
