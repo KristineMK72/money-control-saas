@@ -4,13 +4,11 @@ import { useState } from "react";
 
 const navLinks = [
   { href: "/", label: "Home" },
-  { href: "/world", label: "BenWorld" },
+  { href: "/world", label: "Franklin's Landing" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/spend", label: "Spend" },
   { href: "/income", label: "Income" },
-  { href: "/income-plan", label: "Income Plan" },
   { href: "/bills", label: "Bills" },
-  { href: "/debt", label: "Debt" },
   { href: "/payments", label: "Payments" },
   { href: "/forecast", label: "Forecast" },
   { href: "/calendar", label: "Calendar" },
