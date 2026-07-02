@@ -70,7 +70,7 @@ export const viewport: Viewport = {
   themeColor: "#050505",
 };
 
-// 1. Updated navigation names ('Franklin’s Landing') and cleaned out secondary redundant items
+// Strict Clean Menu: Income-plan and Debt are GONE. benworld mapped cleanly to Franklin's Landing.
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/world", label: "Franklin’s Landing" },
@@ -291,7 +291,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   }}
                 >
                   <HeaderIconLink href="/settings" label="⚙️" title="Settings" />
+                  
+                  {/* NOTE: Make sure to check inside this component file to match the arrays! */}
                   <MobileMenu />
+                  
                   <div className="hidden sm:block">
                     <UserGreeting />
                   </div>
@@ -344,11 +347,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </SwipeHeader>
 
           <GovernorHeader />
-          
-          {/* 
-            GlobalBenAdvisor handles layout context alerts. Ensure its internal markup 
-            is adjusted to render components as overlay modal pop-ups rather than fixed context banners.
-          */}
           <GlobalBenAdvisor />
 
           <main style={{ 
@@ -394,7 +392,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             Ask Ben 💰
           </a>
 
-          {/* 2. Compact, slimmed-down footer */}
+          {/* Squeaky Clean Short Footer + Return of Spend Wisely */}
           <footer
             style={{
               position: "relative",
@@ -402,16 +400,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               marginTop: "auto",
               marginLeft: "auto",
               marginRight: "auto",
-              marginBottom: 20,
+              marginBottom: 24,
               maxWidth: 900,
-              padding: "16px 20px",
+              padding: "20px 24px",
               textAlign: "center",
               fontSize: 12,
               color: "#f8fafc",
               fontFamily: "var(--font-inter), system-ui, sans-serif",
               background: "rgba(15,23,42,0.95)",
               border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 18,
+              borderRadius: 20,
               backdropFilter: "blur(16px)",
               WebkitBackdropFilter: "blur(16px)",
               boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
@@ -424,14 +422,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 alignItems: "center",
                 justifyContent: "space-between",
                 flexWrap: "wrap",
-                gap: 12,
+                gap: 16,
               }}
             >
               <div style={{ textAlign: "left" }}>
                 <span
                   style={{
                     fontFamily: "var(--font-cormorant), Georgia, serif",
-                    fontSize: 18,
+                    fontSize: 20,
                     fontWeight: 900,
                     color: "#fef3c7",
                     letterSpacing: "0.02em",
@@ -439,15 +437,31 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 >
                   AskBen 🖋️
                 </span>
-                <span style={{ marginLeft: 12, color: "rgba(255,255,255,0.6)", fontSize: 11.5 }}>
-                  © 2026 Spatialytics — Built with ❤️ in MN
+                
+                {/* Spend Wisely is Back! */}
+                <span
+                  style={{
+                    marginLeft: 14,
+                    fontFamily: "var(--font-im-fell), Georgia, serif",
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: "#fcd34d",
+                    fontSize: 11,
+                    fontWeight: 600
+                  }}
+                >
+                  Spend wisely.
                 </span>
+              </div>
+
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11 }}>
+                © 2026 Spatialytics — MN
               </div>
 
               <div
                 style={{
                   display: "flex",
-                  gap: 12,
+                  gap: 14,
                   fontSize: 11.5,
                 }}
               >
@@ -464,7 +478,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                       key={href}
                       href={href}
                       style={{
-                        color: "#fcd34d",
+                        color: "#fff7ed",
                         textDecoration: "none",
                         fontWeight: 600,
                       }}
