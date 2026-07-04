@@ -45,8 +45,8 @@ const TREASURY_IMAGE = "/058223E5-4FAA-4CF8-851C-05CBEE73C881.png";
 
 const panel: React.CSSProperties = {
   background:
-    "linear-gradient(180deg, rgba(18,10,4,0.94), rgba(5,3,2,0.96))",
-  border: "1px solid rgba(245, 196, 88, 0.32)",
+    "linear-gradient(180deg, rgba(18,10,4,0.94), rgba(5,3,2,0.97))",
+  border: "1px solid rgba(245,196,88,0.32)",
   boxShadow:
     "0 24px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)",
   backdropFilter: "blur(16px)",
@@ -56,8 +56,8 @@ const panel: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: "100%",
   borderRadius: 16,
-  border: "1px solid rgba(245,196,88,0.38)",
-  background: "rgba(255,245,220,0.92)",
+  border: "1px solid rgba(245,196,88,0.42)",
+  background: "rgba(255,245,220,0.94)",
   color: "#24130a",
   padding: "12px 14px",
   outline: "none",
@@ -66,17 +66,7 @@ const inputStyle: React.CSSProperties = {
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <label
-      style={{
-        display: "block",
-        marginBottom: 6,
-        color: "#d9b86c",
-        fontSize: 11,
-        letterSpacing: "0.16em",
-        textTransform: "uppercase",
-        fontWeight: 800,
-      }}
-    >
+    <label className="pay-label">
       {children}
     </label>
   );
@@ -87,50 +77,18 @@ function StatCard({
   label,
   value,
   helper,
-  danger,
 }: {
   icon: string;
   label: string;
   value: string;
   helper?: string;
-  danger?: boolean;
 }) {
   return (
-    <div
-      style={{
-        ...panel,
-        borderRadius: 24,
-        padding: 18,
-      }}
-    >
-      <div style={{ fontSize: 28, marginBottom: 8 }}>{icon}</div>
-      <div
-        style={{
-          color: "#b99b60",
-          fontSize: 11,
-          letterSpacing: "0.16em",
-          textTransform: "uppercase",
-          fontWeight: 800,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          color: danger ? "#fb7185" : "#4ade80",
-          fontSize: 28,
-          fontWeight: 900,
-          marginTop: 6,
-          fontFamily: "var(--font-cormorant), Georgia, serif",
-        }}
-      >
-        {value}
-      </div>
-      {helper && (
-        <div style={{ color: "#d6c4a4", fontSize: 13, marginTop: 4 }}>
-          {helper}
-        </div>
-      )}
+    <div className="stat-card" style={panel}>
+      <div className="stat-icon">{icon}</div>
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+      {helper && <div className="stat-helper">{helper}</div>}
     </div>
   );
 }
@@ -145,30 +103,10 @@ function RoomPanel({
   children: React.ReactNode;
 }) {
   return (
-    <section style={{ ...panel, borderRadius: 28, padding: 22 }}>
-      <div
-        style={{
-          borderBottom: "1px solid rgba(245,196,88,0.18)",
-          paddingBottom: 14,
-          marginBottom: 18,
-        }}
-      >
-        <h2
-          style={{
-            margin: 0,
-            color: "#f8e7ba",
-            fontSize: 28,
-            lineHeight: 1,
-            fontFamily: "var(--font-cormorant), Georgia, serif",
-          }}
-        >
-          {title}
-        </h2>
-        {subtitle && (
-          <p style={{ margin: "8px 0 0", color: "#b99b60", fontSize: 14 }}>
-            {subtitle}
-          </p>
-        )}
+    <section className="room-panel" style={panel}>
+      <div className="room-head">
+        <h2>{title}</h2>
+        {subtitle && <p>{subtitle}</p>}
       </div>
       {children}
     </section>
@@ -401,7 +339,8 @@ export default function PaymentsPage() {
   const monthlyPayments = useMemo(
     () =>
       payments.filter(
-        (p) => (p.date_iso || p.created_at || "").slice(0, 10) >= currentMonthStart
+        (p) =>
+          (p.date_iso || p.created_at || "").slice(0, 10) >= currentMonthStart
       ),
     [payments, currentMonthStart]
   );
@@ -436,16 +375,8 @@ export default function PaymentsPage() {
 
   if (loading) {
     return (
-      <main
-        style={{
-          minHeight: "100vh",
-          display: "grid",
-          placeItems: "center",
-          background: "#050302",
-          color: "#f8e7ba",
-        }}
-      >
-        <div style={{ ...panel, borderRadius: 28, padding: 28 }}>
+      <main className="payments-page loading-page">
+        <div className="loading-card" style={panel}>
           Ben is opening the Treasury Hall ledger...
         </div>
       </main>
@@ -453,16 +384,7 @@ export default function PaymentsPage() {
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top, rgba(245,196,88,0.16), transparent 34rem), linear-gradient(180deg, #070302, #160b04 45%, #050302)",
-        color: "#fff7ed",
-        fontFamily: "var(--font-inter), system-ui, sans-serif",
-        paddingBottom: 96,
-      }}
-    >
+    <main className="payments-page">
       {ceremony && (
         <DebtZeroCeremony
           debtName={ceremony.debtName}
@@ -474,112 +396,25 @@ export default function PaymentsPage() {
         />
       )}
 
-      <section
-        style={{
-          position: "relative",
-          minHeight: "min(86vh, 760px)",
-          overflow: "hidden",
-          borderBottom: "1px solid rgba(245,196,88,0.28)",
-        }}
-      >
-        <img
-          src={TREASURY_IMAGE}
-          alt="Treasury Hall"
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            objectPosition: "center top",
-          }}
-        />
+      <section className="hero">
+        <img src={TREASURY_IMAGE} alt="Treasury Hall" className="hero-img" />
+        <div className="hero-shade" />
 
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "linear-gradient(90deg, rgba(5,3,2,0.9), rgba(5,3,2,0.22) 48%, rgba(5,3,2,0.82)), linear-gradient(180deg, rgba(5,3,2,0.22), rgba(5,3,2,0.92))",
-          }}
-        />
-
-        <div
-          style={{
-            position: "relative",
-            zIndex: 2,
-            maxWidth: 1180,
-            margin: "0 auto",
-            padding: "96px 18px 32px",
-          }}
-        >
-          <Link
-            href="/world"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              color: "#f8e7ba",
-              background: "rgba(0,0,0,0.5)",
-              border: "1px solid rgba(245,196,88,0.35)",
-              borderRadius: 999,
-              padding: "10px 16px",
-              textDecoration: "none",
-              marginBottom: 18,
-            }}
-          >
+        <div className="hero-inner">
+          <Link href="/world" className="back-btn">
             ← Back to Town
           </Link>
 
-          <div style={{ maxWidth: 620 }}>
-            <p
-              style={{
-                margin: 0,
-                color: "#facc15",
-                letterSpacing: "0.32em",
-                textTransform: "uppercase",
-                fontSize: 13,
-                fontWeight: 900,
-              }}
-            >
-              Treasury Hall
-            </p>
-
-            <h1
-              style={{
-                margin: "8px 0 10px",
-                color: "#fff7ed",
-                fontSize: "clamp(48px, 8vw, 96px)",
-                lineHeight: 0.86,
-                fontFamily: "var(--font-cormorant), Georgia, serif",
-                textShadow: "0 6px 24px rgba(0,0,0,0.75)",
-              }}
-            >
-              Payment Ledger
-            </h1>
-
-            <p
-              style={{
-                color: "#e8d5b7",
-                fontSize: 18,
-                lineHeight: 1.45,
-                maxWidth: 540,
-              }}
-            >
+          <div className="hero-copy">
+            <p className="eyebrow">Treasury Hall</p>
+            <h1>Payment Ledger</h1>
+            <p>
               Record payments, scan proof, and let Ben stamp each victory into
               the colony ledger.
             </p>
           </div>
 
-          <div
-            style={{
-              marginTop: 26,
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: 14,
-              maxWidth: 820,
-            }}
-          >
+          <div className="stats-grid">
             <StatCard
               icon="🪙"
               label="Paid This Month"
@@ -608,23 +443,12 @@ export default function PaymentsPage() {
         </div>
       </section>
 
-      <div
-        style={{
-          maxWidth: 1180,
-          margin: "-52px auto 0",
-          padding: "0 18px",
-          position: "relative",
-          zIndex: 5,
-          display: "grid",
-          gap: 18,
-        }}
-      >
+      <div className="content-wrap">
         {message && (
           <div
+            className="notice"
             style={{
               ...panel,
-              borderRadius: 22,
-              padding: "14px 16px",
               color: msgColor,
               borderColor: `${msgColor}66`,
             }}
@@ -641,24 +465,16 @@ export default function PaymentsPage() {
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </RoomPanel>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.2fr) minmax(320px, 0.8fr)",
-            gap: 18,
-          }}
-        >
+        <div className="work-grid">
           <RoomPanel
             title="Record Payment"
-            subtitle={merchant || amount ? "Draft ready — review and stamp it." : "Enter a new victory for the treasury."}
+            subtitle={
+              merchant || amount
+                ? "Draft ready — review and stamp it."
+                : "Enter a new victory for the treasury."
+            }
           >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 14,
-              }}
-            >
+            <div className="form-grid">
               <div>
                 <Label>Date</Label>
                 <input
@@ -708,8 +524,10 @@ export default function PaymentsPage() {
                 </select>
               </div>
 
-              <div style={{ gridColumn: "1 / -1" }}>
-                <Label>{payType === "debt" ? "Select Debt" : "Select Bill"}</Label>
+              <div className="full">
+                <Label>
+                  {payType === "debt" ? "Select Debt" : "Select Bill"}
+                </Label>
 
                 {payType === "debt" ? (
                   <select
@@ -736,14 +554,15 @@ export default function PaymentsPage() {
                     <option value="">Choose a bill...</option>
                     {bills.map((bill) => (
                       <option key={bill.id} value={bill.id}>
-                        {bill.name} — {money(bill.monthly_target ?? bill.target ?? 0)}
+                        {bill.name} —{" "}
+                        {money(bill.monthly_target ?? bill.target ?? 0)}
                       </option>
                     ))}
                   </select>
                 )}
               </div>
 
-              <div style={{ gridColumn: "1 / -1" }}>
+              <div className="full">
                 <Label>Note</Label>
                 <textarea
                   value={note}
@@ -757,20 +576,7 @@ export default function PaymentsPage() {
               <button
                 onClick={handleAddPayment}
                 disabled={saving}
-                style={{
-                  gridColumn: "1 / -1",
-                  border: "1px solid rgba(74,222,128,0.65)",
-                  borderRadius: 20,
-                  padding: "16px 18px",
-                  background:
-                    "linear-gradient(180deg, rgba(22,163,74,1), rgba(21,128,61,1))",
-                  color: "#f0fdf4",
-                  fontSize: 18,
-                  fontWeight: 900,
-                  cursor: saving ? "not-allowed" : "pointer",
-                  opacity: saving ? 0.65 : 1,
-                  boxShadow: "0 14px 34px rgba(22,163,74,0.22)",
-                }}
+                className="record-btn"
               >
                 {saving ? "Recording..." : "🪙 Record Payment"}
               </button>
@@ -779,7 +585,11 @@ export default function PaymentsPage() {
 
           <RoomPanel
             title="Scan Payment Proof"
-            subtitle={scanning ? "Ben is reading the proof..." : "Upload receipt, screenshot, or confirmation."}
+            subtitle={
+              scanning
+                ? "Ben is reading the proof..."
+                : "Upload receipt, screenshot, or confirmation."
+            }
           >
             <PaperScrollScanner
               title="Scan Payment Proof"
@@ -796,22 +606,15 @@ export default function PaymentsPage() {
           title="Recent Ledger Entries"
           subtitle={
             latestPayment
-              ? `${latestPayment.merchant || "Latest"} — ${money(latestPayment.amount)}`
+              ? `${latestPayment.merchant || "Latest"} — ${money(
+                  latestPayment.amount
+                )}`
               : "The ledger awaits its first victory."
           }
         >
-          <div style={{ display: "grid", gap: 10 }}>
+          <div className="ledger-list">
             {payments.length === 0 ? (
-              <div
-                style={{
-                  borderRadius: 20,
-                  padding: 24,
-                  textAlign: "center",
-                  color: "#d6c4a4",
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(245,196,88,0.16)",
-                }}
-              >
+              <div className="empty-ledger">
                 No payments yet. The treasury ledger is ready.
               </div>
             ) : (
@@ -819,79 +622,24 @@ export default function PaymentsPage() {
                 const isDebt = !!payment.debt_id;
                 const isBill = !!payment.bill_id;
                 const isThisMonth =
-                  (payment.date_iso || "").slice(0, 7) >= currentMonthStart.slice(0, 7);
+                  (payment.date_iso || "").slice(0, 7) >=
+                  currentMonthStart.slice(0, 7);
 
                 return (
-                  <div
-                    key={payment.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 14,
-                      padding: 16,
-                      borderRadius: 20,
-                      background: isThisMonth
-                        ? "rgba(22,163,74,0.10)"
-                        : "rgba(255,255,255,0.04)",
-                      border: `1px solid ${
-                        isThisMonth
-                          ? "rgba(74,222,128,0.26)"
-                          : "rgba(245,196,88,0.14)"
-                      }`,
-                    }}
-                  >
+                  <div key={payment.id} className="ledger-row">
                     <div>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 8,
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                        }}
-                      >
-                        <strong style={{ color: "#f8e7ba", fontSize: 16 }}>
-                          {payment.merchant || "Payment"}
-                        </strong>
-                        <span
-                          style={{
-                            color: "#facc15",
-                            fontSize: 12,
-                            border: "1px solid rgba(250,204,21,0.24)",
-                            borderRadius: 999,
-                            padding: "3px 8px",
-                          }}
-                        >
-                          {isDebt ? "💳 Debt" : isBill ? "📬 Bill" : "📜 Ledger"}
-                        </span>
-                        {isThisMonth && (
-                          <span
-                            style={{
-                              color: "#4ade80",
-                              fontSize: 12,
-                              border: "1px solid rgba(74,222,128,0.24)",
-                              borderRadius: 999,
-                              padding: "3px 8px",
-                            }}
-                          >
-                            This month
-                          </span>
-                        )}
+                      <div className="ledger-title-row">
+                        <strong>{payment.merchant || "Payment"}</strong>
+                        <span>{isDebt ? "💳 Debt" : isBill ? "📬 Bill" : "📜 Ledger"}</span>
+                        {isThisMonth && <span className="green">This month</span>}
                       </div>
-                      <div style={{ color: "#b99b60", fontSize: 13, marginTop: 5 }}>
+                      <div className="ledger-meta">
                         {payment.date_iso}
                         {payment.note ? ` • ${payment.note}` : ""}
                       </div>
                     </div>
 
-                    <strong
-                      style={{
-                        color: isThisMonth ? "#4ade80" : "#facc15",
-                        fontSize: 22,
-                        fontFamily: "var(--font-cormorant), Georgia, serif",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <strong className="ledger-amount">
                       {money(payment.amount)}
                     </strong>
                   </div>
@@ -901,39 +649,355 @@ export default function PaymentsPage() {
           </div>
         </RoomPanel>
 
-        <div
-          style={{
-            ...panel,
-            borderRadius: 24,
-            padding: 18,
-            color: "#f8e7ba",
-            textAlign: "center",
-            fontFamily: "var(--font-cormorant), Georgia, serif",
-            fontSize: 20,
-          }}
-        >
+        <div className="quote" style={panel}>
           🪶 “A penny saved is a penny earned.” — Benjamin Franklin
         </div>
       </div>
 
       <style jsx>{`
+        .payments-page {
+          min-height: 100vh;
+          padding-top: clamp(220px, 30vh, 310px);
+          padding-bottom: 96px;
+          color: #fff7ed;
+          font-family: var(--font-inter), system-ui, sans-serif;
+          background:
+            radial-gradient(circle at top, rgba(245, 196, 88, 0.16), transparent 34rem),
+            linear-gradient(180deg, #070302, #160b04 45%, #050302);
+        }
+
+        .loading-page {
+          display: grid;
+          place-items: center;
+          padding-top: 0;
+        }
+
+        .loading-card {
+          border-radius: 28px;
+          padding: 28px;
+          color: #f8e7ba;
+        }
+
+        .hero {
+          position: relative;
+          min-height: 560px;
+          overflow: hidden;
+          border-bottom: 1px solid rgba(245, 196, 88, 0.28);
+        }
+
+        .hero-img {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          object-position: center top;
+        }
+
+        .hero-shade {
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(90deg, rgba(5, 3, 2, 0.92), rgba(5, 3, 2, 0.28) 48%, rgba(5, 3, 2, 0.84)),
+            linear-gradient(180deg, rgba(5, 3, 2, 0.18), rgba(5, 3, 2, 0.95));
+        }
+
+        .hero-inner {
+          position: relative;
+          z-index: 2;
+          max-width: 1180px;
+          margin: 0 auto;
+          padding: 38px 18px 32px;
+        }
+
+        .back-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: #f8e7ba;
+          background: rgba(0, 0, 0, 0.5);
+          border: 1px solid rgba(245, 196, 88, 0.35);
+          border-radius: 999px;
+          padding: 10px 16px;
+          text-decoration: none;
+          margin-bottom: 18px;
+        }
+
+        .hero-copy {
+          max-width: 620px;
+        }
+
+        .eyebrow {
+          margin: 0;
+          color: #facc15;
+          letter-spacing: 0.32em;
+          text-transform: uppercase;
+          font-size: 13px;
+          font-weight: 900;
+        }
+
+        .hero-copy h1 {
+          margin: 8px 0 10px;
+          color: #fff7ed;
+          font-size: clamp(48px, 8vw, 96px);
+          line-height: 0.86;
+          font-family: var(--font-cormorant), Georgia, serif;
+          text-shadow: 0 6px 24px rgba(0, 0, 0, 0.75);
+        }
+
+        .hero-copy p {
+          color: #e8d5b7;
+          font-size: 18px;
+          line-height: 1.45;
+          max-width: 540px;
+        }
+
+        .stats-grid {
+          margin-top: 26px;
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 14px;
+          max-width: 820px;
+        }
+
+        .stat-card {
+          border-radius: 24px;
+          padding: 18px;
+        }
+
+        .stat-icon {
+          font-size: 28px;
+          margin-bottom: 8px;
+        }
+
+        .stat-label {
+          color: #b99b60;
+          font-size: 11px;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          font-weight: 800;
+        }
+
+        .stat-value {
+          color: #4ade80;
+          font-size: 28px;
+          font-weight: 900;
+          margin-top: 6px;
+          font-family: var(--font-cormorant), Georgia, serif;
+        }
+
+        .stat-helper {
+          color: #d6c4a4;
+          font-size: 13px;
+          margin-top: 4px;
+        }
+
+        .content-wrap {
+          max-width: 1180px;
+          margin: -52px auto 0;
+          padding: 0 18px;
+          position: relative;
+          z-index: 5;
+          display: grid;
+          gap: 18px;
+        }
+
+        .notice {
+          border-radius: 22px;
+          padding: 14px 16px;
+        }
+
+        .room-panel {
+          border-radius: 28px;
+          padding: 22px;
+        }
+
+        .room-head {
+          border-bottom: 1px solid rgba(245, 196, 88, 0.18);
+          padding-bottom: 14px;
+          margin-bottom: 18px;
+        }
+
+        .room-head h2 {
+          margin: 0;
+          color: #f8e7ba;
+          font-size: 28px;
+          line-height: 1;
+          font-family: var(--font-cormorant), Georgia, serif;
+        }
+
+        .room-head p {
+          margin: 8px 0 0;
+          color: #b99b60;
+          font-size: 14px;
+        }
+
+        .work-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+          gap: 18px;
+        }
+
+        .form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .full,
+        .record-btn {
+          grid-column: 1 / -1;
+        }
+
+        .pay-label {
+          display: block;
+          margin-bottom: 6px;
+          color: #d9b86c;
+          font-size: 11px;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          font-weight: 800;
+        }
+
+        .record-btn {
+          border: 1px solid rgba(74, 222, 128, 0.65);
+          border-radius: 20px;
+          padding: 16px 18px;
+          background: linear-gradient(180deg, rgba(22, 163, 74, 1), rgba(21, 128, 61, 1));
+          color: #f0fdf4;
+          font-size: 18px;
+          font-weight: 900;
+          cursor: pointer;
+          box-shadow: 0 14px 34px rgba(22, 163, 74, 0.22);
+        }
+
+        .record-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.65;
+        }
+
+        .ledger-list {
+          display: grid;
+          gap: 10px;
+        }
+
+        .empty-ledger {
+          border-radius: 20px;
+          padding: 24px;
+          text-align: center;
+          color: #d6c4a4;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(245, 196, 88, 0.16);
+        }
+
+        .ledger-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+          padding: 16px;
+          border-radius: 20px;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(245, 196, 88, 0.14);
+        }
+
+        .ledger-title-row {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .ledger-title-row strong {
+          color: #f8e7ba;
+          font-size: 16px;
+        }
+
+        .ledger-title-row span {
+          color: #facc15;
+          font-size: 12px;
+          border: 1px solid rgba(250, 204, 21, 0.24);
+          border-radius: 999px;
+          padding: 3px 8px;
+        }
+
+        .ledger-title-row .green {
+          color: #4ade80;
+          border-color: rgba(74, 222, 128, 0.24);
+        }
+
+        .ledger-meta {
+          color: #b99b60;
+          font-size: 13px;
+          margin-top: 5px;
+        }
+
+        .ledger-amount {
+          color: #4ade80;
+          font-size: 22px;
+          font-family: var(--font-cormorant), Georgia, serif;
+          white-space: nowrap;
+        }
+
+        .quote {
+          border-radius: 24px;
+          padding: 18px;
+          color: #f8e7ba;
+          text-align: center;
+          font-family: var(--font-cormorant), Georgia, serif;
+          font-size: 20px;
+        }
+
         @media (max-width: 900px) {
-          div[style*="grid-template-columns: minmax(0, 1.2fr)"] {
-            grid-template-columns: 1fr !important;
+          .work-grid {
+            grid-template-columns: 1fr;
           }
         }
 
         @media (max-width: 640px) {
-          section {
-            min-height: 640px !important;
+          .payments-page {
+            padding-top: 250px;
           }
 
-          img {
-            object-position: 48% top !important;
+          .hero {
+            min-height: 520px;
           }
 
-          div[style*="grid-template-columns: repeat(2"] {
-            grid-template-columns: 1fr !important;
+          .hero-img {
+            object-position: 48% top;
+          }
+
+          .hero-inner {
+            padding: 32px 18px 28px;
+          }
+
+          .hero-copy h1 {
+            font-size: 54px;
+          }
+
+          .hero-copy p {
+            font-size: 17px;
+          }
+
+          .stats-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .form-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .ledger-row {
+            align-items: flex-start;
+            flex-direction: column;
+          }
+
+          .ledger-amount {
+            align-self: flex-end;
+          }
+
+          .content-wrap {
+            margin-top: -28px;
           }
         }
       `}</style>
