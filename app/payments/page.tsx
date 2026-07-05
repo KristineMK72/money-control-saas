@@ -16,6 +16,8 @@ import { todayISO } from "@/lib/money/utils";
 import { currentMonthStartISO } from "@/lib/money/dates";
 import { playError, playCashRegister } from "@/lib/sounds";
 
+const TREASURY_BG = "/058223E5-4FAA-4CF8-851C-05CBEE73C881.png";
+
 type PaymentRow = {
   id: string;
   user_id: string;
@@ -40,78 +42,6 @@ type BillRow = {
   target: number | string | null;
   monthly_target: number | string | null;
 };
-
-const TREASURY_IMAGE = "/058223E5-4FAA-4CF8-851C-05CBEE73C881.png";
-
-const panel: React.CSSProperties = {
-  background:
-    "linear-gradient(180deg, rgba(18,10,4,0.94), rgba(5,3,2,0.97))",
-  border: "1px solid rgba(245,196,88,0.32)",
-  boxShadow:
-    "0 24px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  borderRadius: 16,
-  border: "1px solid rgba(245,196,88,0.42)",
-  background: "rgba(255,245,220,0.94)",
-  color: "#24130a",
-  padding: "12px 14px",
-  outline: "none",
-  fontSize: 16,
-};
-
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <label className="pay-label">
-      {children}
-    </label>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  helper,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  helper?: string;
-}) {
-  return (
-    <div className="stat-card" style={panel}>
-      <div className="stat-icon">{icon}</div>
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      {helper && <div className="stat-helper">{helper}</div>}
-    </div>
-  );
-}
-
-function RoomPanel({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="room-panel" style={panel}>
-      <div className="room-head">
-        <h2>{title}</h2>
-        {subtitle && <p>{subtitle}</p>}
-      </div>
-      {children}
-    </section>
-  );
-}
 
 export default function PaymentsPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -144,6 +74,7 @@ export default function PaymentsPage() {
   function notify(msg: string, type: "ok" | "err" | "info" = "ok") {
     setMessage(msg);
     setMsgType(type);
+    window.setTimeout(() => setMessage(""), 4500);
   }
 
   async function loadPayments(uid: string) {
@@ -209,7 +140,7 @@ export default function PaymentsPage() {
       const user = data.session?.user;
 
       if (!user) {
-        notify("Sign in so Ben can witness the payments.", "info");
+        notify("Sign in to record payments.", "info");
         setLoading(false);
         return;
       }
@@ -239,7 +170,10 @@ export default function PaymentsPage() {
       }
 
       setMerchant(first.merchant || "");
-      if (first.amount) setAmount(String(first.amount));
+
+      if (first.amount) {
+        setAmount(String(first.amount));
+      }
 
       if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
         setDateISO(first.dateText);
@@ -339,8 +273,7 @@ export default function PaymentsPage() {
   const monthlyPayments = useMemo(
     () =>
       payments.filter(
-        (p) =>
-          (p.date_iso || p.created_at || "").slice(0, 10) >= currentMonthStart
+        (p) => (p.date_iso || p.created_at || "").slice(0, 10) >= currentMonthStart
       ),
     [payments, currentMonthStart]
   );
@@ -363,21 +296,18 @@ export default function PaymentsPage() {
 
   const benInsight = BenEngine.getForecastMessage({
     name: null,
-    timeframeLabel: "Payments",
+    timeframeLabel: "Treasury",
     totalNeeded: allTimeTotal,
     incomeSoFar: allTimeTotal,
     incomeGap: 0,
     dailyIncomeNeeded: 0,
   });
 
-  const msgColor =
-    msgType === "err" ? "#fb7185" : msgType === "info" ? "#93c5fd" : "#facc15";
-
   if (loading) {
     return (
-      <main className="payments-page loading-page">
-        <div className="loading-card" style={panel}>
-          Ben is opening the Treasury Hall ledger...
+      <main className="min-h-screen grid place-items-center bg-black text-[#f5e6c8]">
+        <div className="rounded-3xl border border-[#c9a84c]/40 bg-black/80 px-8 py-6">
+          Opening the Treasury Ledger...
         </div>
       </main>
     );
@@ -391,13 +321,13 @@ export default function PaymentsPage() {
           amountPaid={ceremony.amountPaid}
           onClose={() => {
             setCeremony(null);
-            notify("Debt struck from the ledger. Well done, Governor.", "ok");
+            notify("Debt cleared from the ledger. Well done!", "ok");
           }}
         />
       )}
 
       <section className="hero">
-        <img src={TREASURY_IMAGE} alt="Treasury Hall" className="hero-img" />
+        <img src={TREASURY_BG} alt="Treasury Hall" className="hero-img" />
         <div className="hero-shade" />
 
         <div className="hero-inner">
@@ -405,98 +335,61 @@ export default function PaymentsPage() {
             ← Back to Town
           </Link>
 
-          <div className="hero-copy">
-            <p className="eyebrow">Treasury Hall</p>
-            <h1>Payment Ledger</h1>
-            <p>
-              Record payments, scan proof, and let Ben stamp each victory into
-              the colony ledger.
-            </p>
-          </div>
-
-          <div className="stats-grid">
-            <StatCard
-              icon="🪙"
-              label="Paid This Month"
-              value={money(monthlyTotal)}
-              helper={`${monthlyPayments.length} payments`}
-            />
-            <StatCard
-              icon="📜"
-              label="All-Time Paid"
-              value={money(allTimeTotal)}
-              helper={`${payments.length} ledger entries`}
-            />
-            <StatCard
-              icon="💳"
-              label="Debt Payments"
-              value={String(debtPayments)}
-              helper={`${monthlyDebtPay} this month`}
-            />
-            <StatCard
-              icon="📬"
-              label="Bill Payments"
-              value={String(billPayments)}
-              helper={`${monthlyBillPay} this month`}
-            />
-          </div>
+          <p className="eyebrow">Treasury Hall</p>
+          <h1>Payment Ledger</h1>
+          <p className="hero-sub">
+            Record payments, scan proof, and let Ben stamp each victory into the colony ledger.
+          </p>
         </div>
       </section>
 
-      <div className="content-wrap">
+      <div className="desk-content">
+        <div className="stats-grid">
+          <MetricTile icon="🪙" label="Paid This Month" value={money(monthlyTotal)} helper={`${monthlyPayments.length} payments`} />
+          <MetricTile icon="📜" label="All-Time Paid" value={money(allTimeTotal)} helper={`${payments.length} entries`} />
+          <MetricTile icon="💳" label="Debt Payments" value={String(debtPayments)} helper={`${monthlyDebtPay} this month`} />
+          <MetricTile icon="📬" label="Bill Payments" value={String(billPayments)} helper={`${monthlyBillPay} this month`} />
+        </div>
+
         {message && (
-          <div
-            className="notice"
-            style={{
-              ...panel,
-              color: msgColor,
-              borderColor: `${msgColor}66`,
-            }}
-          >
-            {msgType === "err" ? "⚠" : msgType === "info" ? "◈" : "✦"}{" "}
+          <div className={`notice ${msgType}`}>
             {message}
           </div>
         )}
 
-        <RoomPanel
-          title="Ben's Treasury Briefing"
-          subtitle="A quick word from the desk before the ledger opens."
-        >
+        <ColonialCard>
+          <h2>Ben’s Treasury Briefing</h2>
+          <p className="card-sub">A quick word from the desk before the ledger opens.</p>
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
-        </RoomPanel>
+        </ColonialCard>
 
         <div className="work-grid">
-          <RoomPanel
-            title="Record Payment"
-            subtitle={
-              merchant || amount
+          <ColonialCard>
+            <h2>Record Payment</h2>
+            <p className="card-sub">
+              {merchant || amount
                 ? "Draft ready — review and stamp it."
-                : "Enter a new victory for the treasury."
-            }
-          >
+                : "Enter a new victory for the treasury."}
+            </p>
+
             <div className="form-grid">
-              <div>
-                <Label>Date</Label>
+              <Field label="Date">
                 <input
                   type="date"
                   value={dateISO}
                   onChange={(e) => setDateISO(e.target.value)}
-                  style={inputStyle}
                 />
-              </div>
+              </Field>
 
-              <div>
-                <Label>Payment Name</Label>
+              <Field label="Payment Name">
                 <input
                   value={merchant}
                   onChange={(e) => setMerchant(e.target.value)}
                   placeholder="Car payment, Credit One, rent..."
-                  style={inputStyle}
                 />
-              </div>
+              </Field>
 
-              <div>
-                <Label>Amount</Label>
+              <Field label="Amount">
                 <input
                   type="number"
                   step="0.01"
@@ -504,12 +397,10 @@ export default function PaymentsPage() {
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
-                  style={inputStyle}
                 />
-              </div>
+              </Field>
 
-              <div>
-                <Label>Payment Type</Label>
+              <Field label="Payment Type">
                 <select
                   value={payType}
                   onChange={(e) => {
@@ -517,118 +408,88 @@ export default function PaymentsPage() {
                     setDebtId("");
                     setBillId("");
                   }}
-                  style={inputStyle}
                 >
                   <option value="debt">💳 Debt Payment</option>
                   <option value="bill">📬 Bill Payment</option>
                 </select>
-              </div>
+              </Field>
 
-              <div className="full">
-                <Label>
-                  {payType === "debt" ? "Select Debt" : "Select Bill"}
-                </Label>
-
+              <Field label={payType === "debt" ? "Select Debt" : "Select Bill"} full>
                 {payType === "debt" ? (
-                  <select
-                    value={debtId}
-                    onChange={(e) => setDebtId(e.target.value)}
-                    style={inputStyle}
-                  >
+                  <select value={debtId} onChange={(e) => setDebtId(e.target.value)}>
                     <option value="">Choose a debt...</option>
                     {debts.map((debt) => (
                       <option key={debt.id} value={debt.id}>
                         {debt.name}
-                        {debt.balance != null
-                          ? ` — ${money(debt.balance)} balance`
-                          : ""}
+                        {debt.balance != null ? ` — ${money(debt.balance)} balance` : ""}
                       </option>
                     ))}
                   </select>
                 ) : (
-                  <select
-                    value={billId}
-                    onChange={(e) => setBillId(e.target.value)}
-                    style={inputStyle}
-                  >
+                  <select value={billId} onChange={(e) => setBillId(e.target.value)}>
                     <option value="">Choose a bill...</option>
                     {bills.map((bill) => (
                       <option key={bill.id} value={bill.id}>
-                        {bill.name} —{" "}
-                        {money(bill.monthly_target ?? bill.target ?? 0)}
+                        {bill.name} — {money(bill.monthly_target ?? bill.target ?? 0)}
                       </option>
                     ))}
                   </select>
                 )}
-              </div>
+              </Field>
 
-              <div className="full">
-                <Label>Note</Label>
+              <Field label="Note" full>
                 <textarea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   rows={3}
                   placeholder="Optional note for the ledger..."
-                  style={{ ...inputStyle, resize: "vertical" }}
                 />
-              </div>
+              </Field>
 
-              <button
-                onClick={handleAddPayment}
-                disabled={saving}
-                className="record-btn"
-              >
+              <button onClick={handleAddPayment} disabled={saving} className="record-btn">
                 {saving ? "Recording..." : "🪙 Record Payment"}
               </button>
             </div>
-          </RoomPanel>
+          </ColonialCard>
 
-          <RoomPanel
-            title="Scan Payment Proof"
-            subtitle={
-              scanning
-                ? "Ben is reading the proof..."
-                : "Upload receipt, screenshot, or confirmation."
-            }
-          >
+          <ColonialCard>
+            <h2>Scan Payment Proof</h2>
+            <p className="card-sub">
+              Upload receipt, screenshot, or confirmation.
+            </p>
             <PaperScrollScanner
               title="Scan Payment Proof"
-              description="Upload a receipt, bank screenshot, or confirmation. Ben will fill the draft and await thy approval."
+              description="Upload receipt, screenshot, or confirmation. Ben will fill the draft."
               file={imageFile}
               busy={scanning}
               onFileChange={setImageFile}
               onScan={() => void handleScanPayment()}
             />
-          </RoomPanel>
+          </ColonialCard>
         </div>
 
-        <RoomPanel
-          title="Recent Ledger Entries"
-          subtitle={
-            latestPayment
-              ? `${latestPayment.merchant || "Latest"} — ${money(
-                  latestPayment.amount
-                )}`
-              : "The ledger awaits its first victory."
-          }
-        >
+        <ColonialCard>
+          <h2>Recent Ledger Entries</h2>
+          <p className="card-sub">
+            {latestPayment
+              ? `${latestPayment.merchant || "Latest"} — ${money(latestPayment.amount)}`
+              : "The ledger awaits its first victory."}
+          </p>
+
           <div className="ledger-list">
             {payments.length === 0 ? (
-              <div className="empty-ledger">
-                No payments yet. The treasury ledger is ready.
-              </div>
+              <div className="empty-ledger">No payments yet. The treasury ledger is ready.</div>
             ) : (
               payments.map((payment) => {
                 const isDebt = !!payment.debt_id;
                 const isBill = !!payment.bill_id;
                 const isThisMonth =
-                  (payment.date_iso || "").slice(0, 7) >=
-                  currentMonthStart.slice(0, 7);
+                  (payment.date_iso || "").slice(0, 7) >= currentMonthStart.slice(0, 7);
 
                 return (
                   <div key={payment.id} className="ledger-row">
                     <div>
-                      <div className="ledger-title-row">
+                      <div className="ledger-title">
                         <strong>{payment.merchant || "Payment"}</strong>
                         <span>{isDebt ? "💳 Debt" : isBill ? "📬 Bill" : "📜 Ledger"}</span>
                         {isThisMonth && <span className="green">This month</span>}
@@ -638,51 +499,35 @@ export default function PaymentsPage() {
                         {payment.note ? ` • ${payment.note}` : ""}
                       </div>
                     </div>
-
-                    <strong className="ledger-amount">
-                      {money(payment.amount)}
-                    </strong>
+                    <strong className="ledger-amount">{money(payment.amount)}</strong>
                   </div>
                 );
               })
             )}
           </div>
-        </RoomPanel>
+        </ColonialCard>
 
-        <div className="quote" style={panel}>
-          🪶 “A penny saved is a penny earned.” — Benjamin Franklin
+        <div className="quote">
+          “A penny saved is a penny earned.” — Benjamin Franklin
         </div>
       </div>
 
       <style jsx>{`
         .payments-page {
           min-height: 100vh;
-          padding-top: clamp(220px, 30vh, 310px);
-          padding-bottom: 96px;
-          color: #fff7ed;
-          font-family: var(--font-inter), system-ui, sans-serif;
+          padding-top: 250px;
+          padding-bottom: 100px;
           background:
-            radial-gradient(circle at top, rgba(245, 196, 88, 0.16), transparent 34rem),
-            linear-gradient(180deg, #070302, #160b04 45%, #050302);
-        }
-
-        .loading-page {
-          display: grid;
-          place-items: center;
-          padding-top: 0;
-        }
-
-        .loading-card {
-          border-radius: 28px;
-          padding: 28px;
-          color: #f8e7ba;
+            radial-gradient(circle at top, rgba(245,196,88,0.12), transparent 32rem),
+            linear-gradient(180deg, #050302, #140a04 45%, #050302);
+          color: #fff7ed;
         }
 
         .hero {
           position: relative;
-          min-height: 560px;
+          min-height: 420px;
           overflow: hidden;
-          border-bottom: 1px solid rgba(245, 196, 88, 0.28);
+          border-bottom: 1px solid rgba(201,168,76,0.25);
         }
 
         .hero-img {
@@ -698,143 +543,89 @@ export default function PaymentsPage() {
           position: absolute;
           inset: 0;
           background:
-            linear-gradient(90deg, rgba(5, 3, 2, 0.92), rgba(5, 3, 2, 0.28) 48%, rgba(5, 3, 2, 0.84)),
-            linear-gradient(180deg, rgba(5, 3, 2, 0.18), rgba(5, 3, 2, 0.95));
+            linear-gradient(90deg, rgba(5,3,2,0.92), rgba(5,3,2,0.38)),
+            linear-gradient(180deg, rgba(5,3,2,0.2), rgba(5,3,2,0.96));
         }
 
         .hero-inner {
           position: relative;
           z-index: 2;
-          max-width: 1180px;
+          max-width: 1100px;
           margin: 0 auto;
-          padding: 38px 18px 32px;
+          padding: 34px 18px 40px;
         }
 
         .back-btn {
           display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          color: #f8e7ba;
-          background: rgba(0, 0, 0, 0.5);
-          border: 1px solid rgba(245, 196, 88, 0.35);
+          color: #f5e6c8;
+          text-decoration: none;
+          border: 1px solid rgba(201,168,76,0.35);
+          background: rgba(0,0,0,0.55);
           border-radius: 999px;
           padding: 10px 16px;
-          text-decoration: none;
-          margin-bottom: 18px;
-        }
-
-        .hero-copy {
-          max-width: 620px;
+          margin-bottom: 105px;
         }
 
         .eyebrow {
-          margin: 0;
           color: #facc15;
           letter-spacing: 0.32em;
           text-transform: uppercase;
-          font-size: 13px;
           font-weight: 900;
+          font-size: 13px;
+          margin: 0 0 8px;
         }
 
-        .hero-copy h1 {
-          margin: 8px 0 10px;
-          color: #fff7ed;
-          font-size: clamp(48px, 8vw, 96px);
+        h1 {
+          font-family: var(--font-cormorant), Georgia, serif;
+          font-size: clamp(54px, 9vw, 96px);
           line-height: 0.86;
-          font-family: var(--font-cormorant), Georgia, serif;
-          text-shadow: 0 6px 24px rgba(0, 0, 0, 0.75);
+          margin: 0;
+          text-shadow: 0 8px 28px rgba(0,0,0,0.8);
         }
 
-        .hero-copy p {
-          color: #e8d5b7;
-          font-size: 18px;
-          line-height: 1.45;
-          max-width: 540px;
+        .hero-sub {
+          max-width: 620px;
+          font-size: 20px;
+          line-height: 1.35;
+          color: #ead9bd;
+          margin: 16px 0 0;
         }
 
-        .stats-grid {
-          margin-top: 26px;
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 14px;
-          max-width: 820px;
-        }
-
-        .stat-card {
-          border-radius: 24px;
+        .desk-content {
+          max-width: 1100px;
+          margin: 0 auto;
           padding: 18px;
-        }
-
-        .stat-icon {
-          font-size: 28px;
-          margin-bottom: 8px;
-        }
-
-        .stat-label {
-          color: #b99b60;
-          font-size: 11px;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
-          font-weight: 800;
-        }
-
-        .stat-value {
-          color: #4ade80;
-          font-size: 28px;
-          font-weight: 900;
-          margin-top: 6px;
-          font-family: var(--font-cormorant), Georgia, serif;
-        }
-
-        .stat-helper {
-          color: #d6c4a4;
-          font-size: 13px;
-          margin-top: 4px;
-        }
-
-        .content-wrap {
-          max-width: 1180px;
-          margin: -52px auto 0;
-          padding: 0 18px;
-          position: relative;
-          z-index: 5;
           display: grid;
           gap: 18px;
         }
 
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+        }
+
         .notice {
-          border-radius: 22px;
+          border-radius: 20px;
           padding: 14px 16px;
+          border: 1px solid rgba(201,168,76,0.35);
+          background: rgba(15,8,4,0.9);
+          color: #facc15;
         }
 
-        .room-panel {
-          border-radius: 28px;
-          padding: 22px;
+        .notice.err {
+          color: #fb7185;
+          border-color: rgba(251,113,133,0.5);
         }
 
-        .room-head {
-          border-bottom: 1px solid rgba(245, 196, 88, 0.18);
-          padding-bottom: 14px;
-          margin-bottom: 18px;
-        }
-
-        .room-head h2 {
-          margin: 0;
-          color: #f8e7ba;
-          font-size: 28px;
-          line-height: 1;
-          font-family: var(--font-cormorant), Georgia, serif;
-        }
-
-        .room-head p {
-          margin: 8px 0 0;
-          color: #b99b60;
-          font-size: 14px;
+        .notice.info {
+          color: #93c5fd;
+          border-color: rgba(147,197,253,0.5);
         }
 
         .work-grid {
           display: grid;
-          grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+          grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
           gap: 18px;
         }
 
@@ -844,36 +635,46 @@ export default function PaymentsPage() {
           gap: 14px;
         }
 
-        .full,
+        .field.full,
         .record-btn {
           grid-column: 1 / -1;
         }
 
-        .pay-label {
+        label {
           display: block;
-          margin-bottom: 6px;
-          color: #d9b86c;
+          color: #d6c09a;
           font-size: 11px;
           letter-spacing: 0.16em;
           text-transform: uppercase;
-          font-weight: 800;
+          font-weight: 900;
+          margin-bottom: 7px;
+        }
+
+        input,
+        select,
+        textarea {
+          width: 100%;
+          border-radius: 16px;
+          border: 1px solid rgba(201,168,76,0.45);
+          background: rgba(255,245,220,0.95);
+          color: #24130a;
+          padding: 13px 14px;
+          font-size: 16px;
+          outline: none;
         }
 
         .record-btn {
-          border: 1px solid rgba(74, 222, 128, 0.65);
+          border: 1px solid rgba(74,222,128,0.65);
           border-radius: 20px;
           padding: 16px 18px;
-          background: linear-gradient(180deg, rgba(22, 163, 74, 1), rgba(21, 128, 61, 1));
+          background: linear-gradient(180deg, #16a34a, #15803d);
           color: #f0fdf4;
           font-size: 18px;
           font-weight: 900;
-          cursor: pointer;
-          box-shadow: 0 14px 34px rgba(22, 163, 74, 0.22);
         }
 
         .record-btn:disabled {
-          cursor: not-allowed;
-          opacity: 0.65;
+          opacity: 0.6;
         }
 
         .ledger-list {
@@ -881,49 +682,42 @@ export default function PaymentsPage() {
           gap: 10px;
         }
 
-        .empty-ledger {
-          border-radius: 20px;
-          padding: 24px;
-          text-align: center;
-          color: #d6c4a4;
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid rgba(245, 196, 88, 0.16);
+        .empty-ledger,
+        .ledger-row {
+          border-radius: 18px;
+          border: 1px solid rgba(201,168,76,0.18);
+          background: rgba(255,255,255,0.04);
+          padding: 16px;
         }
 
         .ledger-row {
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          gap: 14px;
-          padding: 16px;
-          border-radius: 20px;
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid rgba(245, 196, 88, 0.14);
+          gap: 12px;
         }
 
-        .ledger-title-row {
+        .ledger-title {
           display: flex;
           gap: 8px;
           flex-wrap: wrap;
           align-items: center;
         }
 
-        .ledger-title-row strong {
-          color: #f8e7ba;
-          font-size: 16px;
+        .ledger-title strong {
+          color: #f5e6c8;
         }
 
-        .ledger-title-row span {
+        .ledger-title span {
           color: #facc15;
           font-size: 12px;
-          border: 1px solid rgba(250, 204, 21, 0.24);
+          border: 1px solid rgba(250,204,21,0.24);
           border-radius: 999px;
           padding: 3px 8px;
         }
 
-        .ledger-title-row .green {
+        .ledger-title .green {
           color: #4ade80;
-          border-color: rgba(74, 222, 128, 0.24);
+          border-color: rgba(74,222,128,0.28);
         }
 
         .ledger-meta {
@@ -934,21 +728,23 @@ export default function PaymentsPage() {
 
         .ledger-amount {
           color: #4ade80;
-          font-size: 22px;
           font-family: var(--font-cormorant), Georgia, serif;
+          font-size: 24px;
           white-space: nowrap;
         }
 
         .quote {
-          border-radius: 24px;
-          padding: 18px;
-          color: #f8e7ba;
           text-align: center;
-          font-family: var(--font-cormorant), Georgia, serif;
-          font-size: 20px;
+          color: #d6c09a;
+          font-style: italic;
+          padding: 18px;
         }
 
         @media (max-width: 900px) {
+          .stats-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
           .work-grid {
             grid-template-columns: 1fr;
           }
@@ -960,47 +756,162 @@ export default function PaymentsPage() {
           }
 
           .hero {
-            min-height: 520px;
+            min-height: 390px;
           }
 
           .hero-img {
-            object-position: 48% top;
+            object-position: 50% top;
           }
 
-          .hero-inner {
-            padding: 32px 18px 28px;
+          .back-btn {
+            margin-bottom: 72px;
           }
 
-          .hero-copy h1 {
-            font-size: 54px;
+          h1 {
+            font-size: 58px;
           }
 
-          .hero-copy p {
-            font-size: 17px;
+          .hero-sub {
+            font-size: 18px;
           }
 
-          .stats-grid {
-            grid-template-columns: 1fr;
-          }
-
+          .stats-grid,
           .form-grid {
             grid-template-columns: 1fr;
           }
 
           .ledger-row {
-            align-items: flex-start;
             flex-direction: column;
           }
 
           .ledger-amount {
             align-self: flex-end;
           }
-
-          .content-wrap {
-            margin-top: -28px;
-          }
         }
       `}</style>
     </main>
+  );
+}
+
+function ColonialCard({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`colonial-card ${className}`}>
+      {children}
+
+      <style jsx>{`
+        .colonial-card {
+          border-radius: 28px;
+          padding: 22px;
+          background: linear-gradient(
+            180deg,
+            rgba(18, 10, 4, 0.94),
+            rgba(5, 3, 2, 0.97)
+          );
+          border: 1px solid rgba(201, 168, 76, 0.34);
+          box-shadow:
+            0 24px 80px rgba(0, 0, 0, 0.55),
+            inset 0 1px 0 rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(16px);
+        }
+
+        h2 {
+          margin: 0;
+          color: #f5e6c8;
+          font-size: 30px;
+          line-height: 1;
+          font-family: var(--font-cormorant), Georgia, serif;
+        }
+
+        .card-sub {
+          color: #b99b60;
+          margin: 8px 0 18px;
+        }
+      `}</style>
+    </section>
+  );
+}
+
+function Field({
+  label,
+  full,
+  children,
+}: {
+  label: string;
+  full?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={full ? "field full" : "field"}>
+      <label>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function MetricTile({
+  icon,
+  label,
+  value,
+  helper,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  helper?: string;
+}) {
+  return (
+    <div className="metric-tile">
+      <div className="metric-icon">{icon}</div>
+      <div className="metric-label">{label}</div>
+      <div className="metric-value">{value}</div>
+      {helper && <div className="metric-helper">{helper}</div>}
+
+      <style jsx>{`
+        .metric-tile {
+          border-radius: 24px;
+          padding: 18px;
+          background: linear-gradient(
+            180deg,
+            rgba(18, 10, 4, 0.94),
+            rgba(5, 3, 2, 0.97)
+          );
+          border: 1px solid rgba(201, 168, 76, 0.32);
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
+        }
+
+        .metric-icon {
+          font-size: 28px;
+          margin-bottom: 8px;
+        }
+
+        .metric-label {
+          color: #b99b60;
+          font-size: 11px;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          font-weight: 900;
+        }
+
+        .metric-value {
+          color: #4ade80;
+          font-size: 30px;
+          font-weight: 900;
+          margin-top: 6px;
+          font-family: var(--font-cormorant), Georgia, serif;
+        }
+
+        .metric-helper {
+          color: #d6c09a;
+          font-size: 13px;
+          margin-top: 4px;
+        }
+      `}</style>
+    </div>
   );
 }
