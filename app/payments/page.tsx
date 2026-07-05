@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import BenBubble from "@/components/BenBubble";
 import PaperScrollScanner from "@/components/PaperScrollScanner";
+import DebtZeroCeremony from "@/components/DebtZeroCeremony";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
@@ -15,19 +16,34 @@ import { todayISO } from "@/lib/money/utils";
 import { currentMonthStartISO } from "@/lib/money/dates";
 import { playError, playCashRegister } from "@/lib/sounds";
 
-const INCOME_BG = "/rooms/bank-room.webp";
+const PAYMENTS_BG = "/058223E5-4FAA-4CF8-851C-05CBEE73C881.png";
 
-type IncomeRow = {
+type PaymentRow = {
   id: string;
   user_id: string;
-  source_name: string | null;
-  amount: number | string | null;
   date_iso: string;
+  merchant: string | null;
+  amount: number | string | null;
   note: string | null;
   created_at: string;
+  debt_id: string | null;
+  bill_id: string | null;
 };
 
-export default function IncomePage() {
+type DebtRow = {
+  id: string;
+  name: string;
+  balance: number | string | null;
+};
+
+type BillRow = {
+  id: string;
+  name: string;
+  target: number | string | null;
+  monthly_target: number | string | null;
+};
+
+export default function PaymentsPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [userId, setUserId] = useState<string | null>(null);
@@ -36,16 +52,24 @@ export default function IncomePage() {
   const [message, setMessage] = useState("");
   const [msgType, setMsgType] = useState<"ok" | "err" | "info">("ok");
 
-  const [income, setIncome] = useState<IncomeRow[]>([]);
-  const [amount, setAmount] = useState("");
-  const [source, setSource] = useState("");
-  const [category, setCategory] = useState("Employment");
-  const [hours, setHours] = useState("");
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [debts, setDebts] = useState<DebtRow[]>([]);
+  const [bills, setBills] = useState<BillRow[]>([]);
+
   const [dateISO, setDateISO] = useState(todayISO());
+  const [merchant, setMerchant] = useState("");
+  const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [payType, setPayType] = useState<"debt" | "bill">("debt");
+  const [debtId, setDebtId] = useState("");
+  const [billId, setBillId] = useState("");
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [ceremony, setCeremony] = useState<{
+    debtName: string;
+    amountPaid: number;
+  } | null>(null);
 
   function notify(msg: string, type: "ok" | "err" | "info" = "ok") {
     setMessage(msg);
@@ -53,9 +77,9 @@ export default function IncomePage() {
     window.setTimeout(() => setMessage(""), 4500);
   }
 
-  async function loadIncome(uid: string) {
+  async function loadPayments(uid: string) {
     const { data, error } = await supabase
-      .from("income_entries")
+      .from("payments")
       .select("*")
       .eq("user_id", uid)
       .order("date_iso", { ascending: false })
@@ -66,7 +90,41 @@ export default function IncomePage() {
       return;
     }
 
-    setIncome(data || []);
+    setPayments(data || []);
+  }
+
+  async function loadDebts(uid: string) {
+    const { data, error } = await supabase
+      .from("debts")
+      .select("id, name, balance")
+      .eq("user_id", uid)
+      .order("name");
+
+    if (error) {
+      notify(error.message, "err");
+      return;
+    }
+
+    setDebts(data || []);
+  }
+
+  async function loadBills(uid: string) {
+    const { data, error } = await supabase
+      .from("bills")
+      .select("id, name, target, monthly_target")
+      .eq("user_id", uid)
+      .order("name");
+
+    if (error) {
+      notify(error.message, "err");
+      return;
+    }
+
+    setBills(data || []);
+  }
+
+  async function reloadAll(uid: string) {
+    await Promise.all([loadPayments(uid), loadDebts(uid), loadBills(uid)]);
   }
 
   useEffect(() => {
@@ -82,43 +140,43 @@ export default function IncomePage() {
       const user = data.session?.user;
 
       if (!user) {
-        notify("Sign in to record income.", "info");
+        notify("Sign in to record payments.", "info");
         setLoading(false);
         return;
       }
 
       setUserId(user.id);
-      await loadIncome(user.id);
+      await reloadAll(user.id);
       setLoading(false);
     }
 
     void init();
   }, [supabase]);
 
-  async function handleScanIncome() {
+  async function handleScanPayment() {
     if (!imageFile) return;
 
     setScanning(true);
-    notify("Ben is reading the income proof.", "info");
+    notify("Ben is reading the payment proof.", "info");
 
     try {
       const { text } = await ocrImageFile(imageFile);
       const first = parseTransactionsScreenshot(text)[0];
 
       if (!first) {
-        notify("No clear income found. Fill it in manually.", "info");
+        notify("No clear payment found. Fill it in manually.", "info");
         setScanning(false);
         return;
       }
 
-      setSource(first.merchant || "");
+      setMerchant(first.merchant || "");
       if (first.amount) setAmount(String(first.amount));
 
       if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
         setDateISO(first.dateText);
       }
 
-      setNote("Scanned income proof");
+      setNote("Scanned payment proof");
       notify("Scanner filled what it could. Review before saving.", "info");
     } catch {
       notify("Scanner had trouble. Manual entry still works.", "err");
@@ -127,39 +185,56 @@ export default function IncomePage() {
     setScanning(false);
   }
 
-  async function handleSaveIncome() {
+  async function handleAddPayment() {
     if (!userId) return;
 
     const amt = clampMoney(amount);
 
-    if (amt <= 0) {
+    if (!merchant.trim() || amt <= 0) {
       playError();
-      notify("Enter an income amount.", "err");
+      notify("Enter a payment name and amount.", "err");
       return;
     }
 
-    if (!source.trim()) {
+    if (payType === "debt" && !debtId) {
       playError();
-      notify("Enter who paid you or the income source.", "err");
+      notify("Select a debt.", "err");
+      return;
+    }
+
+    if (payType === "bill" && !billId) {
+      playError();
+      notify("Select a bill.", "err");
       return;
     }
 
     setSaving(true);
 
-    const finalNote = [
-      note.trim(),
-      category ? `Category: ${category}` : "",
-      hours ? `Hours: ${hours}` : "",
-    ]
-      .filter(Boolean)
-      .join(" • ");
+    let triggeredDebt: { name: string; balance: number } | null = null;
 
-    const { error } = await supabase.from("income_entries").insert({
+    if (payType === "debt" && debtId) {
+      const target = debts.find((debt) => debt.id === debtId);
+
+      if (target) {
+        const remaining = clampMoney(target.balance) - amt;
+
+        if (remaining <= 0) {
+          triggeredDebt = {
+            name: target.name,
+            balance: clampMoney(target.balance),
+          };
+        }
+      }
+    }
+
+    const { error } = await supabase.from("payments").insert({
       user_id: userId,
-      source_name: source.trim(),
-      amount: amt,
       date_iso: dateISO,
-      note: finalNote || null,
+      merchant: merchant.trim(),
+      amount: amt,
+      note: note.trim() || null,
+      debt_id: payType === "debt" ? debtId : null,
+      bill_id: payType === "bill" ? billId : null,
     });
 
     if (error) {
@@ -169,56 +244,65 @@ export default function IncomePage() {
       return;
     }
 
-    playCashRegister();
-    notify("Income recorded. Ben stamped the ledger.", "ok");
-
+    setMerchant("");
     setAmount("");
-    setSource("");
-    setCategory("Employment");
-    setHours("");
-    setDateISO(todayISO());
     setNote("");
+    setDebtId("");
+    setBillId("");
+    setPayType("debt");
+    setDateISO(todayISO());
     setImageFile(null);
 
-    await loadIncome(userId);
+    await reloadAll(userId);
+
+    if (triggeredDebt) {
+      setCeremony({ debtName: triggeredDebt.name, amountPaid: amt });
+    } else {
+      playCashRegister();
+      notify("Payment recorded. Ben stamped the ledger.", "ok");
+    }
+
     setSaving(false);
   }
 
   const currentMonthStart = currentMonthStartISO();
 
-  const monthlyIncome = useMemo(
+  const monthlyPayments = useMemo(
     () =>
-      income.filter(
-        (row) =>
-          (row.date_iso || row.created_at || "").slice(0, 10) >= currentMonthStart
+      payments.filter(
+        (payment) =>
+          (payment.date_iso || payment.created_at || "").slice(0, 10) >=
+          currentMonthStart
       ),
-    [income, currentMonthStart]
+    [payments, currentMonthStart]
   );
 
   const monthlyTotal = useMemo(
-    () => monthlyIncome.reduce((sum, row) => sum + clampMoney(row.amount), 0),
-    [monthlyIncome]
+    () =>
+      monthlyPayments.reduce(
+        (sum, payment) => sum + clampMoney(payment.amount),
+        0
+      ),
+    [monthlyPayments]
   );
 
   const allTimeTotal = useMemo(
-    () => income.reduce((sum, row) => sum + clampMoney(row.amount), 0),
-    [income]
+    () =>
+      payments.reduce((sum, payment) => sum + clampMoney(payment.amount), 0),
+    [payments]
   );
 
-  const uniqueSources = useMemo(() => {
-    const names = new Set(
-      income.map((row) => row.source_name || "Income").filter(Boolean)
-    );
-    return names.size;
-  }, [income]);
-
-  const latestIncome = income[0];
+  const latestPayment = payments[0];
+  const debtPayments = payments.filter((payment) => payment.debt_id).length;
+  const billPayments = payments.filter((payment) => payment.bill_id).length;
+  const monthlyDebtPay = monthlyPayments.filter((payment) => payment.debt_id).length;
+  const monthlyBillPay = monthlyPayments.filter((payment) => payment.bill_id).length;
 
   const benInsight = BenEngine.getForecastMessage({
     name: null,
-    timeframeLabel: "Income",
-    totalNeeded: monthlyTotal,
-    incomeSoFar: monthlyTotal,
+    timeframeLabel: "Payments",
+    totalNeeded: allTimeTotal,
+    incomeSoFar: allTimeTotal,
     incomeGap: 0,
     dailyIncomeNeeded: 0,
   });
@@ -227,17 +311,28 @@ export default function IncomePage() {
     return (
       <main className="min-h-screen grid place-items-center bg-black text-[#f5e6c8]">
         <div className="rounded-3xl border border-[#c9a84c]/40 bg-black/80 px-8 py-6">
-          Ben is opening the income ledger...
+          Ben is opening the payment ledger...
         </div>
       </main>
     );
   }
 
   return (
-    <main className="income-page">
+    <main className="payments-page">
+      {ceremony && (
+        <DebtZeroCeremony
+          debtName={ceremony.debtName}
+          amountPaid={ceremony.amountPaid}
+          onClose={() => {
+            setCeremony(null);
+            notify("Debt cleared from the ledger. Well done!", "ok");
+          }}
+        />
+      )}
+
       <section className="hero">
         <div className="hero-frame">
-          <img src={INCOME_BG} alt="Ben at the bank desk" className="hero-img" />
+          <img src={PAYMENTS_BG} alt="Treasury payment desk" className="hero-img" />
           <div className="hero-shade" />
 
           <div className="hero-top">
@@ -247,212 +342,153 @@ export default function IncomePage() {
           </div>
 
           <div className="hero-title">
-            <p className="eyebrow">Franklin’s Bank</p>
-            <h1>Income Ledger</h1>
+            <p className="eyebrow">Treasury Hall</p>
+            <h1>Payment Ledger</h1>
             <p className="hero-sub">
-              Record income, scan proof, and let Ben turn every dollar into town progress.
+              Record payments, scan proof, and let Ben stamp each victory into
+              the colony ledger.
             </p>
           </div>
         </div>
       </section>
 
       <div className="desk-content">
-        <div className="action-grid">
-          <Link href="/income" className="action-btn green">
-            + Record Income
-          </Link>
-
-          <Link href="/income-plan" className="action-btn gold">
-            📜 Income Plan
-          </Link>
-
-          <Link href="/crisis" className="action-btn red">
-            🚨 Need Money Fast
-          </Link>
-        </div>
-
         <div className="stats-grid">
-          <MetricTile
-            icon="🪙"
-            label="Income This Month"
-            value={money(monthlyTotal)}
-            helper={`${monthlyIncome.length} entries`}
-          />
-          <MetricTile
-            icon="📜"
-            label="All-Time Income"
-            value={money(allTimeTotal)}
-            helper={`${income.length} ledger entries`}
-          />
-          <MetricTile
-            icon="🏦"
-            label="Income Sources"
-            value={String(uniqueSources)}
-            helper="tracked sources"
-          />
-          <MetricTile
-            icon="✨"
-            label="Latest"
-            value={latestIncome ? money(latestIncome.amount) : "$0.00"}
-            helper={latestIncome?.source_name || "No income yet"}
-          />
+          <MetricTile icon="🪙" label="Paid This Month" value={money(monthlyTotal)} helper={`${monthlyPayments.length} payments`} />
+          <MetricTile icon="📜" label="All-Time Paid" value={money(allTimeTotal)} helper={`${payments.length} entries`} />
+          <MetricTile icon="💳" label="Debt Payments" value={String(debtPayments)} helper={`${monthlyDebtPay} this month`} />
+          <MetricTile icon="📬" label="Bill Payments" value={String(billPayments)} helper={`${monthlyBillPay} this month`} />
         </div>
 
         {message && <div className={`notice ${msgType}`}>{message}</div>}
 
         <ColonialCard>
-          <h2>Ben’s Income Briefing</h2>
-          <p className="card-sub">A word from the desk before the ledger opens.</p>
+          <h2>Ben’s Treasury Briefing</h2>
+          <p className="card-sub">A quick word from the desk before the ledger opens.</p>
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </ColonialCard>
 
         <div className="work-grid">
           <ColonialCard>
-            <h2>Record Income</h2>
-            <p className="card-sub">Earn it, name it, and put it in the ledger.</p>
+            <h2>Record Payment</h2>
+            <p className="card-sub">Enter a new victory for the treasury.</p>
 
             <div className="form-grid">
+              <Field label="Date">
+                <input type="date" value={dateISO} onChange={(e) => setDateISO(e.target.value)} />
+              </Field>
+
+              <Field label="Payment Name">
+                <input value={merchant} onChange={(e) => setMerchant(e.target.value)} placeholder="Car payment, Credit One, rent..." />
+              </Field>
+
               <Field label="Amount">
-                <input
-                  type="number"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                  placeholder="0.00"
-                />
+                <input type="number" step="0.01" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
               </Field>
 
-              <Field label="Paid By / Source">
-                <input
-                  value={source}
-                  onChange={(event) => setSource(event.target.value)}
-                  placeholder="DoorDash, employer, client..."
-                />
-              </Field>
-
-              <Field label="Category">
+              <Field label="Payment Type">
                 <select
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value)}
+                  value={payType}
+                  onChange={(e) => {
+                    setPayType(e.target.value as "debt" | "bill");
+                    setDebtId("");
+                    setBillId("");
+                  }}
                 >
-                  <option>Employment</option>
-                  <option>Side Hustle</option>
-                  <option>DoorDash</option>
-                  <option>Client</option>
-                  <option>Cash</option>
-                  <option>Refund</option>
-                  <option>Other</option>
+                  <option value="debt">💳 Debt Payment</option>
+                  <option value="bill">📬 Bill Payment</option>
                 </select>
               </Field>
 
-              <Field label="Hours Worked">
-                <input
-                  value={hours}
-                  onChange={(event) => setHours(event.target.value)}
-                  placeholder="Optional"
-                  inputMode="decimal"
-                />
-              </Field>
-
-              <Field label="Date" full>
-                <input
-                  type="date"
-                  value={dateISO}
-                  onChange={(event) => setDateISO(event.target.value)}
-                />
+              <Field label={payType === "debt" ? "Select Debt" : "Select Bill"} full>
+                {payType === "debt" ? (
+                  <select value={debtId} onChange={(e) => setDebtId(e.target.value)}>
+                    <option value="">Choose a debt...</option>
+                    {debts.map((debt) => (
+                      <option key={debt.id} value={debt.id}>
+                        {debt.name}{debt.balance != null ? ` — ${money(debt.balance)} balance` : ""}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select value={billId} onChange={(e) => setBillId(e.target.value)}>
+                    <option value="">Choose a bill...</option>
+                    {bills.map((bill) => (
+                      <option key={bill.id} value={bill.id}>
+                        {bill.name} — {money(bill.monthly_target ?? bill.target ?? 0)}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </Field>
 
               <Field label="Note" full>
-                <textarea
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  rows={3}
-                  placeholder="Optional note..."
-                />
+                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Optional note..." />
               </Field>
 
-              <button
-                onClick={handleSaveIncome}
-                disabled={saving}
-                className="save-btn"
-              >
-                {saving ? "Saving..." : "Save Income"}
+              <button onClick={handleAddPayment} disabled={saving} className="save-btn">
+                {saving ? "Recording..." : "🪙 Record Payment"}
               </button>
             </div>
           </ColonialCard>
 
           <ColonialCard>
-            <h2>Scan Income Proof</h2>
-            <p className="card-sub">
-              Upload a DoorDash screenshot, paycheck, deposit, or receipt.
-            </p>
+            <h2>Scan Payment Proof</h2>
+            <p className="card-sub">Upload receipt, screenshot, or confirmation.</p>
 
             <PaperScrollScanner
-              title="Scan Income Proof"
-              description="Upload income proof. Ben will fill what he can, and you approve the ledger."
+              title="Scan Payment Proof"
+              description="Upload payment proof. Ben will fill what he can, and you approve the ledger."
               file={imageFile}
               busy={scanning}
               onFileChange={setImageFile}
-              onScan={() => void handleScanIncome()}
+              onScan={() => void handleScanPayment()}
             />
           </ColonialCard>
         </div>
 
         <ColonialCard>
-          <h2>Recent Income</h2>
+          <h2>Recent Payments</h2>
           <p className="card-sub">
-            {latestIncome
-              ? `${latestIncome.source_name || "Latest"} — ${money(latestIncome.amount)}`
-              : "The ledger awaits its first income entry."}
+            {latestPayment
+              ? `${latestPayment.merchant || "Latest"} — ${money(latestPayment.amount)}`
+              : "The ledger awaits its first payment."}
           </p>
 
           <div className="ledger-list">
-            {income.length === 0 ? (
-              <div className="empty-ledger">No income yet. The bank ledger is ready.</div>
+            {payments.length === 0 ? (
+              <div className="empty-ledger">No payments yet. The payment ledger is ready.</div>
             ) : (
-              income.map((row) => {
-                const isThisMonth =
-                  (row.date_iso || "").slice(0, 7) >= currentMonthStart.slice(0, 7);
-
-                return (
-                  <div key={row.id} className="ledger-row">
-                    <div>
-                      <div className="ledger-title">
-                        <strong>{row.source_name || "Income"}</strong>
-                        {isThisMonth && <span className="green">This month</span>}
-                      </div>
-                      <div className="ledger-meta">
-                        {row.date_iso}
-                        {row.note ? ` • ${row.note}` : ""}
-                      </div>
+              payments.map((payment) => (
+                <div key={payment.id} className="ledger-row">
+                  <div>
+                    <div className="ledger-title">
+                      <strong>{payment.merchant || "Payment"}</strong>
+                      <span>{payment.debt_id ? "💳 Debt" : payment.bill_id ? "📬 Bill" : "📜 Ledger"}</span>
                     </div>
-
-                    <strong className="ledger-amount">{money(row.amount)}</strong>
+                    <div className="ledger-meta">
+                      {payment.date_iso}
+                      {payment.note ? ` • ${payment.note}` : ""}
+                    </div>
                   </div>
-                );
-              })
+                  <strong className="ledger-amount">{money(payment.amount)}</strong>
+                </div>
+              ))
             )}
           </div>
         </ColonialCard>
-
-        <div className="quote">
-          “An investment in knowledge pays the best interest.” — Benjamin Franklin
-        </div>
       </div>
 
       <style jsx>{`
-        .income-page {
+        .payments-page {
           min-height: 100vh;
           padding-top: 250px;
           padding-bottom: 100px;
-          background:
-            radial-gradient(circle at top, rgba(245, 196, 88, 0.12), transparent 32rem),
-            linear-gradient(180deg, #050302, #140a04 45%, #050302);
+          background: linear-gradient(180deg, #050302, #140a04 45%, #050302);
           color: #fff7ed;
         }
 
-        .hero {
+        .hero, .desk-content {
           max-width: 1100px;
           margin: 0 auto;
           padding: 18px;
@@ -460,12 +496,10 @@ export default function IncomePage() {
 
         .hero-frame {
           position: relative;
-          width: 100%;
           border-radius: 32px;
           overflow: hidden;
-          border: 1px solid rgba(201, 168, 76, 0.35);
+          border: 1px solid rgba(201,168,76,0.35);
           background: #050302;
-          box-shadow: 0 28px 90px rgba(0, 0, 0, 0.65);
         }
 
         .hero-img {
@@ -474,42 +508,37 @@ export default function IncomePage() {
           height: auto;
           max-height: 620px;
           object-fit: contain;
-          object-position: center;
         }
 
         .hero-shade {
           position: absolute;
           inset: 0;
-          pointer-events: none;
-          background:
-            linear-gradient(180deg, rgba(5, 3, 2, 0.05), rgba(5, 3, 2, 0.16) 45%, rgba(5, 3, 2, 0.82)),
-            linear-gradient(90deg, rgba(5, 3, 2, 0.55), transparent 45%, rgba(5, 3, 2, 0.35));
+          background: linear-gradient(180deg, transparent, rgba(5,3,2,0.85));
         }
 
-        .hero-top {
+        .hero-top, .hero-title {
           position: absolute;
-          top: 18px;
-          left: 18px;
           z-index: 2;
         }
 
+        .hero-top {
+          top: 18px;
+          left: 18px;
+        }
+
         .back-btn {
-          display: inline-flex;
           color: #f5e6c8;
           text-decoration: none;
-          border: 1px solid rgba(201, 168, 76, 0.4);
-          background: rgba(0, 0, 0, 0.62);
+          border: 1px solid rgba(201,168,76,0.4);
+          background: rgba(0,0,0,0.62);
           border-radius: 999px;
           padding: 10px 16px;
         }
 
         .hero-title {
-          position: absolute;
           left: 24px;
           right: 24px;
           bottom: 22px;
-          z-index: 2;
-          max-width: 660px;
         }
 
         .eyebrow {
@@ -517,8 +546,6 @@ export default function IncomePage() {
           letter-spacing: 0.32em;
           text-transform: uppercase;
           font-weight: 900;
-          font-size: 13px;
-          margin: 0 0 8px;
         }
 
         h1 {
@@ -526,99 +553,36 @@ export default function IncomePage() {
           font-size: clamp(48px, 8vw, 88px);
           line-height: 0.88;
           margin: 0;
-          text-shadow: 0 8px 28px rgba(0, 0, 0, 0.9);
         }
 
         .hero-sub {
-          max-width: 620px;
           font-size: 19px;
-          line-height: 1.35;
           color: #ead9bd;
-          margin: 12px 0 0;
         }
 
         .desk-content {
-          max-width: 1100px;
-          margin: 0 auto;
-          padding: 0 18px 18px;
           display: grid;
           gap: 18px;
         }
 
-        .action-grid {
+        .stats-grid, .work-grid, .form-grid {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 14px;
-        }
-
-        .action-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          min-height: 76px;
-          border-radius: 26px;
-          text-decoration: none;
-          font-family: var(--font-cormorant), Georgia, serif;
-          font-size: 30px;
-          font-weight: 800;
-          border: 1px solid rgba(201, 168, 76, 0.35);
-        }
-
-        .action-btn.green {
-          background: rgba(22, 101, 52, 0.95);
-          color: #f5e6c8;
-          border-color: rgba(74, 222, 128, 0.75);
-        }
-
-        .action-btn.gold {
-          background: rgba(0, 0, 0, 0.7);
-          color: #f5e6c8;
-        }
-
-        .action-btn.red {
-          background: rgba(69, 10, 10, 0.82);
-          color: #fecaca;
-          border-color: rgba(248, 113, 113, 0.55);
         }
 
         .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .notice {
-          border-radius: 20px;
-          padding: 14px 16px;
-          border: 1px solid rgba(201, 168, 76, 0.35);
-          background: rgba(15, 8, 4, 0.9);
-          color: #facc15;
-        }
-
-        .notice.err {
-          color: #fb7185;
-          border-color: rgba(251, 113, 133, 0.5);
-        }
-
-        .notice.info {
-          color: #93c5fd;
-          border-color: rgba(147, 197, 253, 0.5);
+          grid-template-columns: repeat(4, 1fr);
         }
 
         .work-grid {
-          display: grid;
-          grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
-          gap: 18px;
+          grid-template-columns: 1.15fr 0.85fr;
         }
 
         .form-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 14px;
+          grid-template-columns: repeat(2, 1fr);
         }
 
-        .field.full,
-        .save-btn {
+        .field.full, .save-btn {
           grid-column: 1 / -1;
         }
 
@@ -632,21 +596,18 @@ export default function IncomePage() {
           margin-bottom: 7px;
         }
 
-        input,
-        select,
-        textarea {
+        input, select, textarea {
           width: 100%;
           border-radius: 16px;
-          border: 1px solid rgba(201, 168, 76, 0.45);
-          background: rgba(255, 245, 220, 0.95);
+          border: 1px solid rgba(201,168,76,0.45);
+          background: rgba(255,245,220,0.95);
           color: #24130a;
           padding: 13px 14px;
           font-size: 16px;
-          outline: none;
         }
 
         .save-btn {
-          border: 1px solid rgba(74, 222, 128, 0.65);
+          border: 1px solid rgba(74,222,128,0.65);
           border-radius: 20px;
           padding: 16px 18px;
           background: linear-gradient(180deg, #16a34a, #15803d);
@@ -655,20 +616,15 @@ export default function IncomePage() {
           font-weight: 900;
         }
 
-        .save-btn:disabled {
-          opacity: 0.6;
-        }
-
         .ledger-list {
           display: grid;
           gap: 10px;
         }
 
-        .empty-ledger,
-        .ledger-row {
+        .ledger-row, .empty-ledger {
           border-radius: 18px;
-          border: 1px solid rgba(201, 168, 76, 0.18);
-          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(201,168,76,0.18);
+          background: rgba(255,255,255,0.04);
           padding: 16px;
         }
 
@@ -682,19 +638,11 @@ export default function IncomePage() {
           display: flex;
           gap: 8px;
           flex-wrap: wrap;
-          align-items: center;
-        }
-
-        .ledger-title strong {
-          color: #f5e6c8;
         }
 
         .ledger-title span {
-          color: #4ade80;
+          color: #facc15;
           font-size: 12px;
-          border: 1px solid rgba(74, 222, 128, 0.28);
-          border-radius: 999px;
-          padding: 3px 8px;
         }
 
         .ledger-meta {
@@ -705,25 +653,20 @@ export default function IncomePage() {
 
         .ledger-amount {
           color: #4ade80;
-          font-family: var(--font-cormorant), Georgia, serif;
           font-size: 24px;
           white-space: nowrap;
         }
 
-        .quote {
-          text-align: center;
-          color: #d6c09a;
-          font-style: italic;
-          padding: 18px;
+        .notice {
+          border-radius: 20px;
+          padding: 14px 16px;
+          background: rgba(15,8,4,0.9);
+          color: #facc15;
         }
 
         @media (max-width: 900px) {
-          .action-grid {
-            grid-template-columns: 1fr;
-          }
-
           .stats-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(2, 1fr);
           }
 
           .work-grid {
@@ -732,62 +675,12 @@ export default function IncomePage() {
         }
 
         @media (max-width: 640px) {
-          .income-page {
-            padding-top: 250px;
-          }
-
-          .hero {
-            padding: 12px;
-          }
-
-          .hero-frame {
-            border-radius: 24px;
-          }
-
-          .hero-img {
-            max-height: 420px;
-          }
-
-          .hero-top {
-            top: 12px;
-            left: 12px;
-          }
-
-          .back-btn {
-            padding: 8px 13px;
-            font-size: 14px;
-          }
-
-          .hero-title {
-            left: 16px;
-            right: 16px;
-            bottom: 16px;
-          }
-
-          h1 {
-            font-size: 46px;
-          }
-
-          .hero-sub {
-            font-size: 16px;
-          }
-
-          .stats-grid,
-          .form-grid {
+          .stats-grid, .form-grid {
             grid-template-columns: 1fr;
-          }
-
-          .action-btn {
-            min-height: 72px;
-            font-size: 28px;
           }
 
           .ledger-row {
             flex-direction: column;
-          }
-
-          .ledger-amount {
-            align-self: flex-end;
           }
         }
       `}</style>
@@ -795,36 +688,22 @@ export default function IncomePage() {
   );
 }
 
-function ColonialCard({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function ColonialCard({ children }: { children: React.ReactNode }) {
   return (
     <section className="colonial-card">
       {children}
-
       <style jsx>{`
         .colonial-card {
           border-radius: 28px;
           padding: 22px;
-          background: linear-gradient(
-            180deg,
-            rgba(18, 10, 4, 0.94),
-            rgba(5, 3, 2, 0.97)
-          );
-          border: 1px solid rgba(201, 168, 76, 0.34);
-          box-shadow:
-            0 24px 80px rgba(0, 0, 0, 0.55),
-            inset 0 1px 0 rgba(255, 255, 255, 0.08);
-          backdrop-filter: blur(16px);
+          background: linear-gradient(180deg, rgba(18,10,4,0.94), rgba(5,3,2,0.97));
+          border: 1px solid rgba(201,168,76,0.34);
         }
 
         h2 {
           margin: 0;
           color: #f5e6c8;
           font-size: 30px;
-          line-height: 1;
           font-family: var(--font-cormorant), Georgia, serif;
         }
 
@@ -876,13 +755,8 @@ function MetricTile({
         .metric-tile {
           border-radius: 24px;
           padding: 18px;
-          background: linear-gradient(
-            180deg,
-            rgba(18, 10, 4, 0.94),
-            rgba(5, 3, 2, 0.97)
-          );
-          border: 1px solid rgba(201, 168, 76, 0.32);
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
+          background: linear-gradient(180deg, rgba(18,10,4,0.94), rgba(5,3,2,0.97));
+          border: 1px solid rgba(201,168,76,0.32);
         }
 
         .metric-icon {
