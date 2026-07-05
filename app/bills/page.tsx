@@ -14,6 +14,8 @@ import { playCoins, playError, playCashRegister, playWrite } from "@/lib/sounds"
 
 const POST_OFFICE_BG = "/D3F7077D-703F-49EE-8F9C-7709C1485D7B.png";
 
+type ActiveTab = "bill" | "debt";
+
 type BillRow = {
   id: string;
   user_id: string;
@@ -40,13 +42,21 @@ type DebtRow = {
   due_date: string | null;
   due_day: number | null;
   apr: number | string | null;
+  credit_limit?: number | string | null;
+  note?: string | null;
+  is_monthly?: boolean | null;
 };
 
 type PaymentRow = {
   id: string;
+  user_id?: string;
   amount: number | string | null;
   bill_id: string | null;
+  debt_id?: string | null;
   date_iso: string;
+  merchant?: string | null;
+  note?: string | null;
+  created_at?: string;
 };
 
 const BILL_CATS = [
@@ -76,22 +86,36 @@ function dueLabel(date: string | null) {
   return `Due in ${d} days`;
 }
 
+function isoToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getDueDay(date: string) {
+  if (!date) return null;
+  return new Date(`${date}T00:00:00`).getDate();
+}
+
 export default function BillsPage() {
   const router = useRouter();
   const [supabase] = useState(() => createSupabaseBrowserClient());
 
-  const [activeTab, setActiveTab] = useState<"bill" | "debt">("bill");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("bill");
   const [cardIndex, setCardIndex] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
+  const [showRecent, setShowRecent] = useState(false);
   const [showBenNotice, setShowBenNotice] = useState(false);
 
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+
+  const [editingBillId, setEditingBillId] = useState<string | null>(null);
+  const [editingDebtId, setEditingDebtId] = useState<string | null>(null);
 
   const [bName, setBName] = useState("");
   const [bAmt, setBAmt] = useState("");
@@ -104,12 +128,16 @@ export default function BillsPage() {
   const [dMin, setDMin] = useState("");
   const [dKind, setDKind] = useState<"credit" | "loan">("credit");
   const [dDue, setDDue] = useState("");
+  const [dApr, setDApr] = useState("");
 
   useEffect(() => {
     void init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function init() {
+    setLoading(true);
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -120,25 +148,57 @@ export default function BillsPage() {
     }
 
     setUserId(user.id);
-    await Promise.all([loadBills(user.id), loadDebts(user.id), loadPayments(user.id)]);
+    await Promise.all([
+      loadBills(user.id),
+      loadDebts(user.id),
+      loadPayments(user.id),
+    ]);
+
     setLoading(false);
   }
 
   async function loadBills(uid: string) {
-    const { data } = await supabase.from("bills").select("*").eq("user_id", uid);
+    const { data, error } = await supabase
+      .from("bills")
+      .select("*")
+      .eq("user_id", uid)
+      .order("due_date", { ascending: true, nullsFirst: false });
+
+    if (error) {
+      showMsg(error.message);
+      return;
+    }
+
     setBills((data || []) as BillRow[]);
   }
 
   async function loadDebts(uid: string) {
-    const { data } = await supabase.from("debts").select("*").eq("user_id", uid);
+    const { data, error } = await supabase
+      .from("debts")
+      .select("*")
+      .eq("user_id", uid)
+      .order("due_date", { ascending: true, nullsFirst: false });
+
+    if (error) {
+      showMsg(error.message);
+      return;
+    }
+
     setDebts((data || []) as DebtRow[]);
   }
 
   async function loadPayments(uid: string) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("payments")
-      .select("id, amount, bill_id, date_iso")
-      .eq("user_id", uid);
+      .select("*")
+      .eq("user_id", uid)
+      .order("date_iso", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      showMsg(error.message);
+      return;
+    }
 
     setPayments((data || []) as PaymentRow[]);
   }
@@ -148,10 +208,63 @@ export default function BillsPage() {
     setTimeout(() => setMessage(""), 3500);
   }
 
-  async function addBill() {
+  function resetBillForm() {
+    setEditingBillId(null);
+    setBName("");
+    setBAmt("");
+    setBCat("household");
+    setBDue("");
+    setBMo(true);
+  }
+
+  function resetDebtForm() {
+    setEditingDebtId(null);
+    setDName("");
+    setDBal("");
+    setDMin("");
+    setDKind("credit");
+    setDDue("");
+    setDApr("");
+  }
+
+  function openAdd() {
+    resetBillForm();
+    resetDebtForm();
+    setShowAdd(true);
+  }
+
+  function editBill(bill: BillRow) {
+    setActiveTab("bill");
+    setEditingBillId(bill.id);
+    setEditingDebtId(null);
+    setBName(bill.name || "");
+    setBAmt(String(billAmount(bill) || ""));
+    setBCat(bill.category || "household");
+    setBDue(bill.due_date || "");
+    setBMo(Boolean(bill.is_monthly ?? true));
+    setShowAdd(true);
+    setShowRecent(false);
+  }
+
+  function editDebt(debt: DebtRow) {
+    setActiveTab("debt");
+    setEditingDebtId(debt.id);
+    setEditingBillId(null);
+    setDName(debt.name || "");
+    setDBal(String(clampMoney(debt.balance) || ""));
+    setDMin(String(debtMin(debt) || ""));
+    setDKind(debt.kind || "credit");
+    setDDue(debt.due_date || "");
+    setDApr(String(clampMoney(debt.apr) || ""));
+    setShowAdd(true);
+    setShowRecent(false);
+  }
+
+  async function saveBill() {
     if (!userId) return;
 
     const amount = clampMoney(bAmt);
+
     if (!bName.trim() || amount <= 0) {
       playError();
       showMsg("Enter a bill name and amount.");
@@ -160,18 +273,20 @@ export default function BillsPage() {
 
     setSaving(true);
 
-    const dueDay = bDue ? new Date(`${bDue}T00:00:00`).getDate() : null;
-
-    const { error } = await supabase.from("bills").insert({
+    const payload = {
       user_id: userId,
       name: bName.trim(),
       target: amount,
       monthly_target: bMo ? amount : null,
       category: bCat,
       due_date: bDue || null,
-      due_day: dueDay,
+      due_day: getDueDay(bDue),
       is_monthly: bMo,
-    });
+    };
+
+    const { error } = editingBillId
+      ? await supabase.from("bills").update(payload).eq("id", editingBillId).eq("user_id", userId)
+      : await supabase.from("bills").insert(payload);
 
     setSaving(false);
 
@@ -181,19 +296,14 @@ export default function BillsPage() {
       return;
     }
 
-    setBName("");
-    setBAmt("");
-    setBCat("household");
-    setBDue("");
-    setBMo(true);
-    setShowAdd(false);
-
     playWrite();
-    showMsg("Bill posted to the ledger.");
+    showMsg(editingBillId ? "Bill updated." : "Bill posted to the ledger.");
+    resetBillForm();
+    setShowAdd(false);
     await loadBills(userId);
   }
 
-  async function addDebt() {
+  async function saveDebt() {
     if (!userId) return;
 
     if (!dName.trim()) {
@@ -204,10 +314,9 @@ export default function BillsPage() {
 
     setSaving(true);
 
-    const dueDay = dDue ? new Date(`${dDue}T00:00:00`).getDate() : null;
     const min = clampMoney(dMin) || null;
 
-    const { error } = await supabase.from("debts").insert({
+    const payload = {
       user_id: userId,
       name: dName.trim(),
       kind: dKind,
@@ -215,9 +324,14 @@ export default function BillsPage() {
       min_payment: min,
       monthly_min_payment: min,
       due_date: dDue || null,
-      due_day: dueDay,
+      due_day: getDueDay(dDue),
+      apr: dApr ? clampMoney(dApr) : null,
       is_monthly: true,
-    });
+    };
+
+    const { error } = editingDebtId
+      ? await supabase.from("debts").update(payload).eq("id", editingDebtId).eq("user_id", userId)
+      : await supabase.from("debts").insert(payload);
 
     setSaving(false);
 
@@ -227,15 +341,58 @@ export default function BillsPage() {
       return;
     }
 
-    setDName("");
-    setDBal("");
-    setDMin("");
-    setDKind("credit");
-    setDDue("");
-    setShowAdd(false);
-
     playCoins();
-    showMsg("Debt posted to the ledger.");
+    showMsg(editingDebtId ? "Debt updated." : "Debt posted to the ledger.");
+    resetDebtForm();
+    setShowAdd(false);
+    await loadDebts(userId);
+  }
+
+  async function deleteBill(id: string) {
+    if (!userId) return;
+
+    const ok = window.confirm("Delete this bill?");
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from("bills")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
+
+    if (error) {
+      playError();
+      showMsg(error.message);
+      return;
+    }
+
+    playWrite();
+    showMsg("Bill deleted.");
+    setCardIndex(0);
+    await loadBills(userId);
+  }
+
+  async function deleteDebt(id: string) {
+    if (!userId) return;
+
+    const ok = window.confirm("Delete this debt?");
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from("debts")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
+
+    if (error) {
+      playError();
+      showMsg(error.message);
+      return;
+    }
+
+    playWrite();
+    showMsg("Debt deleted.");
+    setCardIndex(0);
     await loadDebts(userId);
   }
 
@@ -248,8 +405,11 @@ export default function BillsPage() {
     const { error } = await supabase.from("payments").insert({
       user_id: userId,
       bill_id: id,
+      debt_id: null,
+      merchant: bill.name,
       amount: billAmount(bill),
-      date_iso: new Date().toISOString().slice(0, 10),
+      date_iso: isoToday(),
+      note: "Marked paid from Post Office",
     });
 
     if (error) {
@@ -259,8 +419,55 @@ export default function BillsPage() {
     }
 
     playCashRegister();
-    showMsg("Payment recorded.");
+    showMsg("Bill payment recorded.");
     await loadPayments(userId);
+  }
+
+  async function markDebtPaid(id: string) {
+    if (!userId) return;
+
+    const debt = debts.find((d) => d.id === id);
+    if (!debt) return;
+
+    const amount = debtMin(debt);
+
+    if (amount <= 0) {
+      playError();
+      showMsg("Add a minimum payment before marking this debt paid.");
+      return;
+    }
+
+    const { error } = await supabase.from("payments").insert({
+      user_id: userId,
+      bill_id: null,
+      debt_id: id,
+      merchant: debt.name,
+      amount,
+      date_iso: isoToday(),
+      note: "Marked paid from Post Office",
+    });
+
+    if (error) {
+      playError();
+      showMsg(error.message);
+      return;
+    }
+
+    playCashRegister();
+    showMsg("Debt payment recorded.");
+    await loadPayments(userId);
+  }
+
+  function goToPaymentPage() {
+    if (!activeItem) {
+      router.push("/payments");
+      return;
+    }
+
+    const type = activeItem.item.type;
+    const id = activeItem.item.id;
+
+    router.push(`/payments?type=${type}&id=${id}`);
   }
 
   const currentMonthStart = currentMonthStartISO();
@@ -277,6 +484,7 @@ export default function BillsPage() {
 
   const totalBillsAmt = useMemo(() => addMoney(bills.map(billAmount)), [bills]);
   const totalDebtMins = useMemo(() => addMoney(debts.map(debtMin)), [debts]);
+
   const totalDue = totalBillsAmt + totalDebtMins;
   const remaining = Math.max(0, totalDue - paidThisMonth);
 
@@ -292,7 +500,9 @@ export default function BillsPage() {
       category: b.category,
       kind: b.kind,
       focus: b.focus,
-      is_paid_this_month: false,
+      is_paid_this_month: payments.some(
+        (p) => p.bill_id === b.id && p.date_iso >= currentMonthStart
+      ),
     }));
 
     const debtItems: PriorityInput[] = debts.map((d) => ({
@@ -305,15 +515,43 @@ export default function BillsPage() {
       due_day: d.due_day,
       apr: d.apr,
       focus: null,
-      is_paid_this_month: false,
+      is_paid_this_month: payments.some(
+        (p) => p.debt_id === d.id && p.date_iso >= currentMonthStart
+      ),
     }));
 
     return [...billItems, ...debtItems];
-  }, [bills, debts]);
+  }, [bills, debts, payments, currentMonthStart]);
 
-  const rankedItems = useMemo(() => prioritizeMoneyItems(priorityItems), [priorityItems]);
+  const rankedItems = useMemo(
+    () => prioritizeMoneyItems(priorityItems),
+    [priorityItems]
+  );
+
   const roomItems = rankedItems.filter((r) => r.item.type === activeTab);
   const activeItem = roomItems[cardIndex] ?? null;
+
+  const activeBill =
+    activeItem?.item.type === "bill"
+      ? bills.find((b) => b.id === activeItem.item.id) ?? null
+      : null;
+
+  const activeDebt =
+    activeItem?.item.type === "debt"
+      ? debts.find((d) => d.id === activeItem.item.id) ?? null
+      : null;
+
+  const activePayments = useMemo(() => {
+    if (!activeItem) return [];
+
+    return payments
+      .filter((p) =>
+        activeItem.item.type === "bill"
+          ? p.bill_id === activeItem.item.id
+          : p.debt_id === activeItem.item.id
+      )
+      .slice(0, 8);
+  }, [payments, activeItem]);
 
   const overdue = addMoney(
     rankedItems
@@ -345,7 +583,9 @@ export default function BillsPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black">
-        <p className="font-cinzel text-[#c9a84c]">Opening the post office ledger…</p>
+        <p className="font-cinzel text-[#c9a84c]">
+          Opening the post office ledger…
+        </p>
       </div>
     );
   }
@@ -359,13 +599,15 @@ export default function BillsPage() {
         <div
           className="px-4 py-3 text-center"
           style={{
-            background: "linear-gradient(180deg, rgba(0,0,0,.98), rgba(15,8,4,.92))",
+            background:
+              "linear-gradient(180deg, rgba(0,0,0,.98), rgba(15,8,4,.92))",
             borderBottom: "1px solid rgba(201,168,76,.25)",
           }}
         >
           <p className="font-cinzel text-xs uppercase tracking-[0.35em] text-[#c9a84c]">
             Franklin&apos;s Landing
           </p>
+
           <h1 className="font-cinzel text-2xl font-bold tracking-wide text-[#f5e6c8] sm:text-4xl">
             Post Office of Debts & Bills
           </h1>
@@ -402,11 +644,12 @@ export default function BillsPage() {
         </button>
       </section>
 
-      <section className="relative z-10 mx-auto max-w-5xl px-4 pb-24 -mt-2 sm:-mt-8">
+      <section className="relative z-10 mx-auto -mt-2 max-w-5xl px-4 pb-24 sm:-mt-8">
         <div
           className="rounded-3xl p-4 sm:p-5"
           style={{
-            background: "linear-gradient(180deg, rgba(8,5,3,.94), rgba(0,0,0,.99))",
+            background:
+              "linear-gradient(180deg, rgba(8,5,3,.94), rgba(0,0,0,.99))",
             border: "1px solid rgba(201,168,76,.35)",
             boxShadow: "0 -30px 80px rgba(0,0,0,.9)",
           }}
@@ -418,6 +661,8 @@ export default function BillsPage() {
                 onClick={() => {
                   setActiveTab(tab);
                   setCardIndex(0);
+                  setShowAdd(false);
+                  setShowRecent(false);
                 }}
                 className="rounded-xl py-3 font-cinzel text-xl font-bold"
                 style={{
@@ -447,7 +692,7 @@ export default function BillsPage() {
             </button>
 
             <div
-              className="min-h-[210px] rounded-2xl p-5 text-center"
+              className="min-h-[270px] rounded-2xl p-5 text-center"
               style={{
                 background: "rgba(0,0,0,.68)",
                 border: "1px solid rgba(201,168,76,.45)",
@@ -458,23 +703,40 @@ export default function BillsPage() {
                   <p className="text-sm text-[#c9a84c]">
                     {cardIndex + 1} of {roomItems.length}
                   </p>
+
                   <h2 className="mt-2 font-cinzel text-3xl font-bold">
                     {activeItem.item.name}
                   </h2>
+
                   <p className="mt-2 text-[#d6c09a]">
                     {dueLabel(activeItem.resolvedDueDate)}
                   </p>
+
                   <p className="mt-4 text-4xl font-bold text-[#c9a84c]">
                     {money(activeItem.amount)}
                   </p>
+
                   <p className="mt-3 inline-block rounded-md bg-emerald-700 px-3 py-1 text-sm">
                     {activeTab === "bill" ? "Upcoming Bill" : "Debt Minimum"}
                   </p>
 
-                  {activeTab === "bill" && (
+                  {activeTab === "debt" && activeDebt && (
+                    <p className="mt-3 text-sm text-[#d6c09a]">
+                      Balance: {money(clampMoney(activeDebt.balance))}
+                      {activeDebt.apr ? ` • APR: ${activeDebt.apr}%` : ""}
+                    </p>
+                  )}
+
+                  <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <button
-                      onClick={() => markBillPaid(activeItem.item.id)}
-                      className="mx-auto mt-4 block rounded-xl px-5 py-2 font-bold"
+                      onClick={() =>
+                        activeTab === "bill" && activeBill
+                          ? markBillPaid(activeBill.id)
+                          : activeDebt
+                            ? markDebtPaid(activeDebt.id)
+                            : null
+                      }
+                      className="rounded-xl px-3 py-2 text-sm font-bold"
                       style={{
                         background: "#166534",
                         border: "1px solid #4ade80",
@@ -482,10 +744,49 @@ export default function BillsPage() {
                     >
                       Mark Paid
                     </button>
-                  )}
+
+                    <button
+                      onClick={goToPaymentPage}
+                      className="rounded-xl px-3 py-2 text-sm font-bold"
+                      style={{
+                        background: "rgba(201,168,76,.18)",
+                        border: "1px solid rgba(201,168,76,.55)",
+                      }}
+                    >
+                      Pay Page
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        activeTab === "bill" && activeBill
+                          ? editBill(activeBill)
+                          : activeDebt
+                            ? editDebt(activeDebt)
+                            : null
+                      }
+                      className="rounded-xl px-3 py-2 text-sm font-bold"
+                      style={{
+                        background: "rgba(59,130,246,.22)",
+                        border: "1px solid rgba(147,197,253,.65)",
+                      }}
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      onClick={() => setShowRecent((v) => !v)}
+                      className="rounded-xl px-3 py-2 text-sm font-bold"
+                      style={{
+                        background: "rgba(0,0,0,.35)",
+                        border: "1px solid rgba(201,168,76,.45)",
+                      }}
+                    >
+                      Payments
+                    </button>
+                  </div>
                 </>
               ) : (
-                <p className="pt-16 text-[#9a7d5a]">
+                <p className="pt-20 text-[#9a7d5a]">
                   No {activeTab === "bill" ? "bills" : "debts"} posted yet.
                 </p>
               )}
@@ -493,7 +794,9 @@ export default function BillsPage() {
 
             <button
               onClick={() =>
-                setCardIndex((i) => Math.min(Math.max(roomItems.length - 1, 0), i + 1))
+                setCardIndex((i) =>
+                  Math.min(Math.max(roomItems.length - 1, 0), i + 1)
+                )
               }
               className="h-14 rounded-full font-cinzel sm:h-16"
               style={{ border: "1px solid rgba(201,168,76,.45)" }}
@@ -507,10 +810,69 @@ export default function BillsPage() {
               <span
                 key={i}
                 className="h-3 w-3 rounded-full"
-                style={{ background: i === cardIndex ? "#c9a84c" : "#5f5748" }}
+                style={{
+                  background: i === cardIndex ? "#c9a84c" : "#5f5748",
+                }}
               />
             ))}
           </div>
+
+          {showRecent && activeItem && (
+            <div
+              className="mb-6 rounded-2xl p-4"
+              style={{
+                background: "rgba(15,8,4,.9)",
+                border: "1px solid rgba(201,168,76,.35)",
+              }}
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="font-cinzel text-xl font-bold text-[#c9a84c]">
+                  Recent Payments
+                </h3>
+
+                <button
+                  onClick={() => router.push("/payments")}
+                  className="rounded-lg px-3 py-2 text-sm"
+                  style={{
+                    border: "1px solid rgba(201,168,76,.45)",
+                  }}
+                >
+                  View All
+                </button>
+              </div>
+
+              {activePayments.length ? (
+                <div className="grid gap-2">
+                  {activePayments.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between rounded-xl px-3 py-2"
+                      style={{
+                        background: "rgba(0,0,0,.45)",
+                        border: "1px solid rgba(201,168,76,.2)",
+                      }}
+                    >
+                      <div>
+                        <p className="font-bold">{p.date_iso}</p>
+                        <p className="text-sm text-[#d6c09a]">
+                          {p.note || p.merchant || "Payment recorded"}
+                        </p>
+                      </div>
+
+                      <p className="font-bold text-[#4ade80]">
+                        {money(clampMoney(p.amount))}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[#d6c09a]">
+                  No payments recorded for this{" "}
+                  {activeTab === "bill" ? "bill" : "debt"} yet.
+                </p>
+              )}
+            </div>
+          )}
 
           <div
             className="mb-6 grid grid-cols-2 overflow-hidden rounded-2xl sm:grid-cols-4"
@@ -519,27 +881,48 @@ export default function BillsPage() {
               background: "rgba(0,0,0,.58)",
             }}
           >
-            <Metric icon="🪙" label="This Month Paid" value={money(paidThisMonth)} color="#4ade80" />
+            <Metric
+              icon="🪙"
+              label="This Month Paid"
+              value={money(paidThisMonth)}
+              color="#4ade80"
+            />
             <Metric icon="📋" label="Total Due" value={money(totalDue)} />
-            <Metric icon="⏳" label="Overdue" value={money(overdue)} color="#ef4444" />
+            <Metric
+              icon="⏳"
+              label="Overdue"
+              value={money(overdue)}
+              color="#ef4444"
+            />
             <Metric icon="📅" label="Due Soon" value={money(dueSoon)} />
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <button
-              onClick={() => router.push("/payments")}
+              onClick={goToPaymentPage}
               className="rounded-xl py-4 font-cinzel text-lg"
               style={{ border: "1px solid rgba(201,168,76,.35)" }}
             >
-              ✍️ Make a Payment
+              ✍️ Make Payment
             </button>
 
             <button
-              onClick={() => setShowAdd((v) => !v)}
+              onClick={openAdd}
               className="rounded-xl py-4 font-cinzel text-lg"
-              style={{ background: "#166534", border: "1px solid #4ade80" }}
+              style={{
+                background: "#166534",
+                border: "1px solid #4ade80",
+              }}
             >
-              + Add New {activeTab === "bill" ? "Bill" : "Debt"}
+              + Add {activeTab === "bill" ? "Bill" : "Debt"}
+            </button>
+
+            <button
+              onClick={() => setShowRecent((v) => !v)}
+              className="rounded-xl py-4 font-cinzel text-lg"
+              style={{ border: "1px solid rgba(201,168,76,.35)" }}
+            >
+              🧾 Recent Payments
             </button>
 
             <button
@@ -559,30 +942,134 @@ export default function BillsPage() {
                 border: "1px solid rgba(201,168,76,.35)",
               }}
             >
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h3 className="font-cinzel text-xl font-bold text-[#c9a84c]">
+                  {activeTab === "bill"
+                    ? editingBillId
+                      ? "Edit Bill"
+                      : "Add Bill"
+                    : editingDebtId
+                      ? "Edit Debt"
+                      : "Add Debt"}
+                </h3>
+
+                <button
+                  onClick={() => {
+                    setShowAdd(false);
+                    resetBillForm();
+                    resetDebtForm();
+                  }}
+                  className="rounded-lg px-3 py-2 text-sm"
+                  style={{ border: "1px solid rgba(201,168,76,.45)" }}
+                >
+                  Cancel
+                </button>
+              </div>
+
               {activeTab === "bill" ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Input label="Bill Name" value={bName} onChange={setBName} />
-                  <Input label="Amount" value={bAmt} onChange={setBAmt} type="number" />
-                  <Select label="Category" value={bCat} onChange={setBCat} options={BILL_CATS} />
-                  <Input label="Due Date" value={bDue} onChange={setBDue} type="date" />
+                  <Input
+                    label="Amount"
+                    value={bAmt}
+                    onChange={setBAmt}
+                    type="number"
+                  />
+                  <Select
+                    label="Category"
+                    value={bCat}
+                    onChange={setBCat}
+                    options={BILL_CATS}
+                  />
+                  <Input
+                    label="Due Date"
+                    value={bDue}
+                    onChange={setBDue}
+                    type="date"
+                  />
+
                   <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={bMo} onChange={(e) => setBMo(e.target.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={bMo}
+                      onChange={(e) => setBMo(e.target.checked)}
+                    />
                     Repeats monthly
                   </label>
-                  <button onClick={addBill} disabled={saving} className="rounded-xl bg-green-800 py-3 font-bold">
-                    Save Bill
-                  </button>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={saveBill}
+                      disabled={saving}
+                      className="rounded-xl bg-green-800 py-3 font-bold disabled:opacity-50"
+                    >
+                      {editingBillId ? "Update Bill" : "Save Bill"}
+                    </button>
+
+                    {editingBillId && (
+                      <button
+                        onClick={() => deleteBill(editingBillId)}
+                        disabled={saving}
+                        className="rounded-xl bg-red-900 py-3 font-bold disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Input label="Debt Name" value={dName} onChange={setDName} />
-                  <Input label="Balance" value={dBal} onChange={setDBal} type="number" />
-                  <Input label="Minimum Payment" value={dMin} onChange={setDMin} type="number" />
-                  <Input label="Due Date" value={dDue} onChange={setDDue} type="date" />
-                  <Select label="Type" value={dKind} onChange={(v) => setDKind(v as "credit" | "loan")} options={["credit", "loan"]} />
-                  <button onClick={addDebt} disabled={saving} className="rounded-xl bg-green-800 py-3 font-bold">
-                    Save Debt
-                  </button>
+                  <Input
+                    label="Balance"
+                    value={dBal}
+                    onChange={setDBal}
+                    type="number"
+                  />
+                  <Input
+                    label="Minimum Payment"
+                    value={dMin}
+                    onChange={setDMin}
+                    type="number"
+                  />
+                  <Input
+                    label="APR"
+                    value={dApr}
+                    onChange={setDApr}
+                    type="number"
+                  />
+                  <Input
+                    label="Due Date"
+                    value={dDue}
+                    onChange={setDDue}
+                    type="date"
+                  />
+                  <Select
+                    label="Type"
+                    value={dKind}
+                    onChange={(v) => setDKind(v as "credit" | "loan")}
+                    options={["credit", "loan"]}
+                  />
+
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                    <button
+                      onClick={saveDebt}
+                      disabled={saving}
+                      className="rounded-xl bg-green-800 py-3 font-bold disabled:opacity-50"
+                    >
+                      {editingDebtId ? "Update Debt" : "Save Debt"}
+                    </button>
+
+                    {editingDebtId && (
+                      <button
+                        onClick={() => deleteDebt(editingDebtId)}
+                        disabled={saving}
+                        className="rounded-xl bg-red-900 py-3 font-bold disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -624,12 +1111,11 @@ export default function BillsPage() {
                 </p>
 
                 <p className="mt-2 text-lg font-bold leading-snug">
-                  Ben says: I see {bills.length} bills in the colony. Keeping due dates visible prevents ambushes.
+                  Ben says: I see {bills.length} bills and {debts.length} debts
+                  in the colony. Keeping due dates visible prevents ambushes.
                 </p>
 
-                <p className="mt-3 text-sm">
-                  {ben.text}
-                </p>
+                <p className="mt-3 text-sm">{ben.text}</p>
               </div>
             </div>
 
@@ -664,7 +1150,9 @@ function Metric({
   return (
     <div className="border-b border-[#c9a84c]/20 p-4 text-center last:border-r-0 sm:border-b-0 sm:border-r">
       <div className="text-3xl">{icon}</div>
-      <p className="mt-2 text-xs uppercase tracking-widest text-[#d6c09a]">{label}</p>
+      <p className="mt-2 text-xs uppercase tracking-widest text-[#d6c09a]">
+        {label}
+      </p>
       <p className="mt-1 text-2xl font-bold" style={{ color }}>
         {value}
       </p>
@@ -685,7 +1173,9 @@ function Input({
 }) {
   return (
     <label className="block">
-      <span className="text-xs uppercase tracking-widest text-[#c9a84c]">{label}</span>
+      <span className="text-xs uppercase tracking-widest text-[#c9a84c]">
+        {label}
+      </span>
       <input
         type={type}
         value={value}
@@ -710,7 +1200,9 @@ function Select({
 }) {
   return (
     <label className="block">
-      <span className="text-xs uppercase tracking-widest text-[#c9a84c]">{label}</span>
+      <span className="text-xs uppercase tracking-widest text-[#c9a84c]">
+        {label}
+      </span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
