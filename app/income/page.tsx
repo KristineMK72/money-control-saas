@@ -36,177 +36,7 @@ type IncomeEntry = {
   created_at: string;
 };
 
-type BillRow = {
-  id: string;
-  target: number | string | null;
-  monthly_target: number | string | null;
-};
-
-type DebtRow = {
-  id: string;
-  min_payment: number | string | null;
-  monthly_min_payment: number | string | null;
-};
-
-type Drawer = "record" | "scan" | "plan" | "hourly" | null;
-
-const CATEGORIES = [
-  { value: "employment", label: "Employment", icon: "🏛" },
-  { value: "entrepreneurship", label: "Entrepreneurship", icon: "⚙️" },
-  { value: "services", label: "Services", icon: "📋" },
-  { value: "investments", label: "Investments", icon: "📈" },
-  { value: "gifts", label: "Gifts", icon: "🎁" },
-  { value: "other", label: "Other", icon: "💰" },
-];
-
-const HOURLY_TARGETS = [40, 30, 20, 10, 5];
-
-function safeNum(value: unknown) {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function entryDate(entry: IncomeEntry) {
-  return (entry.date_iso || entry.created_at || "").slice(0, 10);
-}
-
-function monthPrefix(date: string) {
-  return date.slice(0, 7);
-}
-
-function readHoursFromNote(note?: string | null) {
-  if (!note) return 0;
-  const match = note.match(/Hours:\s*([\d.]+)/i);
-  return match ? safeNum(match[1]) : 0;
-}
-
-export default function IncomePage() {
-  const [supabase] = useState(() => createSupabaseBrowserClient());
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
-
-  const [entries, setEntries] = useState<IncomeEntry[]>([]);
-  const [bills, setBills] = useState<BillRow[]>([]);
-  const [debts, setDebts] = useState<DebtRow[]>([]);
-  const [message, setMessage] = useState("");
-
-  const [drawer, setDrawer] = useState<Drawer>("record");
-
-  const [amount, setAmount] = useState("");
-  const [source, setSource] = useState("");
-  const [category, setCategory] = useState("employment");
-  const [hoursWorked, setHoursWorked] = useState("");
-  const [date, setDate] = useState(todayLocalISO());
-
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [scanRows, setScanRows] = useState<
-    {
-      source_name: string;
-      amount: number;
-      date_iso: string;
-      selected: boolean;
-    }[]
-  >([]);
-
-  useEffect(() => {
-    void loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function loadData() {
-    setLoading(true);
-    setMessage("");
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
-    setUserId(user.id);
-
-    const [incomeRes, billsRes, debtsRes] = await Promise.all([
-      supabase
-        .from("income_entries")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false }),
-
-      supabase
-        .from("bills")
-        .select("id, target, monthly_target")
-        .eq("user_id", user.id),
-
-      supabase
-        .from("debts")
-        .select("id, min_payment, monthly_min_payment")
-        .eq("user_id", user.id),
-    ]);
-
-    if (incomeRes.error) setMessage(incomeRes.error.message);
-    if (billsRes.error) setMessage(billsRes.error.message);
-    if (debtsRes.error) setMessage(debtsRes.error.message);
-
-    setEntries((incomeRes.data || []) as IncomeEntry[]);
-    setBills((billsRes.data || []) as BillRow[]);
-    setDebts((debtsRes.data || []) as DebtRow[]);
-
-    setLoading(false);
-  }
-
-  async function handleScanIncome() {
-    if (!imageFile) {
-      setMessage("Choose an income screenshot or deposit proof first.");
-      return;
-    }
-
-    setScanning(true);
-    setMessage("Ben is reading every income line…");
-
-    try {
-      const { text } = await ocrImageFile(imageFile);
-      const parsed = parseTransactionsScreenshot(text);
-
-      const incomeRows = parsed
-        .map((row) => ({
-          source_name: row.merchant || "Income",
-          amount: Math.abs(clampMoney(row.amount)),
-          date_iso:
-            row.dateText && /^\d{4}-\d{2}-\d{2}$/.test(row.dateText)
-              ? row.dateText
-              : date,
-          selected: true,
-        }))
-        .filter((row) => row.amount > 0);
-
-      if (incomeRows.length === 0) {
-        setMessage(
-          "No clear income lines found. Open Record Income and enter it manually."
-        );
-        setDrawer("record");
-        return;
-      }
-
-      setScanRows(incomeRows);
-      setDrawer("scan");
-      setMessage(
-        `Ben found ${incomeRows.length} income lines. Review before importing.`
-      );
-    } catch (error) {
-      console.error(error);
-      setMessage("Scanner had trouble reading that image. Manual entry still works.");
-      setDrawer("record");
-    } finally {
-      setScanning(false);
-    }
-  }
-  type IncomeSource = {
+type IncomeSource = {
   id: string;
   user_id: string;
   name: string;
@@ -238,7 +68,7 @@ type DebtRow = {
   monthly_min_payment: number | string | null;
 };
 
-type Drawer = "record" | "scan" | "plan" | "hourly" | "sources" | null;
+type Drawer = "record" | "scan" | "sources" | "hourly" | null;
 
 const CATEGORIES = [
   { value: "employment", label: "Employment", icon: "🏛" },
@@ -306,12 +136,12 @@ export default function IncomePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
 
   const [entries, setEntries] = useState<IncomeEntry[]>([]);
+  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
-  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
-  const [message, setMessage] = useState("");
 
   const [drawer, setDrawer] = useState<Drawer>("record");
 
@@ -361,9 +191,15 @@ export default function IncomePage() {
 
     setUserId(user.id);
 
-    const [incomeRes, billsRes, debtsRes, sourcesRes] = await Promise.all([
+    const [incomeRes, sourcesRes, billsRes, debtsRes] = await Promise.all([
       supabase
         .from("income_entries")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+
+      supabase
+        .from("income_sources")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false }),
@@ -377,23 +213,17 @@ export default function IncomePage() {
         .from("debts")
         .select("id, min_payment, monthly_min_payment")
         .eq("user_id", user.id),
-
-      supabase
-        .from("income_sources")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false }),
     ]);
 
     if (incomeRes.error) setMessage(incomeRes.error.message);
+    if (sourcesRes.error) setMessage(sourcesRes.error.message);
     if (billsRes.error) setMessage(billsRes.error.message);
     if (debtsRes.error) setMessage(debtsRes.error.message);
-    if (sourcesRes.error) setMessage(sourcesRes.error.message);
 
     setEntries((incomeRes.data || []) as IncomeEntry[]);
+    setIncomeSources((sourcesRes.data || []) as IncomeSource[]);
     setBills((billsRes.data || []) as BillRow[]);
     setDebts((debtsRes.data || []) as DebtRow[]);
-    setIncomeSources((sourcesRes.data || []) as IncomeSource[]);
 
     setLoading(false);
   }
@@ -428,26 +258,22 @@ export default function IncomePage() {
     const annualSalary = clampMoney(sourceAnnualSalary);
     const monthlyAmount = clampMoney(sourceMonthlyAmount);
 
-    if (sourceType === "salary") {
-      if (annualSalary <= 0 || hoursPerWeek <= 0) {
-        playError();
-        setMessage("Enter annual salary and average hours per week.");
-        return;
-      }
+    if (sourceType === "salary" && (annualSalary <= 0 || hoursPerWeek <= 0)) {
+      playError();
+      setMessage("Enter annual salary and average hours per week.");
+      return;
     }
 
-    if (sourceType === "monthly") {
-      if (monthlyAmount <= 0) {
-        playError();
-        setMessage("Enter the monthly amount.");
-        return;
-      }
+    if (sourceType === "monthly" && monthlyAmount <= 0) {
+      playError();
+      setMessage("Enter the monthly amount.");
+      return;
     }
 
     if (sourceType !== "salary" && sourceType !== "monthly") {
       if (hourlyRate <= 0 || hoursPerWeek <= 0) {
         playError();
-        setMessage("Enter hourly rate and average hours per week.");
+        setMessage("Enter rate and average hours per week.");
         return;
       }
     }
@@ -501,7 +327,55 @@ export default function IncomePage() {
     setIncomeSources((prev) => prev.filter((item) => item.id !== id));
     setMessage("Income source removed.");
   }
-    async function importScannedIncome() {
+
+  async function handleScanIncome() {
+    if (!imageFile) {
+      setMessage("Choose an income screenshot or deposit proof first.");
+      return;
+    }
+
+    setScanning(true);
+    setMessage("Ben is reading every income line…");
+
+    try {
+      const { text } = await ocrImageFile(imageFile);
+      const parsed = parseTransactionsScreenshot(text);
+
+      const incomeRows = parsed
+        .map((row) => ({
+          source_name: row.merchant || "Income",
+          amount: Math.abs(clampMoney(row.amount)),
+          date_iso:
+            row.dateText && /^\d{4}-\d{2}-\d{2}$/.test(row.dateText)
+              ? row.dateText
+              : date,
+          selected: true,
+        }))
+        .filter((row) => row.amount > 0);
+
+      if (incomeRows.length === 0) {
+        setMessage(
+          "No clear income lines found. Open Record Income and enter it manually."
+        );
+        setDrawer("record");
+        return;
+      }
+
+      setScanRows(incomeRows);
+      setDrawer("scan");
+      setMessage(
+        `Ben found ${incomeRows.length} income lines. Review before importing.`
+      );
+    } catch (error) {
+      console.error(error);
+      setMessage("Scanner had trouble reading that image. Manual entry still works.");
+      setDrawer("record");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function importScannedIncome() {
     if (!userId) {
       setMessage("Not signed in.");
       return;
@@ -1490,4 +1364,3 @@ export default function IncomePage() {
     </main>
   );
 }
-  
