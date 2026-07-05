@@ -471,16 +471,14 @@ const avgHourly = 0;
               <p className="empty">No income entries yet.</p>
             ) : (
               entries.slice(0, 8).map((entry) => {
-                const cat =
-                  CATEGORIES.find((item) => item.value === entry.category) ??
-                  CATEGORIES[5];
+              const cat = CATEGORIES[5];
 
-                return (
+              return (
                   <div key={entry.id} className="recent-row">
                     <div className="recent-left">
                       <span>{cat.icon}</span>
                       <div>
-                        <strong>{entry.source || cat.label}</strong>
+                        <strong>{entry.source_name || cat.label}</strong>
                         <p>{entryDate(entry)}</p>
                       </div>
                     </div>
