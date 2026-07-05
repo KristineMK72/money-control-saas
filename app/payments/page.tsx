@@ -219,8 +219,10 @@ export default function PaymentsPage() {
 
     if (payType === "debt" && debtId) {
       const target = debts.find((d) => d.id === debtId);
+
       if (target) {
         const remaining = clampMoney(target.balance) - amt;
+
         if (remaining <= 0) {
           triggeredDebt = {
             name: target.name,
@@ -273,26 +275,28 @@ export default function PaymentsPage() {
   const monthlyPayments = useMemo(
     () =>
       payments.filter(
-        (p) => (p.date_iso || p.created_at || "").slice(0, 10) >= currentMonthStart
+        (payment) =>
+          (payment.date_iso || payment.created_at || "").slice(0, 10) >=
+          currentMonthStart
       ),
     [payments, currentMonthStart]
   );
 
   const monthlyTotal = useMemo(
-    () => monthlyPayments.reduce((sum, p) => sum + clampMoney(p.amount), 0),
+    () => monthlyPayments.reduce((sum, payment) => sum + clampMoney(payment.amount), 0),
     [monthlyPayments]
   );
 
   const allTimeTotal = useMemo(
-    () => payments.reduce((sum, p) => sum + clampMoney(p.amount), 0),
+    () => payments.reduce((sum, payment) => sum + clampMoney(payment.amount), 0),
     [payments]
   );
 
   const latestPayment = payments[0];
-  const debtPayments = payments.filter((p) => p.debt_id).length;
-  const billPayments = payments.filter((p) => p.bill_id).length;
-  const monthlyDebtPay = monthlyPayments.filter((p) => p.debt_id).length;
-  const monthlyBillPay = monthlyPayments.filter((p) => p.bill_id).length;
+  const debtPayments = payments.filter((payment) => payment.debt_id).length;
+  const billPayments = payments.filter((payment) => payment.bill_id).length;
+  const monthlyDebtPay = monthlyPayments.filter((payment) => payment.debt_id).length;
+  const monthlyBillPay = monthlyPayments.filter((payment) => payment.bill_id).length;
 
   const benInsight = BenEngine.getForecastMessage({
     name: null,
@@ -327,39 +331,62 @@ export default function PaymentsPage() {
       )}
 
       <section className="hero">
-        <img src={TREASURY_BG} alt="Treasury Hall" className="hero-img" />
-        <div className="hero-shade" />
+        <div className="hero-frame">
+          <img src={TREASURY_BG} alt="Treasury Hall" className="hero-img" />
+          <div className="hero-shade" />
 
-        <div className="hero-inner">
-          <Link href="/world" className="back-btn">
-            ← Back to Town
-          </Link>
+          <div className="hero-top">
+            <Link href="/world" className="back-btn">
+              ← Back to Town
+            </Link>
+          </div>
 
-          <p className="eyebrow">Treasury Hall</p>
-          <h1>Payment Ledger</h1>
-          <p className="hero-sub">
-            Record payments, scan proof, and let Ben stamp each victory into the colony ledger.
-          </p>
+          <div className="hero-title">
+            <p className="eyebrow">Treasury Hall</p>
+            <h1>Payment Ledger</h1>
+            <p className="hero-sub">
+              Record payments, scan proof, and let Ben stamp each victory into
+              the colony ledger.
+            </p>
+          </div>
         </div>
       </section>
 
       <div className="desk-content">
         <div className="stats-grid">
-          <MetricTile icon="🪙" label="Paid This Month" value={money(monthlyTotal)} helper={`${monthlyPayments.length} payments`} />
-          <MetricTile icon="📜" label="All-Time Paid" value={money(allTimeTotal)} helper={`${payments.length} entries`} />
-          <MetricTile icon="💳" label="Debt Payments" value={String(debtPayments)} helper={`${monthlyDebtPay} this month`} />
-          <MetricTile icon="📬" label="Bill Payments" value={String(billPayments)} helper={`${monthlyBillPay} this month`} />
+          <MetricTile
+            icon="🪙"
+            label="Paid This Month"
+            value={money(monthlyTotal)}
+            helper={`${monthlyPayments.length} payments`}
+          />
+          <MetricTile
+            icon="📜"
+            label="All-Time Paid"
+            value={money(allTimeTotal)}
+            helper={`${payments.length} entries`}
+          />
+          <MetricTile
+            icon="💳"
+            label="Debt Payments"
+            value={String(debtPayments)}
+            helper={`${monthlyDebtPay} this month`}
+          />
+          <MetricTile
+            icon="📬"
+            label="Bill Payments"
+            value={String(billPayments)}
+            helper={`${monthlyBillPay} this month`}
+          />
         </div>
 
-        {message && (
-          <div className={`notice ${msgType}`}>
-            {message}
-          </div>
-        )}
+        {message && <div className={`notice ${msgType}`}>{message}</div>}
 
         <ColonialCard>
           <h2>Ben’s Treasury Briefing</h2>
-          <p className="card-sub">A quick word from the desk before the ledger opens.</p>
+          <p className="card-sub">
+            A quick word from the desk before the ledger opens.
+          </p>
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </ColonialCard>
 
@@ -377,14 +404,14 @@ export default function PaymentsPage() {
                 <input
                   type="date"
                   value={dateISO}
-                  onChange={(e) => setDateISO(e.target.value)}
+                  onChange={(event) => setDateISO(event.target.value)}
                 />
               </Field>
 
               <Field label="Payment Name">
                 <input
                   value={merchant}
-                  onChange={(e) => setMerchant(e.target.value)}
+                  onChange={(event) => setMerchant(event.target.value)}
                   placeholder="Car payment, Credit One, rent..."
                 />
               </Field>
@@ -395,7 +422,7 @@ export default function PaymentsPage() {
                   step="0.01"
                   inputMode="decimal"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onChange={(event) => setAmount(event.target.value)}
                   placeholder="0.00"
                 />
               </Field>
@@ -403,8 +430,8 @@ export default function PaymentsPage() {
               <Field label="Payment Type">
                 <select
                   value={payType}
-                  onChange={(e) => {
-                    setPayType(e.target.value as "debt" | "bill");
+                  onChange={(event) => {
+                    setPayType(event.target.value as "debt" | "bill");
                     setDebtId("");
                     setBillId("");
                   }}
@@ -416,21 +443,30 @@ export default function PaymentsPage() {
 
               <Field label={payType === "debt" ? "Select Debt" : "Select Bill"} full>
                 {payType === "debt" ? (
-                  <select value={debtId} onChange={(e) => setDebtId(e.target.value)}>
+                  <select
+                    value={debtId}
+                    onChange={(event) => setDebtId(event.target.value)}
+                  >
                     <option value="">Choose a debt...</option>
                     {debts.map((debt) => (
                       <option key={debt.id} value={debt.id}>
                         {debt.name}
-                        {debt.balance != null ? ` — ${money(debt.balance)} balance` : ""}
+                        {debt.balance != null
+                          ? ` — ${money(debt.balance)} balance`
+                          : ""}
                       </option>
                     ))}
                   </select>
                 ) : (
-                  <select value={billId} onChange={(e) => setBillId(e.target.value)}>
+                  <select
+                    value={billId}
+                    onChange={(event) => setBillId(event.target.value)}
+                  >
                     <option value="">Choose a bill...</option>
                     {bills.map((bill) => (
                       <option key={bill.id} value={bill.id}>
-                        {bill.name} — {money(bill.monthly_target ?? bill.target ?? 0)}
+                        {bill.name} —{" "}
+                        {money(bill.monthly_target ?? bill.target ?? 0)}
                       </option>
                     ))}
                   </select>
@@ -440,13 +476,17 @@ export default function PaymentsPage() {
               <Field label="Note" full>
                 <textarea
                   value={note}
-                  onChange={(e) => setNote(e.target.value)}
+                  onChange={(event) => setNote(event.target.value)}
                   rows={3}
                   placeholder="Optional note for the ledger..."
                 />
               </Field>
 
-              <button onClick={handleAddPayment} disabled={saving} className="record-btn">
+              <button
+                onClick={handleAddPayment}
+                disabled={saving}
+                className="record-btn"
+              >
                 {saving ? "Recording..." : "🪙 Record Payment"}
               </button>
             </div>
@@ -454,9 +494,7 @@ export default function PaymentsPage() {
 
           <ColonialCard>
             <h2>Scan Payment Proof</h2>
-            <p className="card-sub">
-              Upload receipt, screenshot, or confirmation.
-            </p>
+            <p className="card-sub">Upload receipt, screenshot, or confirmation.</p>
             <PaperScrollScanner
               title="Scan Payment Proof"
               description="Upload receipt, screenshot, or confirmation. Ben will fill the draft."
@@ -472,34 +510,45 @@ export default function PaymentsPage() {
           <h2>Recent Ledger Entries</h2>
           <p className="card-sub">
             {latestPayment
-              ? `${latestPayment.merchant || "Latest"} — ${money(latestPayment.amount)}`
+              ? `${latestPayment.merchant || "Latest"} — ${money(
+                  latestPayment.amount
+                )}`
               : "The ledger awaits its first victory."}
           </p>
 
           <div className="ledger-list">
             {payments.length === 0 ? (
-              <div className="empty-ledger">No payments yet. The treasury ledger is ready.</div>
+              <div className="empty-ledger">
+                No payments yet. The treasury ledger is ready.
+              </div>
             ) : (
               payments.map((payment) => {
                 const isDebt = !!payment.debt_id;
                 const isBill = !!payment.bill_id;
                 const isThisMonth =
-                  (payment.date_iso || "").slice(0, 7) >= currentMonthStart.slice(0, 7);
+                  (payment.date_iso || "").slice(0, 7) >=
+                  currentMonthStart.slice(0, 7);
 
                 return (
                   <div key={payment.id} className="ledger-row">
                     <div>
                       <div className="ledger-title">
                         <strong>{payment.merchant || "Payment"}</strong>
-                        <span>{isDebt ? "💳 Debt" : isBill ? "📬 Bill" : "📜 Ledger"}</span>
+                        <span>
+                          {isDebt ? "💳 Debt" : isBill ? "📬 Bill" : "📜 Ledger"}
+                        </span>
                         {isThisMonth && <span className="green">This month</span>}
                       </div>
+
                       <div className="ledger-meta">
                         {payment.date_iso}
                         {payment.note ? ` • ${payment.note}` : ""}
                       </div>
                     </div>
-                    <strong className="ledger-amount">{money(payment.amount)}</strong>
+
+                    <strong className="ledger-amount">
+                      {money(payment.amount)}
+                    </strong>
                   </div>
                 );
               })
@@ -518,52 +567,69 @@ export default function PaymentsPage() {
           padding-top: 250px;
           padding-bottom: 100px;
           background:
-            radial-gradient(circle at top, rgba(245,196,88,0.12), transparent 32rem),
+            radial-gradient(circle at top, rgba(245, 196, 88, 0.12), transparent 32rem),
             linear-gradient(180deg, #050302, #140a04 45%, #050302);
           color: #fff7ed;
         }
 
         .hero {
+          max-width: 1100px;
+          margin: 0 auto;
+          padding: 18px;
+        }
+
+        .hero-frame {
           position: relative;
-          min-height: 420px;
+          width: 100%;
+          border-radius: 32px;
           overflow: hidden;
-          border-bottom: 1px solid rgba(201,168,76,0.25);
+          border: 1px solid rgba(201, 168, 76, 0.35);
+          background: #050302;
+          box-shadow: 0 28px 90px rgba(0, 0, 0, 0.65);
         }
 
         .hero-img {
-          position: absolute;
-          inset: 0;
+          display: block;
           width: 100%;
-          height: 100%;
-          object-fit: cover;
-          object-position: center top;
+          height: auto;
+          max-height: 620px;
+          object-fit: contain;
+          object-position: center;
         }
 
         .hero-shade {
           position: absolute;
           inset: 0;
+          pointer-events: none;
           background:
-            linear-gradient(90deg, rgba(5,3,2,0.92), rgba(5,3,2,0.38)),
-            linear-gradient(180deg, rgba(5,3,2,0.2), rgba(5,3,2,0.96));
+            linear-gradient(180deg, rgba(5, 3, 2, 0.08), rgba(5, 3, 2, 0.18) 45%, rgba(5, 3, 2, 0.82)),
+            linear-gradient(90deg, rgba(5, 3, 2, 0.55), transparent 45%, rgba(5, 3, 2, 0.35));
         }
 
-        .hero-inner {
-          position: relative;
+        .hero-top {
+          position: absolute;
+          top: 18px;
+          left: 18px;
           z-index: 2;
-          max-width: 1100px;
-          margin: 0 auto;
-          padding: 34px 18px 40px;
         }
 
         .back-btn {
           display: inline-flex;
           color: #f5e6c8;
           text-decoration: none;
-          border: 1px solid rgba(201,168,76,0.35);
-          background: rgba(0,0,0,0.55);
+          border: 1px solid rgba(201, 168, 76, 0.4);
+          background: rgba(0, 0, 0, 0.62);
           border-radius: 999px;
           padding: 10px 16px;
-          margin-bottom: 105px;
+        }
+
+        .hero-title {
+          position: absolute;
+          left: 24px;
+          right: 24px;
+          bottom: 22px;
+          z-index: 2;
+          max-width: 660px;
         }
 
         .eyebrow {
@@ -577,24 +643,24 @@ export default function PaymentsPage() {
 
         h1 {
           font-family: var(--font-cormorant), Georgia, serif;
-          font-size: clamp(54px, 9vw, 96px);
-          line-height: 0.86;
+          font-size: clamp(48px, 8vw, 88px);
+          line-height: 0.88;
           margin: 0;
-          text-shadow: 0 8px 28px rgba(0,0,0,0.8);
+          text-shadow: 0 8px 28px rgba(0, 0, 0, 0.9);
         }
 
         .hero-sub {
           max-width: 620px;
-          font-size: 20px;
+          font-size: 19px;
           line-height: 1.35;
           color: #ead9bd;
-          margin: 16px 0 0;
+          margin: 12px 0 0;
         }
 
         .desk-content {
           max-width: 1100px;
           margin: 0 auto;
-          padding: 18px;
+          padding: 0 18px 18px;
           display: grid;
           gap: 18px;
         }
@@ -608,19 +674,19 @@ export default function PaymentsPage() {
         .notice {
           border-radius: 20px;
           padding: 14px 16px;
-          border: 1px solid rgba(201,168,76,0.35);
-          background: rgba(15,8,4,0.9);
+          border: 1px solid rgba(201, 168, 76, 0.35);
+          background: rgba(15, 8, 4, 0.9);
           color: #facc15;
         }
 
         .notice.err {
           color: #fb7185;
-          border-color: rgba(251,113,133,0.5);
+          border-color: rgba(251, 113, 133, 0.5);
         }
 
         .notice.info {
           color: #93c5fd;
-          border-color: rgba(147,197,253,0.5);
+          border-color: rgba(147, 197, 253, 0.5);
         }
 
         .work-grid {
@@ -655,8 +721,8 @@ export default function PaymentsPage() {
         textarea {
           width: 100%;
           border-radius: 16px;
-          border: 1px solid rgba(201,168,76,0.45);
-          background: rgba(255,245,220,0.95);
+          border: 1px solid rgba(201, 168, 76, 0.45);
+          background: rgba(255, 245, 220, 0.95);
           color: #24130a;
           padding: 13px 14px;
           font-size: 16px;
@@ -664,7 +730,7 @@ export default function PaymentsPage() {
         }
 
         .record-btn {
-          border: 1px solid rgba(74,222,128,0.65);
+          border: 1px solid rgba(74, 222, 128, 0.65);
           border-radius: 20px;
           padding: 16px 18px;
           background: linear-gradient(180deg, #16a34a, #15803d);
@@ -685,8 +751,8 @@ export default function PaymentsPage() {
         .empty-ledger,
         .ledger-row {
           border-radius: 18px;
-          border: 1px solid rgba(201,168,76,0.18);
-          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(201, 168, 76, 0.18);
+          background: rgba(255, 255, 255, 0.04);
           padding: 16px;
         }
 
@@ -710,14 +776,14 @@ export default function PaymentsPage() {
         .ledger-title span {
           color: #facc15;
           font-size: 12px;
-          border: 1px solid rgba(250,204,21,0.24);
+          border: 1px solid rgba(250, 204, 21, 0.24);
           border-radius: 999px;
           padding: 3px 8px;
         }
 
         .ledger-title .green {
           color: #4ade80;
-          border-color: rgba(74,222,128,0.28);
+          border-color: rgba(74, 222, 128, 0.28);
         }
 
         .ledger-meta {
@@ -756,23 +822,39 @@ export default function PaymentsPage() {
           }
 
           .hero {
-            min-height: 390px;
+            padding: 12px;
+          }
+
+          .hero-frame {
+            border-radius: 24px;
           }
 
           .hero-img {
-            object-position: 50% top;
+            max-height: 420px;
+          }
+
+          .hero-top {
+            top: 12px;
+            left: 12px;
           }
 
           .back-btn {
-            margin-bottom: 72px;
+            padding: 8px 13px;
+            font-size: 14px;
+          }
+
+          .hero-title {
+            left: 16px;
+            right: 16px;
+            bottom: 16px;
           }
 
           h1 {
-            font-size: 58px;
+            font-size: 46px;
           }
 
           .hero-sub {
-            font-size: 18px;
+            font-size: 16px;
           }
 
           .stats-grid,
