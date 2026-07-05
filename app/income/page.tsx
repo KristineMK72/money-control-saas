@@ -225,20 +225,7 @@ const sourcesCount = useMemo(
   [entries]
 );
 
-  const avgHourly = useMemo(() => {
-    const hourly = entries
-      .map((entry) => ({
-        amount: clampMoney(entry.amount),
-        hours: clampMoney(entry.hours_worked),
-      }))
-      .filter((entry) => entry.amount > 0 && entry.hours > 0);
-
-    const totalAmount = addMoney(hourly.map((entry) => entry.amount));
-    const totalHours = addMoney(hourly.map((entry) => entry.hours));
-
-    return totalHours > 0 ? clampMoney(totalAmount / totalHours) : 0;
-  }, [entries]);
-
+const avgHourly = 0;
   const chartData = useMemo(() => {
     return Array.from({ length: 6 }, (_, index) => {
       const [year, month] = thisMonth.split("-").map(Number);
