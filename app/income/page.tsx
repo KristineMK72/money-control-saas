@@ -72,7 +72,14 @@ export default function IncomePage() {
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
-
+  const [scanRows, setScanRows] = useState<
+  {
+    source_name: string;
+    amount: number;
+    date_iso: string;
+    selected: boolean;
+  }[]
+>([]);
   useEffect(() => {
     void loadData();
   }, []);
