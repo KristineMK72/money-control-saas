@@ -32,12 +32,13 @@ type IncomeEntry = {
   amount: number | string | null;
   category?: string | null;
   source?: string | null;
+  source_name?: string | null;
   hours_worked?: number | string | null;
+  hourly_rate?: number | string | null;
   date_iso?: string | null;
   received_on?: string | null;
   created_at: string;
 };
-
 type Drawer = "record" | "scan" | "plan" | null;
 
 const CATEGORIES = [
@@ -143,54 +144,61 @@ export default function IncomePage() {
     setScanning(false);
   }
 
-  async function handleAddIncome() {
-    setMessage("");
+async function handleAddIncome() {
+  setMessage("");
 
-    const amt = clampMoney(amount);
-    const hrs = clampMoney(hoursWorked);
+  const amt = clampMoney(amount);
+  const hrs = clampMoney(hoursWorked);
 
-    if (amt <= 0) {
-      playError();
-      setMessage("Enter a valid income amount.");
-      return;
-    }
-
-    if (!userId) {
-      setMessage("Not signed in.");
-      return;
-    }
-
-    setSaving(true);
-
-    const hourlyRate = hrs > 0 ? clampMoney(amt / hrs) : null;
-
-    const { error } = await supabase.from("income_entries").insert({
-      user_id: userId,
-      amount: amt,
-      category,
-      source: source.trim() || null,
-      hours_worked: hrs || null,
-      hourly_rate: hourlyRate,
-      date_iso: date,
-    });
-
-    setSaving(false);
-
-    if (error) {
-      playError();
-      setMessage(error.message);
-      return;
-    }
-
-    playCoins();
-    setAmount("");
-    setSource("");
-    setHoursWorked("");
-    setImageFile(null);
-    setDrawer(null);
-    setMessage("Income recorded in Franklin’s ledger.");
-    await loadData();
+  if (amt <= 0) {
+    playError();
+    setMessage("Enter a valid income amount.");
+    return;
   }
+
+  if (!source.trim()) {
+    playError();
+    setMessage("Enter who paid you or the income source.");
+    return;
+  }
+
+  if (!userId) {
+    playError();
+    setMessage("Not signed in.");
+    return;
+  }
+
+  setSaving(true);
+
+  const hourlyRate = hrs > 0 ? clampMoney(amt / hrs) : null;
+
+  const { error } = await supabase.from("income_entries").insert({
+    user_id: userId,
+    amount: amt,
+    category,
+    source_name: source.trim(),
+    hours_worked: hrs > 0 ? hrs : null,
+    hourly_rate: hourlyRate,
+    date_iso: date,
+  });
+
+  setSaving(false);
+
+  if (error) {
+    playError();
+    setMessage(error.message);
+    return;
+  }
+
+  playCoins();
+  setAmount("");
+  setSource("");
+  setHoursWorked("");
+  setImageFile(null);
+  setDrawer(null);
+  setMessage("Income recorded in Franklin’s ledger.");
+  await loadData();
+}
 
   const thisMonth = monthPrefix(currentMonthStartISO());
 
@@ -215,10 +223,19 @@ export default function IncomePage() {
     return clampMoney(allTimeTotal / Math.max(months.size, 1));
   }, [entries, allTimeTotal]);
 
-  const sourcesCount = useMemo(
-    () => new Set(entries.map((entry) => entry.source || entry.category || "other")).size,
-    [entries]
-  );
+const sourcesCount = useMemo(
+  () =>
+    new Set(
+      entries.map(
+        (entry) =>
+          entry.source_name ||
+          entry.source ||
+          entry.category ||
+          "other"
+      )
+    ).size,
+  [entries]
+);
 
   const avgHourly = useMemo(() => {
     const hourly = entries
