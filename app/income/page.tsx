@@ -111,28 +111,33 @@ export default function IncomePage() {
   }
 
   setScanning(true);
-  setMessage("Ben is reading the income proof…");
+  setMessage("Ben is reading every income line…");
 
   try {
     const { text } = await ocrImageFile(imageFile);
     const parsed = parseTransactionsScreenshot(text);
-    const first = parsed[0];
 
-    if (!first) {
-      setMessage("Scanner could not find a clear amount. Open Record Income and enter it manually.");
+    const incomeRows = parsed
+      .map((row) => ({
+        source_name: row.merchant || "Income",
+        amount: Math.abs(clampMoney(row.amount)),
+        date_iso:
+          row.dateText && /^\d{4}-\d{2}-\d{2}$/.test(row.dateText)
+            ? row.dateText
+            : date,
+        selected: true,
+      }))
+      .filter((row) => row.amount > 0);
+
+    if (incomeRows.length === 0) {
+      setMessage("No clear income lines found. Open Record Income and enter it manually.");
       setDrawer("record");
       return;
     }
 
-    setSource(first.merchant || "Income");
-    setAmount(first.amount ? String(Math.abs(Number(first.amount))) : "");
-
-    if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
-      setDate(first.dateText);
-    }
-
-    setDrawer("record");
-    setMessage("Scanner filled what it could. Review it, then tap Save Income.");
+    setScanRows(incomeRows);
+    setDrawer("scan");
+    setMessage(`Ben found ${incomeRows.length} income lines. Review before importing.`);
   } catch (error) {
     console.error(error);
     setMessage("Scanner had trouble reading that image. Manual entry still works.");
