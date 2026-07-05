@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import BenBubble from "@/components/BenBubble";
 import PaperScrollScanner from "@/components/PaperScrollScanner";
-import DebtZeroCeremony from "@/components/DebtZeroCeremony";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
@@ -16,34 +15,19 @@ import { todayISO } from "@/lib/money/utils";
 import { currentMonthStartISO } from "@/lib/money/dates";
 import { playError, playCashRegister } from "@/lib/sounds";
 
-const TREASURY_BG = "/058223E5-4FAA-4CF8-851C-05CBEE73C881.png";
+const INCOME_BG = "/rooms/bank-room.webp";
 
-type PaymentRow = {
+type IncomeRow = {
   id: string;
   user_id: string;
-  date_iso: string;
-  merchant: string | null;
+  source_name: string | null;
   amount: number | string | null;
+  date_iso: string;
   note: string | null;
   created_at: string;
-  debt_id: string | null;
-  bill_id: string | null;
 };
 
-type DebtRow = {
-  id: string;
-  name: string;
-  balance: number | string | null;
-};
-
-type BillRow = {
-  id: string;
-  name: string;
-  target: number | string | null;
-  monthly_target: number | string | null;
-};
-
-export default function PaymentsPage() {
+export default function IncomePage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [userId, setUserId] = useState<string | null>(null);
@@ -52,24 +36,16 @@ export default function PaymentsPage() {
   const [message, setMessage] = useState("");
   const [msgType, setMsgType] = useState<"ok" | "err" | "info">("ok");
 
-  const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [debts, setDebts] = useState<DebtRow[]>([]);
-  const [bills, setBills] = useState<BillRow[]>([]);
-
-  const [dateISO, setDateISO] = useState(todayISO());
-  const [merchant, setMerchant] = useState("");
+  const [income, setIncome] = useState<IncomeRow[]>([]);
   const [amount, setAmount] = useState("");
+  const [source, setSource] = useState("");
+  const [category, setCategory] = useState("Employment");
+  const [hours, setHours] = useState("");
+  const [dateISO, setDateISO] = useState(todayISO());
   const [note, setNote] = useState("");
-  const [payType, setPayType] = useState<"debt" | "bill">("debt");
-  const [debtId, setDebtId] = useState("");
-  const [billId, setBillId] = useState("");
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [ceremony, setCeremony] = useState<{
-    debtName: string;
-    amountPaid: number;
-  } | null>(null);
 
   function notify(msg: string, type: "ok" | "err" | "info" = "ok") {
     setMessage(msg);
@@ -77,9 +53,9 @@ export default function PaymentsPage() {
     window.setTimeout(() => setMessage(""), 4500);
   }
 
-  async function loadPayments(uid: string) {
+  async function loadIncome(uid: string) {
     const { data, error } = await supabase
-      .from("payments")
+      .from("income_entries")
       .select("*")
       .eq("user_id", uid)
       .order("date_iso", { ascending: false })
@@ -90,41 +66,7 @@ export default function PaymentsPage() {
       return;
     }
 
-    setPayments(data || []);
-  }
-
-  async function loadDebts(uid: string) {
-    const { data, error } = await supabase
-      .from("debts")
-      .select("id, name, balance")
-      .eq("user_id", uid)
-      .order("name");
-
-    if (error) {
-      notify(error.message, "err");
-      return;
-    }
-
-    setDebts(data || []);
-  }
-
-  async function loadBills(uid: string) {
-    const { data, error } = await supabase
-      .from("bills")
-      .select("id, name, target, monthly_target")
-      .eq("user_id", uid)
-      .order("name");
-
-    if (error) {
-      notify(error.message, "err");
-      return;
-    }
-
-    setBills(data || []);
-  }
-
-  async function reloadAll(uid: string) {
-    await Promise.all([loadPayments(uid), loadDebts(uid), loadBills(uid)]);
+    setIncome(data || []);
   }
 
   useEffect(() => {
@@ -140,106 +82,84 @@ export default function PaymentsPage() {
       const user = data.session?.user;
 
       if (!user) {
-        notify("Sign in to record payments.", "info");
+        notify("Sign in to record income.", "info");
         setLoading(false);
         return;
       }
 
       setUserId(user.id);
-      await reloadAll(user.id);
+      await loadIncome(user.id);
       setLoading(false);
     }
 
     void init();
   }, [supabase]);
 
-  async function handleScanPayment() {
+  async function handleScanIncome() {
     if (!imageFile) return;
 
     setScanning(true);
-    notify("Ben is reading the payment proof.", "info");
+    notify("Ben is reading the income proof.", "info");
 
     try {
       const { text } = await ocrImageFile(imageFile);
       const first = parseTransactionsScreenshot(text)[0];
 
       if (!first) {
-        notify("No clear payment found. Fill it in manually.", "info");
+        notify("No clear income found. Fill it in manually.", "info");
         setScanning(false);
         return;
       }
 
-      setMerchant(first.merchant || "");
-
-      if (first.amount) {
-        setAmount(String(first.amount));
-      }
+      setSource(first.merchant || "");
+      if (first.amount) setAmount(String(first.amount));
 
       if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
         setDateISO(first.dateText);
       }
 
-      setNote("Scanned payment proof");
+      setNote("Scanned income proof");
       notify("Scanner filled what it could. Review before saving.", "info");
     } catch {
-      notify("Scanner had trouble with that proof. Manual entry still works.", "err");
+      notify("Scanner had trouble. Manual entry still works.", "err");
     }
 
     setScanning(false);
   }
 
-  async function handleAddPayment() {
-    setMessage("");
-
+  async function handleSaveIncome() {
     if (!userId) return;
 
     const amt = clampMoney(amount);
 
-    if (!merchant.trim() || amt <= 0) {
+    if (amt <= 0) {
       playError();
-      notify("Enter a payment name and amount.", "err");
+      notify("Enter an income amount.", "err");
       return;
     }
 
-    if (payType === "debt" && !debtId) {
+    if (!source.trim()) {
       playError();
-      notify("Select a debt.", "err");
-      return;
-    }
-
-    if (payType === "bill" && !billId) {
-      playError();
-      notify("Select a bill.", "err");
+      notify("Enter who paid you or the income source.", "err");
       return;
     }
 
     setSaving(true);
 
-    let triggeredDebt: { name: string; balance: number } | null = null;
+    const finalNote = [
+      note.trim(),
+      category ? `Category: ${category}` : "",
+      hours ? `Hours: ${hours}` : "",
+    ]
+      .filter(Boolean)
+      .join(" • ");
 
-    if (payType === "debt" && debtId) {
-      const target = debts.find((d) => d.id === debtId);
-
-      if (target) {
-        const remaining = clampMoney(target.balance) - amt;
-
-        if (remaining <= 0) {
-          triggeredDebt = {
-            name: target.name,
-            balance: clampMoney(target.balance),
-          };
-        }
-      }
-    }
-
-    const { error } = await supabase.from("payments").insert({
+    const { error } = await supabase.from("income_entries").insert({
       user_id: userId,
-      date_iso: dateISO,
-      merchant: merchant.trim(),
+      source_name: source.trim(),
       amount: amt,
-      note: note.trim() || null,
-      debt_id: payType === "debt" ? debtId : null,
-      bill_id: payType === "bill" ? billId : null,
+      date_iso: dateISO,
+      note: finalNote || null,
     });
 
     if (error) {
@@ -249,60 +169,56 @@ export default function PaymentsPage() {
       return;
     }
 
-    setMerchant("");
+    playCashRegister();
+    notify("Income recorded. Ben stamped the ledger.", "ok");
+
     setAmount("");
-    setNote("");
-    setDebtId("");
-    setBillId("");
-    setPayType("debt");
+    setSource("");
+    setCategory("Employment");
+    setHours("");
     setDateISO(todayISO());
+    setNote("");
     setImageFile(null);
 
-    await reloadAll(userId);
-
-    if (triggeredDebt) {
-      setCeremony({ debtName: triggeredDebt.name, amountPaid: amt });
-    } else {
-      playCashRegister();
-      notify("Payment recorded. Ben stamped the ledger.", "ok");
-    }
-
+    await loadIncome(userId);
     setSaving(false);
   }
 
   const currentMonthStart = currentMonthStartISO();
 
-  const monthlyPayments = useMemo(
+  const monthlyIncome = useMemo(
     () =>
-      payments.filter(
-        (payment) =>
-          (payment.date_iso || payment.created_at || "").slice(0, 10) >=
-          currentMonthStart
+      income.filter(
+        (row) =>
+          (row.date_iso || row.created_at || "").slice(0, 10) >= currentMonthStart
       ),
-    [payments, currentMonthStart]
+    [income, currentMonthStart]
   );
 
   const monthlyTotal = useMemo(
-    () => monthlyPayments.reduce((sum, payment) => sum + clampMoney(payment.amount), 0),
-    [monthlyPayments]
+    () => monthlyIncome.reduce((sum, row) => sum + clampMoney(row.amount), 0),
+    [monthlyIncome]
   );
 
   const allTimeTotal = useMemo(
-    () => payments.reduce((sum, payment) => sum + clampMoney(payment.amount), 0),
-    [payments]
+    () => income.reduce((sum, row) => sum + clampMoney(row.amount), 0),
+    [income]
   );
 
-  const latestPayment = payments[0];
-  const debtPayments = payments.filter((payment) => payment.debt_id).length;
-  const billPayments = payments.filter((payment) => payment.bill_id).length;
-  const monthlyDebtPay = monthlyPayments.filter((payment) => payment.debt_id).length;
-  const monthlyBillPay = monthlyPayments.filter((payment) => payment.bill_id).length;
+  const uniqueSources = useMemo(() => {
+    const names = new Set(
+      income.map((row) => row.source_name || "Income").filter(Boolean)
+    );
+    return names.size;
+  }, [income]);
+
+  const latestIncome = income[0];
 
   const benInsight = BenEngine.getForecastMessage({
     name: null,
-    timeframeLabel: "Treasury",
-    totalNeeded: allTimeTotal,
-    incomeSoFar: allTimeTotal,
+    timeframeLabel: "Income",
+    totalNeeded: monthlyTotal,
+    incomeSoFar: monthlyTotal,
     incomeGap: 0,
     dailyIncomeNeeded: 0,
   });
@@ -311,28 +227,17 @@ export default function PaymentsPage() {
     return (
       <main className="min-h-screen grid place-items-center bg-black text-[#f5e6c8]">
         <div className="rounded-3xl border border-[#c9a84c]/40 bg-black/80 px-8 py-6">
-          Opening the Treasury Ledger...
+          Ben is opening the income ledger...
         </div>
       </main>
     );
   }
 
   return (
-    <main className="payments-page">
-      {ceremony && (
-        <DebtZeroCeremony
-          debtName={ceremony.debtName}
-          amountPaid={ceremony.amountPaid}
-          onClose={() => {
-            setCeremony(null);
-            notify("Debt cleared from the ledger. Well done!", "ok");
-          }}
-        />
-      )}
-
+    <main className="income-page">
       <section className="hero">
         <div className="hero-frame">
-          <img src={TREASURY_BG} alt="Treasury Hall" className="hero-img" />
+          <img src={INCOME_BG} alt="Ben at the bank desk" className="hero-img" />
           <div className="hero-shade" />
 
           <div className="hero-top">
@@ -342,80 +247,71 @@ export default function PaymentsPage() {
           </div>
 
           <div className="hero-title">
-            <p className="eyebrow">Treasury Hall</p>
-            <h1>Payment Ledger</h1>
+            <p className="eyebrow">Franklin’s Bank</p>
+            <h1>Income Ledger</h1>
             <p className="hero-sub">
-              Record payments, scan proof, and let Ben stamp each victory into
-              the colony ledger.
+              Record income, scan proof, and let Ben turn every dollar into town progress.
             </p>
           </div>
         </div>
       </section>
 
       <div className="desk-content">
+        <div className="action-grid">
+          <Link href="/income" className="action-btn green">
+            + Record Income
+          </Link>
+
+          <Link href="/income-plan" className="action-btn gold">
+            📜 Income Plan
+          </Link>
+
+          <Link href="/crisis" className="action-btn red">
+            🚨 Need Money Fast
+          </Link>
+        </div>
+
         <div className="stats-grid">
           <MetricTile
             icon="🪙"
-            label="Paid This Month"
+            label="Income This Month"
             value={money(monthlyTotal)}
-            helper={`${monthlyPayments.length} payments`}
+            helper={`${monthlyIncome.length} entries`}
           />
           <MetricTile
             icon="📜"
-            label="All-Time Paid"
+            label="All-Time Income"
             value={money(allTimeTotal)}
-            helper={`${payments.length} entries`}
+            helper={`${income.length} ledger entries`}
           />
           <MetricTile
-            icon="💳"
-            label="Debt Payments"
-            value={String(debtPayments)}
-            helper={`${monthlyDebtPay} this month`}
+            icon="🏦"
+            label="Income Sources"
+            value={String(uniqueSources)}
+            helper="tracked sources"
           />
           <MetricTile
-            icon="📬"
-            label="Bill Payments"
-            value={String(billPayments)}
-            helper={`${monthlyBillPay} this month`}
+            icon="✨"
+            label="Latest"
+            value={latestIncome ? money(latestIncome.amount) : "$0.00"}
+            helper={latestIncome?.source_name || "No income yet"}
           />
         </div>
 
         {message && <div className={`notice ${msgType}`}>{message}</div>}
 
         <ColonialCard>
-          <h2>Ben’s Treasury Briefing</h2>
-          <p className="card-sub">
-            A quick word from the desk before the ledger opens.
-          </p>
+          <h2>Ben’s Income Briefing</h2>
+          <p className="card-sub">A word from the desk before the ledger opens.</p>
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </ColonialCard>
 
         <div className="work-grid">
           <ColonialCard>
-            <h2>Record Payment</h2>
-            <p className="card-sub">
-              {merchant || amount
-                ? "Draft ready — review and stamp it."
-                : "Enter a new victory for the treasury."}
-            </p>
+            <h2>Record Income</h2>
+            <p className="card-sub">Earn it, name it, and put it in the ledger.</p>
 
             <div className="form-grid">
-              <Field label="Date">
-                <input
-                  type="date"
-                  value={dateISO}
-                  onChange={(event) => setDateISO(event.target.value)}
-                />
-              </Field>
-
-              <Field label="Payment Name">
-                <input
-                  value={merchant}
-                  onChange={(event) => setMerchant(event.target.value)}
-                  placeholder="Car payment, Credit One, rent..."
-                />
-              </Field>
-
               <Field label="Amount">
                 <input
                   type="number"
@@ -427,50 +323,44 @@ export default function PaymentsPage() {
                 />
               </Field>
 
-              <Field label="Payment Type">
+              <Field label="Paid By / Source">
+                <input
+                  value={source}
+                  onChange={(event) => setSource(event.target.value)}
+                  placeholder="DoorDash, employer, client..."
+                />
+              </Field>
+
+              <Field label="Category">
                 <select
-                  value={payType}
-                  onChange={(event) => {
-                    setPayType(event.target.value as "debt" | "bill");
-                    setDebtId("");
-                    setBillId("");
-                  }}
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value)}
                 >
-                  <option value="debt">💳 Debt Payment</option>
-                  <option value="bill">📬 Bill Payment</option>
+                  <option>Employment</option>
+                  <option>Side Hustle</option>
+                  <option>DoorDash</option>
+                  <option>Client</option>
+                  <option>Cash</option>
+                  <option>Refund</option>
+                  <option>Other</option>
                 </select>
               </Field>
 
-              <Field label={payType === "debt" ? "Select Debt" : "Select Bill"} full>
-                {payType === "debt" ? (
-                  <select
-                    value={debtId}
-                    onChange={(event) => setDebtId(event.target.value)}
-                  >
-                    <option value="">Choose a debt...</option>
-                    {debts.map((debt) => (
-                      <option key={debt.id} value={debt.id}>
-                        {debt.name}
-                        {debt.balance != null
-                          ? ` — ${money(debt.balance)} balance`
-                          : ""}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <select
-                    value={billId}
-                    onChange={(event) => setBillId(event.target.value)}
-                  >
-                    <option value="">Choose a bill...</option>
-                    {bills.map((bill) => (
-                      <option key={bill.id} value={bill.id}>
-                        {bill.name} —{" "}
-                        {money(bill.monthly_target ?? bill.target ?? 0)}
-                      </option>
-                    ))}
-                  </select>
-                )}
+              <Field label="Hours Worked">
+                <input
+                  value={hours}
+                  onChange={(event) => setHours(event.target.value)}
+                  placeholder="Optional"
+                  inputMode="decimal"
+                />
+              </Field>
+
+              <Field label="Date" full>
+                <input
+                  type="date"
+                  value={dateISO}
+                  onChange={(event) => setDateISO(event.target.value)}
+                />
               </Field>
 
               <Field label="Note" full>
@@ -478,77 +368,67 @@ export default function PaymentsPage() {
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
                   rows={3}
-                  placeholder="Optional note for the ledger..."
+                  placeholder="Optional note..."
                 />
               </Field>
 
               <button
-                onClick={handleAddPayment}
+                onClick={handleSaveIncome}
                 disabled={saving}
-                className="record-btn"
+                className="save-btn"
               >
-                {saving ? "Recording..." : "🪙 Record Payment"}
+                {saving ? "Saving..." : "Save Income"}
               </button>
             </div>
           </ColonialCard>
 
           <ColonialCard>
-            <h2>Scan Payment Proof</h2>
-            <p className="card-sub">Upload receipt, screenshot, or confirmation.</p>
+            <h2>Scan Income Proof</h2>
+            <p className="card-sub">
+              Upload a DoorDash screenshot, paycheck, deposit, or receipt.
+            </p>
+
             <PaperScrollScanner
-              title="Scan Payment Proof"
-              description="Upload receipt, screenshot, or confirmation. Ben will fill the draft."
+              title="Scan Income Proof"
+              description="Upload income proof. Ben will fill what he can, and you approve the ledger."
               file={imageFile}
               busy={scanning}
               onFileChange={setImageFile}
-              onScan={() => void handleScanPayment()}
+              onScan={() => void handleScanIncome()}
             />
           </ColonialCard>
         </div>
 
         <ColonialCard>
-          <h2>Recent Ledger Entries</h2>
+          <h2>Recent Income</h2>
           <p className="card-sub">
-            {latestPayment
-              ? `${latestPayment.merchant || "Latest"} — ${money(
-                  latestPayment.amount
-                )}`
-              : "The ledger awaits its first victory."}
+            {latestIncome
+              ? `${latestIncome.source_name || "Latest"} — ${money(latestIncome.amount)}`
+              : "The ledger awaits its first income entry."}
           </p>
 
           <div className="ledger-list">
-            {payments.length === 0 ? (
-              <div className="empty-ledger">
-                No payments yet. The treasury ledger is ready.
-              </div>
+            {income.length === 0 ? (
+              <div className="empty-ledger">No income yet. The bank ledger is ready.</div>
             ) : (
-              payments.map((payment) => {
-                const isDebt = !!payment.debt_id;
-                const isBill = !!payment.bill_id;
+              income.map((row) => {
                 const isThisMonth =
-                  (payment.date_iso || "").slice(0, 7) >=
-                  currentMonthStart.slice(0, 7);
+                  (row.date_iso || "").slice(0, 7) >= currentMonthStart.slice(0, 7);
 
                 return (
-                  <div key={payment.id} className="ledger-row">
+                  <div key={row.id} className="ledger-row">
                     <div>
                       <div className="ledger-title">
-                        <strong>{payment.merchant || "Payment"}</strong>
-                        <span>
-                          {isDebt ? "💳 Debt" : isBill ? "📬 Bill" : "📜 Ledger"}
-                        </span>
+                        <strong>{row.source_name || "Income"}</strong>
                         {isThisMonth && <span className="green">This month</span>}
                       </div>
-
                       <div className="ledger-meta">
-                        {payment.date_iso}
-                        {payment.note ? ` • ${payment.note}` : ""}
+                        {row.date_iso}
+                        {row.note ? ` • ${row.note}` : ""}
                       </div>
                     </div>
 
-                    <strong className="ledger-amount">
-                      {money(payment.amount)}
-                    </strong>
+                    <strong className="ledger-amount">{money(row.amount)}</strong>
                   </div>
                 );
               })
@@ -557,12 +437,12 @@ export default function PaymentsPage() {
         </ColonialCard>
 
         <div className="quote">
-          “A penny saved is a penny earned.” — Benjamin Franklin
+          “An investment in knowledge pays the best interest.” — Benjamin Franklin
         </div>
       </div>
 
       <style jsx>{`
-        .payments-page {
+        .income-page {
           min-height: 100vh;
           padding-top: 250px;
           padding-bottom: 100px;
@@ -602,7 +482,7 @@ export default function PaymentsPage() {
           inset: 0;
           pointer-events: none;
           background:
-            linear-gradient(180deg, rgba(5, 3, 2, 0.08), rgba(5, 3, 2, 0.18) 45%, rgba(5, 3, 2, 0.82)),
+            linear-gradient(180deg, rgba(5, 3, 2, 0.05), rgba(5, 3, 2, 0.16) 45%, rgba(5, 3, 2, 0.82)),
             linear-gradient(90deg, rgba(5, 3, 2, 0.55), transparent 45%, rgba(5, 3, 2, 0.35));
         }
 
@@ -665,6 +545,42 @@ export default function PaymentsPage() {
           gap: 18px;
         }
 
+        .action-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .action-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 76px;
+          border-radius: 26px;
+          text-decoration: none;
+          font-family: var(--font-cormorant), Georgia, serif;
+          font-size: 30px;
+          font-weight: 800;
+          border: 1px solid rgba(201, 168, 76, 0.35);
+        }
+
+        .action-btn.green {
+          background: rgba(22, 101, 52, 0.95);
+          color: #f5e6c8;
+          border-color: rgba(74, 222, 128, 0.75);
+        }
+
+        .action-btn.gold {
+          background: rgba(0, 0, 0, 0.7);
+          color: #f5e6c8;
+        }
+
+        .action-btn.red {
+          background: rgba(69, 10, 10, 0.82);
+          color: #fecaca;
+          border-color: rgba(248, 113, 113, 0.55);
+        }
+
         .stats-grid {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -702,7 +618,7 @@ export default function PaymentsPage() {
         }
 
         .field.full,
-        .record-btn {
+        .save-btn {
           grid-column: 1 / -1;
         }
 
@@ -729,7 +645,7 @@ export default function PaymentsPage() {
           outline: none;
         }
 
-        .record-btn {
+        .save-btn {
           border: 1px solid rgba(74, 222, 128, 0.65);
           border-radius: 20px;
           padding: 16px 18px;
@@ -739,7 +655,7 @@ export default function PaymentsPage() {
           font-weight: 900;
         }
 
-        .record-btn:disabled {
+        .save-btn:disabled {
           opacity: 0.6;
         }
 
@@ -774,16 +690,11 @@ export default function PaymentsPage() {
         }
 
         .ledger-title span {
-          color: #facc15;
+          color: #4ade80;
           font-size: 12px;
-          border: 1px solid rgba(250, 204, 21, 0.24);
+          border: 1px solid rgba(74, 222, 128, 0.28);
           border-radius: 999px;
           padding: 3px 8px;
-        }
-
-        .ledger-title .green {
-          color: #4ade80;
-          border-color: rgba(74, 222, 128, 0.28);
         }
 
         .ledger-meta {
@@ -807,6 +718,10 @@ export default function PaymentsPage() {
         }
 
         @media (max-width: 900px) {
+          .action-grid {
+            grid-template-columns: 1fr;
+          }
+
           .stats-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
@@ -817,7 +732,7 @@ export default function PaymentsPage() {
         }
 
         @media (max-width: 640px) {
-          .payments-page {
+          .income-page {
             padding-top: 250px;
           }
 
@@ -862,6 +777,11 @@ export default function PaymentsPage() {
             grid-template-columns: 1fr;
           }
 
+          .action-btn {
+            min-height: 72px;
+            font-size: 28px;
+          }
+
           .ledger-row {
             flex-direction: column;
           }
@@ -877,13 +797,11 @@ export default function PaymentsPage() {
 
 function ColonialCard({
   children,
-  className = "",
 }: {
   children: React.ReactNode;
-  className?: string;
 }) {
   return (
-    <section className={`colonial-card ${className}`}>
+    <section className="colonial-card">
       {children}
 
       <style jsx>{`
