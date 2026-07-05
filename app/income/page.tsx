@@ -29,14 +29,10 @@ import {
 type IncomeEntry = {
   id: string;
   user_id: string;
+  source_name: string;
   amount: number | string | null;
-  category?: string | null;
-  source?: string | null;
-  source_name?: string | null;
-  hours_worked?: number | string | null;
-  hourly_rate?: number | string | null;
-  date_iso?: string | null;
-  received_on?: string | null;
+  date_iso: string;
+  note: string | null;
   created_at: string;
 };
 type Drawer = "record" | "scan" | "plan" | null;
@@ -148,7 +144,6 @@ async function handleAddIncome() {
   setMessage("");
 
   const amt = clampMoney(amount);
-  const hrs = clampMoney(hoursWorked);
 
   if (amt <= 0) {
     playError();
@@ -170,16 +165,19 @@ async function handleAddIncome() {
 
   setSaving(true);
 
-  const hourlyRate = hrs > 0 ? clampMoney(amt / hrs) : null;
+  const incomeNote = [
+    category ? `Category: ${category}` : "",
+    hoursWorked ? `Hours: ${hoursWorked}` : "",
+  ]
+    .filter(Boolean)
+    .join(" • ");
 
   const { error } = await supabase.from("income_entries").insert({
     user_id: userId,
-    amount: amt,
-    category,
     source_name: source.trim(),
-    hours_worked: hrs > 0 ? hrs : null,
-    hourly_rate: hourlyRate,
+    amount: amt,
     date_iso: date,
+    note: incomeNote || null,
   });
 
   setSaving(false);
