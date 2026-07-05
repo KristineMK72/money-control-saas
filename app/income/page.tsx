@@ -35,7 +35,34 @@ type IncomeEntry = {
   note: string | null;
   created_at: string;
 };
-type Drawer = "record" | "scan" | "plan" | null;
+
+type SpendEntry = {
+  id: string;
+  amount: number | string | null;
+  date_iso: string;
+};
+
+type PaymentEntry = {
+  id: string;
+  amount: number | string | null;
+  date_iso: string;
+};
+
+type BillRow = {
+  id: string;
+  target: number | string | null;
+  monthly_target: number | string | null;
+  is_monthly: boolean | null;
+};
+
+type DebtRow = {
+  id: string;
+  min_payment: number | string | null;
+  monthly_min_payment: number | string | null;
+  is_monthly: boolean | null;
+};
+
+type Drawer = "record" | "scan" | "plan" | "hourly" | null;
 
 const CATEGORIES = [
   { value: "employment", label: "Employment", icon: "🏛" },
@@ -46,11 +73,25 @@ const CATEGORIES = [
   { value: "other", label: "Other", icon: "💰" },
 ];
 
+const HOURLY_TARGETS = [40, 30, 20, 10, 5];
+
+function safeNum(value: unknown) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function entryDate(entry: IncomeEntry) {
   return (entry.date_iso || entry.created_at || "").slice(0, 10);
 }
+
 function monthPrefix(date: string) {
   return date.slice(0, 7);
+}
+
+function readHoursFromNote(note?: string | null) {
+  if (!note) return 0;
+  const match = note.match(/Hours:\s*([\d.]+)/i);
+  return match ? safeNum(match[1]) : 0;
 }
 
 export default function IncomePage() {
@@ -60,6 +101,10 @@ export default function IncomePage() {
   const [saving, setSaving] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [entries, setEntries] = useState<IncomeEntry[]>([]);
+  const [spendEntries, setSpendEntries] = useState<SpendEntry[]>([]);
+  const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
+  const [bills, setBills] = useState<BillRow[]>([]);
+  const [debts, setDebts] = useState<DebtRow[]>([]);
   const [message, setMessage] = useState("");
 
   const [drawer, setDrawer] = useState<Drawer>("record");
@@ -73,15 +118,17 @@ export default function IncomePage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanRows, setScanRows] = useState<
-  {
-    source_name: string;
-    amount: number;
-    date_iso: string;
-    selected: boolean;
-  }[]
->([]);
+    {
+      source_name: string;
+      amount: number;
+      date_iso: string;
+      selected: boolean;
+    }[]
+  >([]);
+
   useEffect(() => {
     void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadData() {
@@ -99,168 +146,259 @@ export default function IncomePage() {
 
     setUserId(user.id);
 
-    const { data, error } = await supabase
-      .from("income_entries")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+    const [incomeRes, spendRes, paymentRes, billsRes, debtsRes] =
+      await Promise.all([
+        supabase
+          .from("income_entries")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
 
-    if (error) setMessage(error.message);
+        supabase
+          .from("spend_entries")
+          .select("id, amount, date_iso")
+          .eq("user_id", user.id),
 
-    setEntries((data || []) as IncomeEntry[]);
+        supabase
+          .from("payments")
+          .select("id, amount, date_iso")
+          .eq("user_id", user.id),
+
+        supabase
+          .from("bills")
+          .select("id, target, monthly_target, is_monthly")
+          .eq("user_id", user.id),
+
+        supabase
+          .from("debts")
+          .select("id, min_payment, monthly_min_payment, is_monthly")
+          .eq("user_id", user.id),
+      ]);
+
+    if (incomeRes.error) setMessage(incomeRes.error.message);
+    if (spendRes.error) setMessage(spendRes.error.message);
+    if (paymentRes.error) setMessage(paymentRes.error.message);
+    if (billsRes.error) setMessage(billsRes.error.message);
+    if (debtsRes.error) setMessage(debtsRes.error.message);
+
+    setEntries((incomeRes.data || []) as IncomeEntry[]);
+    setSpendEntries((spendRes.data || []) as SpendEntry[]);
+    setPaymentEntries((paymentRes.data || []) as PaymentEntry[]);
+    setBills((billsRes.data || []) as BillRow[]);
+    setDebts((debtsRes.data || []) as DebtRow[]);
+
     setLoading(false);
   }
 
- async function handleScanIncome() {
-  if (!imageFile) {
-    setMessage("Choose an income screenshot or deposit proof first.");
-    return;
-  }
-
-  setScanning(true);
-  setMessage("Ben is reading every income line…");
-
-  try {
-    const { text } = await ocrImageFile(imageFile);
-    const parsed = parseTransactionsScreenshot(text);
-
-    const incomeRows = parsed
-      .map((row) => ({
-        source_name: row.merchant || "Income",
-        amount: Math.abs(clampMoney(row.amount)),
-        date_iso:
-          row.dateText && /^\d{4}-\d{2}-\d{2}$/.test(row.dateText)
-            ? row.dateText
-            : date,
-        selected: true,
-      }))
-      .filter((row) => row.amount > 0);
-
-    if (incomeRows.length === 0) {
-      setMessage("No clear income lines found. Open Record Income and enter it manually.");
-      setDrawer("record");
+  async function handleScanIncome() {
+    if (!imageFile) {
+      setMessage("Choose an income screenshot or deposit proof first.");
       return;
     }
 
-    setScanRows(incomeRows);
-    setDrawer("scan");
-    setMessage(`Ben found ${incomeRows.length} income lines. Review before importing.`);
-  } catch (error) {
-    console.error(error);
-    setMessage("Scanner had trouble reading that image. Manual entry still works.");
-    setDrawer("record");
-  } finally {
-    setScanning(false);
+    setScanning(true);
+    setMessage("Ben is reading every income line…");
+
+    try {
+      const { text } = await ocrImageFile(imageFile);
+      const parsed = parseTransactionsScreenshot(text);
+
+      const incomeRows = parsed
+        .map((row) => ({
+          source_name: row.merchant || "Income",
+          amount: Math.abs(clampMoney(row.amount)),
+          date_iso:
+            row.dateText && /^\d{4}-\d{2}-\d{2}$/.test(row.dateText)
+              ? row.dateText
+              : date,
+          selected: true,
+        }))
+        .filter((row) => row.amount > 0);
+
+      if (incomeRows.length === 0) {
+        setMessage(
+          "No clear income lines found. Open Record Income and enter it manually."
+        );
+        setDrawer("record");
+        return;
+      }
+
+      setScanRows(incomeRows);
+      setDrawer("scan");
+      setMessage(
+        `Ben found ${incomeRows.length} income lines. Review before importing.`
+      );
+    } catch (error) {
+      console.error(error);
+      setMessage("Scanner had trouble reading that image. Manual entry still works.");
+      setDrawer("record");
+    } finally {
+      setScanning(false);
+    }
   }
-}
-async function importScannedIncome() {
-  if (!userId) {
-    setMessage("Not signed in.");
-    return;
+
+  async function importScannedIncome() {
+    if (!userId) {
+      setMessage("Not signed in.");
+      return;
+    }
+
+    const selectedRows = scanRows.filter((row) => row.selected);
+
+    if (selectedRows.length === 0) {
+      setMessage("Select at least one income line.");
+      return;
+    }
+
+    setSaving(true);
+
+    const { error } = await supabase.from("income_entries").insert(
+      selectedRows.map((row) => ({
+        user_id: userId,
+        source_name: row.source_name,
+        amount: row.amount,
+        date_iso: row.date_iso,
+        note: "Imported from scanner",
+      }))
+    );
+
+    setSaving(false);
+
+    if (error) {
+      playError();
+      setMessage(error.message);
+      return;
+    }
+
+    playCoins();
+    setScanRows([]);
+    setImageFile(null);
+    setMessage(`${selectedRows.length} income lines imported.`);
+    await loadData();
   }
 
-  const selectedRows = scanRows.filter((row) => row.selected);
+  async function handleAddIncome() {
+    setMessage("");
 
-  if (selectedRows.length === 0) {
-    setMessage("Select at least one income line.");
-    return;
-  }
+    const amt = clampMoney(amount);
 
-  setSaving(true);
+    if (amt <= 0) {
+      playError();
+      setMessage("Enter a valid income amount.");
+      return;
+    }
 
-  const { error } = await supabase.from("income_entries").insert(
-    selectedRows.map((row) => ({
+    if (!source.trim()) {
+      playError();
+      setMessage("Enter who paid you or the income source.");
+      return;
+    }
+
+    if (!userId) {
+      playError();
+      setMessage("Not signed in.");
+      return;
+    }
+
+    setSaving(true);
+
+    const incomeNote = [
+      category ? `Category: ${category}` : "",
+      hoursWorked ? `Hours: ${hoursWorked}` : "",
+    ]
+      .filter(Boolean)
+      .join(" • ");
+
+    const { error } = await supabase.from("income_entries").insert({
       user_id: userId,
-      source_name: row.source_name,
-      amount: row.amount,
-      date_iso: row.date_iso,
-      note: "Imported from scanner",
-    }))
-  );
+      source_name: source.trim(),
+      amount: amt,
+      date_iso: date,
+      note: incomeNote || null,
+    });
 
-  setSaving(false);
+    setSaving(false);
 
-  if (error) {
-    playError();
-    setMessage(error.message);
-    return;
+    if (error) {
+      playError();
+      setMessage(error.message);
+      return;
+    }
+
+    playCoins();
+    setAmount("");
+    setSource("");
+    setHoursWorked("");
+    setImageFile(null);
+    setDrawer(null);
+    setMessage("Income recorded in Franklin’s ledger.");
+    await loadData();
   }
-
-  playCoins();
-  setScanRows([]);
-  setImageFile(null);
-  setMessage(`${selectedRows.length} income lines imported.`);
-  await loadData();
-}
-async function handleAddIncome() {
-  setMessage("");
-
-  const amt = clampMoney(amount);
-
-  if (amt <= 0) {
-    playError();
-    setMessage("Enter a valid income amount.");
-    return;
-  }
-
-  if (!source.trim()) {
-    playError();
-    setMessage("Enter who paid you or the income source.");
-    return;
-  }
-
-  if (!userId) {
-    playError();
-    setMessage("Not signed in.");
-    return;
-  }
-
-  setSaving(true);
-
-  const incomeNote = [
-    category ? `Category: ${category}` : "",
-    hoursWorked ? `Hours: ${hoursWorked}` : "",
-  ]
-    .filter(Boolean)
-    .join(" • ");
-
-  const { error } = await supabase.from("income_entries").insert({
-    user_id: userId,
-    source_name: source.trim(),
-    amount: amt,
-    date_iso: date,
-    note: incomeNote || null,
-  });
-
-  setSaving(false);
-
-  if (error) {
-    playError();
-    setMessage(error.message);
-    return;
-  }
-
-  playCoins();
-  setAmount("");
-  setSource("");
-  setHoursWorked("");
-  setImageFile(null);
-  setDrawer(null);
-  setMessage("Income recorded in Franklin’s ledger.");
-  await loadData();
-}
 
   const thisMonth = monthPrefix(currentMonthStartISO());
 
-  const thisMonthTotal = useMemo(
-    () =>
-      addMoney(
-        entries
-          .filter((entry) => monthPrefix(entryDate(entry)) === thisMonth)
-          .map((entry) => entry.amount)
-      ),
+  const thisMonthEntries = useMemo(
+    () => entries.filter((entry) => monthPrefix(entryDate(entry)) === thisMonth),
     [entries, thisMonth]
   );
+
+  const thisMonthTotal = useMemo(
+    () => addMoney(thisMonthEntries.map((entry) => entry.amount)),
+    [thisMonthEntries]
+  );
+
+  const thisMonthSpend = useMemo(
+    () =>
+      addMoney(
+        spendEntries
+          .filter((entry) => monthPrefix(entry.date_iso) === thisMonth)
+          .map((entry) => entry.amount)
+      ),
+    [spendEntries, thisMonth]
+  );
+
+  const thisMonthPayments = useMemo(
+    () =>
+      addMoney(
+        paymentEntries
+          .filter((entry) => monthPrefix(entry.date_iso) === thisMonth)
+          .map((entry) => entry.amount)
+      ),
+    [paymentEntries, thisMonth]
+  );
+
+  const monthlyBillsTotal = useMemo(
+    () => addMoney(bills.map((bill) => bill.monthly_target ?? bill.target)),
+    [bills]
+  );
+
+  const monthlyDebtMinimums = useMemo(
+    () =>
+      addMoney(
+        debts.map((debt) => debt.monthly_min_payment ?? debt.min_payment)
+      ),
+    [debts]
+  );
+
+  const monthlyNeed = Math.max(
+    0,
+    monthlyBillsTotal + monthlyDebtMinimums + thisMonthSpend
+  );
+
+  const remainingIncomeNeeded = Math.max(0, monthlyNeed - thisMonthTotal);
+  const leftAfterNeed = Math.max(0, thisMonthTotal - monthlyNeed);
+
+  const hourlyNeeded = useMemo(
+    () =>
+      HOURLY_TARGETS.map((hours) => ({
+        hours,
+        hourly: hours > 0 ? remainingIncomeNeeded / hours : 0,
+      })),
+    [remainingIncomeNeeded]
+  );
+
+  const todayGoal = Math.max(0, Math.ceil(remainingIncomeNeeded / 7));
+  const weeklyGoal = Math.max(0, Math.ceil(remainingIncomeNeeded / 4));
 
   const allTimeTotal = useMemo(
     () => addMoney(entries.map((entry) => entry.amount)),
@@ -273,12 +411,25 @@ async function handleAddIncome() {
     return clampMoney(allTimeTotal / Math.max(months.size, 1));
   }, [entries, allTimeTotal]);
 
-const sourcesCount = useMemo(
-  () => new Set(entries.map((entry) => entry.source_name || "other")).size,
-  [entries]
-);
+  const sourcesCount = useMemo(
+    () => new Set(entries.map((entry) => entry.source_name || "other")).size,
+    [entries]
+  );
 
-const avgHourly = 0;
+  const avgHourly = useMemo(() => {
+    const incomeWithHours = thisMonthEntries
+      .map((entry) => ({
+        amount: clampMoney(entry.amount),
+        hours: readHoursFromNote(entry.note),
+      }))
+      .filter((entry) => entry.amount > 0 && entry.hours > 0);
+
+    const totalIncomeWithHours = addMoney(incomeWithHours.map((entry) => entry.amount));
+    const totalHours = incomeWithHours.reduce((sum, entry) => sum + entry.hours, 0);
+
+    return totalHours > 0 ? totalIncomeWithHours / totalHours : 0;
+  }, [thisMonthEntries]);
+
   const chartData = useMemo(() => {
     return Array.from({ length: 6 }, (_, index) => {
       const [year, month] = thisMonth.split("-").map(Number);
@@ -305,10 +456,10 @@ const avgHourly = 0;
   const benInsight = BenEngine.getForecastMessage({
     name: null,
     timeframeLabel: "Income Room",
-    totalNeeded: thisMonthTotal,
+    totalNeeded: monthlyNeed,
     incomeSoFar: thisMonthTotal,
-    incomeGap: 0,
-    dailyIncomeNeeded: 0,
+    incomeGap: remainingIncomeNeeded,
+    dailyIncomeNeeded: todayGoal,
   });
 
   if (loading) {
@@ -328,7 +479,7 @@ const avgHourly = 0;
 
         <div className="stats-grid">
           <MiniMetric icon="🪙" label="This Month" value={money(thisMonthTotal)} good />
-          <MiniMetric icon="🏦" label="All Time" value={money(allTimeTotal)} />
+          <MiniMetric icon="🎯" label="Income Needed" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
           <MiniMetric icon="⏱️" label="Avg Hourly" value={avgHourly > 0 ? money(avgHourly) : "—"} />
           <MiniMetric icon="👥" label="Sources" value={String(sourcesCount)} />
         </div>
@@ -337,6 +488,72 @@ const avgHourly = 0;
           <h2>Ben&apos;s Bank Briefing</h2>
           <p className="card-sub">A word from the desk before the ledger opens.</p>
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
+        </RoomCard>
+
+        <RoomCard>
+          <h2>Income Needed Breakdown</h2>
+          <p className="card-sub">
+            This compares your income against monthly bills, debt minimums, and spending.
+          </p>
+
+          <div className="plan-grid">
+            <MiniMetric icon="📋" label="Bills" value={money(monthlyBillsTotal)} />
+            <MiniMetric icon="💳" label="Debt Minimums" value={money(monthlyDebtMinimums)} />
+            <MiniMetric icon="🛒" label="Spending" value={money(thisMonthSpend)} />
+            <MiniMetric icon="🏦" label="Monthly Need" value={money(monthlyNeed)} />
+          </div>
+
+          <div className="gap-box">
+            {remainingIncomeNeeded > 0 ? (
+              <>
+                <p className="gap-eyebrow">Still Need</p>
+                <p className="gap-money danger">{money(remainingIncomeNeeded)}</p>
+                <p className="gap-note">
+                  Ben says: break it into hours, not panic.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="gap-eyebrow">Covered</p>
+                <p className="gap-money good">{money(leftAfterNeed)}</p>
+                <p className="gap-note">
+                  Your income is covering the current monthly need.
+                </p>
+              </>
+            )}
+          </div>
+        </RoomCard>
+
+        <RoomCard>
+          <h2>How Much Per Hour?</h2>
+          <p className="card-sub">
+            If you need extra income, here is what the remaining gap means at different work hours.
+          </p>
+
+          {remainingIncomeNeeded <= 0 ? (
+            <div className="covered-box">
+              <strong>No extra hourly income needed right now.</strong>
+              <p>The Treasury is covered based on this month&apos;s numbers.</p>
+            </div>
+          ) : (
+            <div className="hourly-grid">
+              {hourlyNeeded.map((item) => (
+                <div
+                  key={item.hours}
+                  className={`hour-card ${
+                    item.hourly <= 20
+                      ? "good"
+                      : item.hourly <= 35
+                      ? "warn"
+                      : "danger"
+                  }`}
+                >
+                  <p>{item.hours} hours</p>
+                  <strong>{money(item.hourly)}/hr</strong>
+                </div>
+              ))}
+            </div>
+          )}
         </RoomCard>
 
         <div className="drawer-buttons">
@@ -361,10 +578,7 @@ const avgHourly = 0;
             📜 Income Plan
           </DrawerButton>
 
-          <DrawerButton
-            danger
-            onClick={() => setDrawer("plan")}
-          >
+          <DrawerButton danger active={drawer === "hourly"} onClick={() => setDrawer("hourly")}>
             🚨 Need Money Fast
           </DrawerButton>
         </div>
@@ -372,7 +586,9 @@ const avgHourly = 0;
         {drawer === "record" && (
           <RoomCard className="drawer-panel">
             <h2>Record Income</h2>
-            <p className="card-sub">Earn it, name it, and put it in Franklin&apos;s ledger.</p>
+            <p className="card-sub">
+              Earn it, name it, and put it in Franklin&apos;s ledger.
+            </p>
 
             <div className="form-grid">
               <label>
@@ -455,51 +671,65 @@ const avgHourly = 0;
               onFileChange={setImageFile}
               onScan={() => void handleScanIncome()}
             />
+
             {scanRows.length > 0 && (
-  <div className="recent-list">
-    {scanRows.map((row, index) => (
-      <label key={index} className="recent-row">
-        <span>
-          <input
-            type="checkbox"
-            checked={row.selected}
-            onChange={(event) => {
-              setScanRows((prev) =>
-                prev.map((item, i) =>
-                  i === index
-                    ? { ...item, selected: event.target.checked }
-                    : item
-                )
-              );
-            }}
-          />{" "}
-          {row.source_name}
-        </span>
+              <div className="recent-list">
+                {scanRows.map((row, index) => (
+                  <label key={index} className="recent-row">
+                    <span>
+                      <input
+                        type="checkbox"
+                        checked={row.selected}
+                        onChange={(event) => {
+                          setScanRows((prev) =>
+                            prev.map((item, i) =>
+                              i === index
+                                ? { ...item, selected: event.target.checked }
+                                : item
+                            )
+                          );
+                        }}
+                      />{" "}
+                      {row.source_name}
+                    </span>
 
-        <strong className="amount">{money(row.amount)}</strong>
-      </label>
-    ))}
+                    <strong className="amount">{money(row.amount)}</strong>
+                  </label>
+                ))}
 
-    <button onClick={importScannedIncome} disabled={saving} className="save-btn">
-      {saving ? "Importing…" : "Import Selected Income"}
-    </button>
-  </div>
-)}
+                <button
+                  onClick={importScannedIncome}
+                  disabled={saving}
+                  className="save-btn"
+                >
+                  {saving ? "Importing…" : "Import Selected Income"}
+                </button>
+              </div>
+            )}
           </RoomCard>
         )}
 
-        {drawer === "plan" && (
+        {(drawer === "plan" || drawer === "hourly") && (
           <RoomCard className="drawer-panel">
-            <h2>Income Plan</h2>
+            <h2>{drawer === "hourly" ? "Need Money Fast" : "Income Plan"}</h2>
             <p className="card-sub">
-              Need money fast? Start with one clear income target today.
+              Start with the exact amount needed, then choose the fastest earning path.
             </p>
 
             <div className="plan-grid">
-              <MiniMetric icon="☀️" label="Today Goal" value={money(Math.max(50, thisMonthTotal / 10))} />
-              <MiniMetric icon="🗓️" label="Weekly Goal" value={money(Math.max(250, thisMonthTotal / 4))} />
+              <MiniMetric icon="☀️" label="Today Goal" value={money(todayGoal)} />
+              <MiniMetric icon="🗓️" label="Weekly Goal" value={money(weeklyGoal)} />
               <MiniMetric icon="💇‍♀️" label="Service Idea" value="$75+" />
               <MiniMetric icon="🚗" label="Dash Shift" value="$60+" />
+            </div>
+
+            <div className="hourly-grid mini-hourly">
+              {hourlyNeeded.map((item) => (
+                <div key={item.hours} className="hour-card">
+                  <p>{item.hours} hrs</p>
+                  <strong>{money(item.hourly)}/hr</strong>
+                </div>
+              ))}
             </div>
 
             <p className="plan-note">
@@ -542,6 +772,8 @@ const avgHourly = 0;
             <div className="mini-grid">
               <MiniMetric icon="📈" label="Average Month" value={money(avgMonthly)} />
               <MiniMetric icon="📜" label="Entries" value={String(entries.length)} />
+              <MiniMetric icon="💸" label="Paid Out" value={money(thisMonthPayments)} />
+              <MiniMetric icon="🎯" label="Need Left" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
             </div>
           </div>
         </RoomCard>
@@ -554,9 +786,12 @@ const avgHourly = 0;
               <p className="empty">No income entries yet.</p>
             ) : (
               entries.slice(0, 8).map((entry) => {
-              const cat = CATEGORIES[5];
+                const cat =
+                  CATEGORIES.find((item) =>
+                    entry.note?.includes(`Category: ${item.value}`)
+                  ) || CATEGORIES[5];
 
-              return (
+                return (
                   <div key={entry.id} className="recent-row">
                     <div className="recent-left">
                       <span>{cat.icon}</span>
@@ -597,82 +832,6 @@ const avgHourly = 0;
           color: #c9a84c;
           font-family: var(--font-cormorant), Georgia, serif;
           font-size: 22px;
-        }
-
-        .bank-hero {
-          max-width: 1100px;
-          margin: 0 auto;
-          padding: 18px;
-        }
-
-        .bank-hero-frame {
-          position: relative;
-          border-radius: 32px;
-          overflow: hidden;
-          border: 1px solid rgba(201, 168, 76, 0.35);
-          background: #050302;
-          box-shadow: 0 28px 90px rgba(0, 0, 0, 0.65);
-        }
-
-        .bank-hero-img {
-          display: block;
-          width: 100%;
-          height: auto;
-          max-height: 620px;
-          object-fit: contain;
-        }
-
-        .bank-hero-shade {
-          position: absolute;
-          inset: 0;
-          background:
-            linear-gradient(180deg, rgba(5, 3, 2, 0.04), rgba(5, 3, 2, 0.14) 48%, rgba(5, 3, 2, 0.84)),
-            linear-gradient(90deg, rgba(5, 3, 2, 0.58), transparent 48%, rgba(5, 3, 2, 0.38));
-        }
-
-        .bank-back-btn {
-          position: absolute;
-          top: 18px;
-          left: 18px;
-          z-index: 3;
-          color: #f5e6c8;
-          text-decoration: none;
-          border: 1px solid rgba(201, 168, 76, 0.42);
-          background: rgba(0, 0, 0, 0.64);
-          border-radius: 999px;
-          padding: 10px 16px;
-        }
-
-        .bank-hero-title {
-          position: absolute;
-          left: 24px;
-          right: 24px;
-          bottom: 22px;
-          z-index: 3;
-          max-width: 680px;
-        }
-
-        .bank-eyebrow {
-          margin: 0 0 8px;
-          color: #facc15;
-          letter-spacing: 0.32em;
-          text-transform: uppercase;
-          font-weight: 900;
-          font-size: 13px;
-        }
-
-        .bank-hero-title h1 {
-          margin: 0;
-          font-size: clamp(48px, 8vw, 88px);
-          line-height: 0.88;
-          font-family: var(--font-cormorant), Georgia, serif;
-        }
-
-        .bank-hero-title p:not(.bank-eyebrow) {
-          max-width: 620px;
-          margin: 12px 0 0;
-          color: #ead9bd;
-          font-size: 19px;
         }
 
         .desk-wrap {
@@ -797,44 +956,6 @@ const avgHourly = 0;
           font-weight: 900;
         }
 
-        .income-mini-metric {
-          border-radius: 22px;
-          padding: 16px;
-          text-align: center;
-          background: rgba(0, 0, 0, 0.58);
-          border: 1px solid rgba(201, 168, 76, 0.25);
-        }
-
-        .income-mini-icon {
-          font-size: 27px;
-          margin-bottom: 6px;
-        }
-
-        .income-mini-label {
-          color: #d6c09a;
-          font-size: 10px;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-          font-weight: 800;
-          margin: 0;
-        }
-
-        .income-mini-value {
-          color: #c9a84c;
-          font-size: 22px;
-          font-weight: 900;
-          margin: 6px 0 0;
-          font-family: var(--font-cormorant), Georgia, serif;
-        }
-
-        .income-mini-value.good {
-          color: #4ade80;
-        }
-
-        .income-mini-value.danger {
-          color: #f87171;
-        }
-
         .chart-grid {
           grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
         }
@@ -859,9 +980,92 @@ const avgHourly = 0;
           margin-top: 18px;
         }
 
-        .plan-note {
+        .gap-box,
+        .covered-box {
           margin-top: 16px;
+          border-radius: 24px;
+          padding: 20px;
+          background: rgba(0, 0, 0, 0.48);
+          border: 1px solid rgba(201, 168, 76, 0.25);
+          text-align: center;
+        }
+
+        .gap-eyebrow {
+          margin: 0;
+          color: #d6c09a;
+          font-size: 11px;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          font-weight: 900;
+        }
+
+        .gap-money {
+          margin: 8px 0 0;
+          font-size: 44px;
+          font-weight: 900;
+          font-family: var(--font-cormorant), Georgia, serif;
+        }
+
+        .gap-money.good {
+          color: #4ade80;
+        }
+
+        .gap-money.danger {
+          color: #f87171;
+        }
+
+        .gap-note,
+        .plan-note,
+        .covered-box p {
+          margin-top: 10px;
           color: #e8d5b7;
+        }
+
+        .hourly-grid {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .mini-hourly {
+          margin-top: 16px;
+        }
+
+        .hour-card {
+          border-radius: 20px;
+          padding: 16px;
+          background: rgba(0, 0, 0, 0.55);
+          border: 1px solid rgba(201, 168, 76, 0.25);
+          text-align: center;
+        }
+
+        .hour-card p {
+          margin: 0;
+          color: #d6c09a;
+          font-size: 11px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          font-weight: 900;
+        }
+
+        .hour-card strong {
+          display: block;
+          margin-top: 8px;
+          color: #c9a84c;
+          font-size: 24px;
+          font-family: var(--font-cormorant), Georgia, serif;
+        }
+
+        .hour-card.good strong {
+          color: #4ade80;
+        }
+
+        .hour-card.warn strong {
+          color: #facc15;
+        }
+
+        .hour-card.danger strong {
+          color: #f87171;
         }
 
         .recent-list {
@@ -925,6 +1129,10 @@ const avgHourly = 0;
           .chart-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
+
+          .hourly-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
         }
 
         @media (max-width: 640px) {
@@ -932,45 +1140,13 @@ const avgHourly = 0;
             padding-top: 250px;
           }
 
-          .bank-hero {
-            padding: 12px;
-          }
-
-          .bank-hero-frame {
-            border-radius: 24px;
-          }
-
-          .bank-hero-img {
-            max-height: 420px;
-          }
-
-          .bank-back-btn {
-            top: 12px;
-            left: 12px;
-            padding: 8px 13px;
-            font-size: 14px;
-          }
-
-          .bank-hero-title {
-            left: 16px;
-            right: 16px;
-            bottom: 16px;
-          }
-
-          .bank-hero-title h1 {
-            font-size: 46px;
-          }
-
-          .bank-hero-title p:not(.bank-eyebrow) {
-            font-size: 16px;
-          }
-
           .stats-grid,
           .drawer-buttons,
           .form-grid,
           .chart-grid,
           .mini-grid,
-          .plan-grid {
+          .plan-grid,
+          .hourly-grid {
             grid-template-columns: 1fr;
           }
 
