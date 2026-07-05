@@ -221,16 +221,7 @@ async function handleAddIncome() {
   }, [entries, allTimeTotal]);
 
 const sourcesCount = useMemo(
-  () =>
-    new Set(
-      entries.map(
-        (entry) =>
-          entry.source_name ||
-          entry.source ||
-          entry.category ||
-          "other"
-      )
-    ).size,
+  () => new Set(entries.map((entry) => entry.source_name || "other")).size,
   [entries]
 );
 
