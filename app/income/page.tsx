@@ -104,40 +104,43 @@ export default function IncomePage() {
     setLoading(false);
   }
 
-  async function handleScanIncome() {
-    if (!imageFile) {
-      setMessage("Choose an income screenshot or deposit proof first.");
+ async function handleScanIncome() {
+  if (!imageFile) {
+    setMessage("Choose an income screenshot or deposit proof first.");
+    return;
+  }
+
+  setScanning(true);
+  setMessage("Ben is reading the income proof…");
+
+  try {
+    const { text } = await ocrImageFile(imageFile);
+    const parsed = parseTransactionsScreenshot(text);
+    const first = parsed[0];
+
+    if (!first) {
+      setMessage("Scanner could not find a clear amount. Open Record Income and enter it manually.");
+      setDrawer("record");
       return;
     }
 
-    setScanning(true);
-    setMessage("Ben is reading the income proof…");
+    setSource(first.merchant || "Income");
+    setAmount(first.amount ? String(Math.abs(Number(first.amount))) : "");
 
-    try {
-      const { text } = await ocrImageFile(imageFile);
-      const first = parseTransactionsScreenshot(text)[0];
-
-      if (!first) {
-        setMessage("No clear income found. Fill it in manually.");
-        setScanning(false);
-        return;
-      }
-
-      setSource(first.merchant || "");
-      if (first.amount) setAmount(String(first.amount));
-
-      if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
-        setDate(first.dateText);
-      }
-
-      setDrawer("record");
-      setMessage("Scanner filled what it could. Review before saving.");
-    } catch {
-      setMessage("Scanner had trouble. Manual entry still works.");
+    if (first.dateText && /^\d{4}-\d{2}-\d{2}$/.test(first.dateText)) {
+      setDate(first.dateText);
     }
 
+    setDrawer("record");
+    setMessage("Scanner filled what it could. Review it, then tap Save Income.");
+  } catch (error) {
+    console.error(error);
+    setMessage("Scanner had trouble reading that image. Manual entry still works.");
+    setDrawer("record");
+  } finally {
     setScanning(false);
   }
+}
 
 async function handleAddIncome() {
   setMessage("");
