@@ -1,7 +1,5 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import { useEffect, useMemo, useState } from "react";
 import BankHero from "@/components/income/BankHero";
 import RoomCard from "@/components/income/RoomCard";
@@ -38,30 +36,16 @@ type IncomeEntry = {
   created_at: string;
 };
 
-type SpendEntry = {
-  id: string;
-  amount: number | string | null;
-  date_iso: string;
-};
-
-type PaymentEntry = {
-  id: string;
-  amount: number | string | null;
-  date_iso: string;
-};
-
 type BillRow = {
   id: string;
   target: number | string | null;
   monthly_target: number | string | null;
-  is_monthly: boolean | null;
 };
 
 type DebtRow = {
   id: string;
   min_payment: number | string | null;
   monthly_min_payment: number | string | null;
-  is_monthly: boolean | null;
 };
 
 type Drawer = "record" | "scan" | "plan" | "hourly" | null;
@@ -102,9 +86,8 @@ export default function IncomePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+
   const [entries, setEntries] = useState<IncomeEntry[]>([]);
-  const [spendEntries, setSpendEntries] = useState<SpendEntry[]>([]);
-  const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [message, setMessage] = useState("");
@@ -148,44 +131,29 @@ export default function IncomePage() {
 
     setUserId(user.id);
 
-    const [incomeRes, spendRes, paymentRes, billsRes, debtsRes] =
-      await Promise.all([
-        supabase
-          .from("income_entries")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false }),
+    const [incomeRes, billsRes, debtsRes] = await Promise.all([
+      supabase
+        .from("income_entries")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
 
-        supabase
-          .from("spend_entries")
-          .select("id, amount, date_iso")
-          .eq("user_id", user.id),
+      supabase
+        .from("bills")
+        .select("id, target, monthly_target")
+        .eq("user_id", user.id),
 
-        supabase
-          .from("payments")
-          .select("id, amount, date_iso")
-          .eq("user_id", user.id),
-
-        supabase
-          .from("bills")
-          .select("id, target, monthly_target, is_monthly")
-          .eq("user_id", user.id),
-
-        supabase
-          .from("debts")
-          .select("id, min_payment, monthly_min_payment, is_monthly")
-          .eq("user_id", user.id),
-      ]);
+      supabase
+        .from("debts")
+        .select("id, min_payment, monthly_min_payment")
+        .eq("user_id", user.id),
+    ]);
 
     if (incomeRes.error) setMessage(incomeRes.error.message);
-    if (spendRes.error) setMessage(spendRes.error.message);
-    if (paymentRes.error) setMessage(paymentRes.error.message);
     if (billsRes.error) setMessage(billsRes.error.message);
     if (debtsRes.error) setMessage(debtsRes.error.message);
 
     setEntries((incomeRes.data || []) as IncomeEntry[]);
-    setSpendEntries((spendRes.data || []) as SpendEntry[]);
-    setPaymentEntries((paymentRes.data || []) as PaymentEntry[]);
     setBills((billsRes.data || []) as BillRow[]);
     setDebts((debtsRes.data || []) as DebtRow[]);
 
@@ -238,8 +206,302 @@ export default function IncomePage() {
       setScanning(false);
     }
   }
+  type IncomeSource = {
+  id: string;
+  user_id: string;
+  name: string;
+  income_type:
+    | "hourly"
+    | "salary"
+    | "monthly"
+    | "project"
+    | "commission"
+    | "gig";
+  hourly_rate: number | string | null;
+  hours_per_week: number | string | null;
+  annual_salary: number | string | null;
+  monthly_amount: number | string | null;
+  active: boolean | null;
+  note: string | null;
+  created_at: string;
+};
 
-  async function importScannedIncome() {
+type BillRow = {
+  id: string;
+  target: number | string | null;
+  monthly_target: number | string | null;
+};
+
+type DebtRow = {
+  id: string;
+  min_payment: number | string | null;
+  monthly_min_payment: number | string | null;
+};
+
+type Drawer = "record" | "scan" | "plan" | "hourly" | "sources" | null;
+
+const CATEGORIES = [
+  { value: "employment", label: "Employment", icon: "🏛" },
+  { value: "entrepreneurship", label: "Entrepreneurship", icon: "⚙️" },
+  { value: "services", label: "Services", icon: "📋" },
+  { value: "investments", label: "Investments", icon: "📈" },
+  { value: "gifts", label: "Gifts", icon: "🎁" },
+  { value: "other", label: "Other", icon: "💰" },
+];
+
+const HOURLY_TARGETS = [40, 30, 20, 10, 5];
+
+function safeNum(value: unknown) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function entryDate(entry: IncomeEntry) {
+  return (entry.date_iso || entry.created_at || "").slice(0, 10);
+}
+
+function monthPrefix(date: string) {
+  return date.slice(0, 7);
+}
+
+function readHoursFromNote(note?: string | null) {
+  if (!note) return 0;
+  const match = note.match(/Hours:\s*([\d.]+)/i);
+  return match ? safeNum(match[1]) : 0;
+}
+
+function projectedMonthlyIncome(source: IncomeSource) {
+  const hourlyRate = clampMoney(source.hourly_rate);
+  const hoursPerWeek = safeNum(source.hours_per_week);
+  const annualSalary = clampMoney(source.annual_salary);
+  const monthlyAmount = clampMoney(source.monthly_amount);
+
+  if (source.income_type === "salary") return annualSalary / 12;
+  if (source.income_type === "monthly") return monthlyAmount;
+
+  return hourlyRate * hoursPerWeek * 4.333;
+}
+
+function projectedWeeklyIncome(source: IncomeSource) {
+  return projectedMonthlyIncome(source) / 4.333;
+}
+
+function getSourceHourlyRate(source: IncomeSource) {
+  const hourlyRate = clampMoney(source.hourly_rate);
+  const annualSalary = clampMoney(source.annual_salary);
+  const hoursPerWeek = safeNum(source.hours_per_week);
+
+  if (hourlyRate > 0) return hourlyRate;
+
+  if (source.income_type === "salary" && annualSalary > 0 && hoursPerWeek > 0) {
+    return annualSalary / 52 / hoursPerWeek;
+  }
+
+  return 0;
+}
+
+export default function IncomePage() {
+  const [supabase] = useState(() => createSupabaseBrowserClient());
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const [entries, setEntries] = useState<IncomeEntry[]>([]);
+  const [bills, setBills] = useState<BillRow[]>([]);
+  const [debts, setDebts] = useState<DebtRow[]>([]);
+  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
+  const [message, setMessage] = useState("");
+
+  const [drawer, setDrawer] = useState<Drawer>("record");
+
+  const [amount, setAmount] = useState("");
+  const [source, setSource] = useState("");
+  const [category, setCategory] = useState("employment");
+  const [hoursWorked, setHoursWorked] = useState("");
+  const [date, setDate] = useState(todayLocalISO());
+
+  const [sourceName, setSourceName] = useState("");
+  const [sourceType, setSourceType] =
+    useState<IncomeSource["income_type"]>("hourly");
+  const [sourceHourlyRateInput, setSourceHourlyRateInput] = useState("");
+  const [sourceHoursPerWeek, setSourceHoursPerWeek] = useState("");
+  const [sourceAnnualSalary, setSourceAnnualSalary] = useState("");
+  const [sourceMonthlyAmount, setSourceMonthlyAmount] = useState("");
+  const [sourceNote, setSourceNote] = useState("");
+
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanRows, setScanRows] = useState<
+    {
+      source_name: string;
+      amount: number;
+      date_iso: string;
+      selected: boolean;
+    }[]
+  >([]);
+
+  useEffect(() => {
+    void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function loadData() {
+    setLoading(true);
+    setMessage("");
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    setUserId(user.id);
+
+    const [incomeRes, billsRes, debtsRes, sourcesRes] = await Promise.all([
+      supabase
+        .from("income_entries")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+
+      supabase
+        .from("bills")
+        .select("id, target, monthly_target")
+        .eq("user_id", user.id),
+
+      supabase
+        .from("debts")
+        .select("id, min_payment, monthly_min_payment")
+        .eq("user_id", user.id),
+
+      supabase
+        .from("income_sources")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (incomeRes.error) setMessage(incomeRes.error.message);
+    if (billsRes.error) setMessage(billsRes.error.message);
+    if (debtsRes.error) setMessage(debtsRes.error.message);
+    if (sourcesRes.error) setMessage(sourcesRes.error.message);
+
+    setEntries((incomeRes.data || []) as IncomeEntry[]);
+    setBills((billsRes.data || []) as BillRow[]);
+    setDebts((debtsRes.data || []) as DebtRow[]);
+    setIncomeSources((sourcesRes.data || []) as IncomeSource[]);
+
+    setLoading(false);
+  }
+
+  function resetIncomeSourceForm() {
+    setSourceName("");
+    setSourceType("hourly");
+    setSourceHourlyRateInput("");
+    setSourceHoursPerWeek("");
+    setSourceAnnualSalary("");
+    setSourceMonthlyAmount("");
+    setSourceNote("");
+  }
+
+  async function handleAddIncomeSource() {
+    setMessage("");
+
+    if (!userId) {
+      playError();
+      setMessage("Not signed in.");
+      return;
+    }
+
+    if (!sourceName.trim()) {
+      playError();
+      setMessage("Enter an income source name.");
+      return;
+    }
+
+    const hourlyRate = clampMoney(sourceHourlyRateInput);
+    const hoursPerWeek = safeNum(sourceHoursPerWeek);
+    const annualSalary = clampMoney(sourceAnnualSalary);
+    const monthlyAmount = clampMoney(sourceMonthlyAmount);
+
+    if (sourceType === "salary") {
+      if (annualSalary <= 0 || hoursPerWeek <= 0) {
+        playError();
+        setMessage("Enter annual salary and average hours per week.");
+        return;
+      }
+    }
+
+    if (sourceType === "monthly") {
+      if (monthlyAmount <= 0) {
+        playError();
+        setMessage("Enter the monthly amount.");
+        return;
+      }
+    }
+
+    if (sourceType !== "salary" && sourceType !== "monthly") {
+      if (hourlyRate <= 0 || hoursPerWeek <= 0) {
+        playError();
+        setMessage("Enter hourly rate and average hours per week.");
+        return;
+      }
+    }
+
+    setSaving(true);
+
+    const { error } = await supabase.from("income_sources").insert({
+      user_id: userId,
+      name: sourceName.trim(),
+      income_type: sourceType,
+      hourly_rate: hourlyRate || null,
+      hours_per_week: hoursPerWeek || null,
+      annual_salary: annualSalary || null,
+      monthly_amount: monthlyAmount || null,
+      active: true,
+      note: sourceNote.trim() || null,
+    });
+
+    setSaving(false);
+
+    if (error) {
+      playError();
+      setMessage(error.message);
+      return;
+    }
+
+    playCoins();
+    resetIncomeSourceForm();
+    setMessage("Income source added to Franklin’s Employment Ledger.");
+    await loadData();
+  }
+
+  async function handleDeleteIncomeSource(id: string) {
+    if (!userId) return;
+
+    const ok = window.confirm("Delete this income source?");
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from("income_sources")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
+
+    if (error) {
+      playError();
+      setMessage(error.message);
+      return;
+    }
+
+    setIncomeSources((prev) => prev.filter((item) => item.id !== id));
+    setMessage("Income source removed.");
+  }
+    async function importScannedIncome() {
     if (!userId) {
       setMessage("Not signed in.");
       return;
@@ -302,14 +564,14 @@ export default function IncomePage() {
       return;
     }
 
-    setSaving(true);
-
     const incomeNote = [
       category ? `Category: ${category}` : "",
       hoursWorked ? `Hours: ${hoursWorked}` : "",
     ]
       .filter(Boolean)
       .join(" • ");
+
+    setSaving(true);
 
     const { error } = await supabase.from("income_entries").insert({
       user_id: userId,
@@ -349,45 +611,34 @@ export default function IncomePage() {
     [thisMonthEntries]
   );
 
-  const thisMonthSpend = useMemo(
-    () =>
-      addMoney(
-        spendEntries
-          .filter((entry) => monthPrefix(entry.date_iso) === thisMonth)
-          .map((entry) => entry.amount)
-      ),
-    [spendEntries, thisMonth]
-  );
-
-  const thisMonthPayments = useMemo(
-    () =>
-      addMoney(
-        paymentEntries
-          .filter((entry) => monthPrefix(entry.date_iso) === thisMonth)
-          .map((entry) => entry.amount)
-      ),
-    [paymentEntries, thisMonth]
-  );
-
   const monthlyBillsTotal = useMemo(
     () => addMoney(bills.map((bill) => bill.monthly_target ?? bill.target)),
     [bills]
   );
 
   const monthlyDebtMinimums = useMemo(
-    () =>
-      addMoney(
-        debts.map((debt) => debt.monthly_min_payment ?? debt.min_payment)
-      ),
+    () => addMoney(debts.map((debt) => debt.monthly_min_payment ?? debt.min_payment)),
     [debts]
   );
 
-  const monthlyNeed = Math.max(
-    0,
-    monthlyBillsTotal + monthlyDebtMinimums + thisMonthSpend
+  const activeSources = useMemo(
+    () => incomeSources.filter((item) => item.active !== false),
+    [incomeSources]
   );
 
+  const projectedMonthly = useMemo(
+    () => addMoney(activeSources.map(projectedMonthlyIncome)),
+    [activeSources]
+  );
+
+  const projectedWeekly = useMemo(
+    () => addMoney(activeSources.map(projectedWeeklyIncome)),
+    [activeSources]
+  );
+
+  const monthlyNeed = Math.max(0, monthlyBillsTotal + monthlyDebtMinimums);
   const remainingIncomeNeeded = Math.max(0, monthlyNeed - thisMonthTotal);
+  const projectedGap = Math.max(0, monthlyNeed - projectedMonthly);
   const leftAfterNeed = Math.max(0, thisMonthTotal - monthlyNeed);
 
   const hourlyNeeded = useMemo(
@@ -399,8 +650,27 @@ export default function IncomePage() {
     [remainingIncomeNeeded]
   );
 
-  const todayGoal = Math.max(0, Math.ceil(remainingIncomeNeeded / 7));
-  const weeklyGoal = Math.max(0, Math.ceil(remainingIncomeNeeded / 4));
+  const avgHourly = useMemo(() => {
+    const fromEntries = thisMonthEntries
+      .map((entry) => ({
+        amount: clampMoney(entry.amount),
+        hours: readHoursFromNote(entry.note),
+      }))
+      .filter((entry) => entry.amount > 0 && entry.hours > 0);
+
+    const entryIncome = addMoney(fromEntries.map((entry) => entry.amount));
+    const entryHours = fromEntries.reduce((sum, entry) => sum + entry.hours, 0);
+
+    if (entryHours > 0) return entryIncome / entryHours;
+
+    const rates = activeSources.map(getSourceHourlyRate).filter((rate) => rate > 0);
+    if (rates.length === 0) return 0;
+
+    return addMoney(rates) / rates.length;
+  }, [thisMonthEntries, activeSources]);
+
+  const todayGoal = Math.ceil(remainingIncomeNeeded / 7);
+  const weeklyGoal = Math.ceil(remainingIncomeNeeded / 4);
 
   const allTimeTotal = useMemo(
     () => addMoney(entries.map((entry) => entry.amount)),
@@ -417,20 +687,6 @@ export default function IncomePage() {
     () => new Set(entries.map((entry) => entry.source_name || "other")).size,
     [entries]
   );
-
-  const avgHourly = useMemo(() => {
-    const incomeWithHours = thisMonthEntries
-      .map((entry) => ({
-        amount: clampMoney(entry.amount),
-        hours: readHoursFromNote(entry.note),
-      }))
-      .filter((entry) => entry.amount > 0 && entry.hours > 0);
-
-    const totalIncomeWithHours = addMoney(incomeWithHours.map((entry) => entry.amount));
-    const totalHours = incomeWithHours.reduce((sum, entry) => sum + entry.hours, 0);
-
-    return totalHours > 0 ? totalIncomeWithHours / totalHours : 0;
-  }, [thisMonthEntries]);
 
   const chartData = useMemo(() => {
     return Array.from({ length: 6 }, (_, index) => {
@@ -481,46 +737,40 @@ export default function IncomePage() {
 
         <div className="stats-grid">
           <MiniMetric icon="🪙" label="This Month" value={money(thisMonthTotal)} good />
-          <MiniMetric icon="🎯" label="Income Needed" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
+          <MiniMetric icon="🎯" label="Need Left" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
+          <MiniMetric icon="📈" label="Projected Monthly" value={money(projectedMonthly)} good={projectedMonthly >= monthlyNeed && monthlyNeed > 0} />
           <MiniMetric icon="⏱️" label="Avg Hourly" value={avgHourly > 0 ? money(avgHourly) : "—"} />
-          <MiniMetric icon="👥" label="Sources" value={String(sourcesCount)} />
         </div>
 
         <RoomCard>
           <h2>Ben&apos;s Bank Briefing</h2>
-          <p className="card-sub">A word from the desk before the ledger opens.</p>
+          <p className="card-sub">Income, monthly obligations, and the fastest way to close the gap.</p>
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </RoomCard>
 
         <RoomCard>
           <h2>Income Needed Breakdown</h2>
-          <p className="card-sub">
-            This compares your income against monthly bills, debt minimums, and spending.
-          </p>
+          <p className="card-sub">This uses bills + debt minimums, not extra spending, so the hourly number stays consistent.</p>
 
           <div className="plan-grid">
             <MiniMetric icon="📋" label="Bills" value={money(monthlyBillsTotal)} />
             <MiniMetric icon="💳" label="Debt Minimums" value={money(monthlyDebtMinimums)} />
-            <MiniMetric icon="🛒" label="Spending" value={money(thisMonthSpend)} />
             <MiniMetric icon="🏦" label="Monthly Need" value={money(monthlyNeed)} />
+            <MiniMetric icon="💼" label="Projected Gap" value={money(projectedGap)} danger={projectedGap > 0} />
           </div>
 
           <div className="gap-box">
             {remainingIncomeNeeded > 0 ? (
               <>
-                <p className="gap-eyebrow">Still Need</p>
+                <p className="gap-eyebrow">Still Need This Month</p>
                 <p className="gap-money danger">{money(remainingIncomeNeeded)}</p>
-                <p className="gap-note">
-                  Ben says: break it into hours, not panic.
-                </p>
+                <p className="gap-note">Ben says: break it into hours, shifts, or services.</p>
               </>
             ) : (
               <>
                 <p className="gap-eyebrow">Covered</p>
                 <p className="gap-money good">{money(leftAfterNeed)}</p>
-                <p className="gap-note">
-                  Your income is covering the current monthly need.
-                </p>
+                <p className="gap-note">Your income is covering the current monthly need.</p>
               </>
             )}
           </div>
@@ -528,9 +778,7 @@ export default function IncomePage() {
 
         <RoomCard>
           <h2>How Much Per Hour?</h2>
-          <p className="card-sub">
-            If you need extra income, here is what the remaining gap means at different work hours.
-          </p>
+          <p className="card-sub">What the remaining gap means at different work-hour levels.</p>
 
           {remainingIncomeNeeded <= 0 ? (
             <div className="covered-box">
@@ -543,11 +791,7 @@ export default function IncomePage() {
                 <div
                   key={item.hours}
                   className={`hour-card ${
-                    item.hourly <= 20
-                      ? "good"
-                      : item.hourly <= 35
-                      ? "warn"
-                      : "danger"
+                    item.hourly <= 20 ? "good" : item.hourly <= 35 ? "warn" : "danger"
                   }`}
                 >
                   <p>{item.hours} hours</p>
@@ -559,28 +803,19 @@ export default function IncomePage() {
         </RoomCard>
 
         <div className="drawer-buttons">
-          <DrawerButton
-            active={drawer === "record"}
-            onClick={() => setDrawer(drawer === "record" ? null : "record")}
-          >
+          <DrawerButton active={drawer === "record"} onClick={() => setDrawer(drawer === "record" ? null : "record")}>
             + Record Income
           </DrawerButton>
 
-          <DrawerButton
-            active={drawer === "scan"}
-            onClick={() => setDrawer(drawer === "scan" ? null : "scan")}
-          >
+          <DrawerButton active={drawer === "sources"} onClick={() => setDrawer(drawer === "sources" ? null : "sources")}>
+            💼 Income Sources
+          </DrawerButton>
+
+          <DrawerButton active={drawer === "scan"} onClick={() => setDrawer(drawer === "scan" ? null : "scan")}>
             📸 Scan Deposit
           </DrawerButton>
 
-          <DrawerButton
-            active={drawer === "plan"}
-            onClick={() => setDrawer(drawer === "plan" ? null : "plan")}
-          >
-            📜 Income Plan
-          </DrawerButton>
-
-          <DrawerButton danger active={drawer === "hourly"} onClick={() => setDrawer("hourly")}>
+          <DrawerButton danger active={drawer === "hourly"} onClick={() => setDrawer(drawer === "hourly" ? null : "hourly")}>
             🚨 Need Money Fast
           </DrawerButton>
         </div>
@@ -588,72 +823,126 @@ export default function IncomePage() {
         {drawer === "record" && (
           <RoomCard className="drawer-panel">
             <h2>Record Income</h2>
-            <p className="card-sub">
-              Earn it, name it, and put it in Franklin&apos;s ledger.
-            </p>
+            <p className="card-sub">Earn it, name it, and put it in Franklin&apos;s ledger.</p>
 
             <div className="form-grid">
               <label>
                 <span>Amount</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                  placeholder="0.00"
-                />
+                <input type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
               </label>
 
               <label>
                 <span>Paid By / Source</span>
-                <input
-                  value={source}
-                  onChange={(event) => setSource(event.target.value)}
-                  placeholder="DoorDash, employer, client..."
-                />
+                <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="DoorDash, employer, client..." />
               </label>
 
               <label>
                 <span>Category</span>
-                <select
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value)}
-                >
+                <select value={category} onChange={(e) => setCategory(e.target.value)}>
                   {CATEGORIES.map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.icon} {cat.label}
-                    </option>
+                    <option key={cat.value} value={cat.value}>{cat.icon} {cat.label}</option>
                   ))}
                 </select>
               </label>
 
               <label>
                 <span>Hours Worked</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={hoursWorked}
-                  onChange={(event) => setHoursWorked(event.target.value)}
-                  placeholder="Optional"
-                />
+                <input type="number" inputMode="decimal" value={hoursWorked} onChange={(e) => setHoursWorked(e.target.value)} placeholder="Optional" />
               </label>
 
               <label>
                 <span>Date</span>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(event) => setDate(event.target.value)}
-                />
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               </label>
 
-              <button
-                onClick={handleAddIncome}
-                disabled={saving}
-                className="save-btn"
-              >
+              <button onClick={handleAddIncome} disabled={saving} className="save-btn">
                 {saving ? "Recording…" : "💰 Save Income"}
               </button>
+            </div>
+          </RoomCard>
+        )}
+
+        {drawer === "sources" && (
+          <RoomCard className="drawer-panel">
+            <h2>Franklin&apos;s Employment Ledger</h2>
+            <p className="card-sub">Add hourly, salary, monthly, gig, project, or commission income.</p>
+
+            <div className="form-grid">
+              <label>
+                <span>Source Name</span>
+                <input value={sourceName} onChange={(e) => setSourceName(e.target.value)} placeholder="DoorDash, WDI, Salon..." />
+              </label>
+
+              <label>
+                <span>Income Type</span>
+                <select value={sourceType} onChange={(e) => setSourceType(e.target.value as IncomeSource["income_type"])}>
+                  <option value="hourly">Hourly</option>
+                  <option value="salary">Salary</option>
+                  <option value="monthly">Monthly Fixed</option>
+                  <option value="gig">Gig Work</option>
+                  <option value="project">Per Project</option>
+                  <option value="commission">Commission</option>
+                </select>
+              </label>
+
+              {sourceType === "salary" ? (
+                <>
+                  <label>
+                    <span>Annual Salary</span>
+                    <input type="number" inputMode="decimal" value={sourceAnnualSalary} onChange={(e) => setSourceAnnualSalary(e.target.value)} placeholder="50000" />
+                  </label>
+                  <label>
+                    <span>Average Hours / Week</span>
+                    <input type="number" inputMode="decimal" value={sourceHoursPerWeek} onChange={(e) => setSourceHoursPerWeek(e.target.value)} placeholder="40" />
+                  </label>
+                </>
+              ) : sourceType === "monthly" ? (
+                <label>
+                  <span>Monthly Amount</span>
+                  <input type="number" inputMode="decimal" value={sourceMonthlyAmount} onChange={(e) => setSourceMonthlyAmount(e.target.value)} placeholder="2500" />
+                </label>
+              ) : (
+                <>
+                  <label>
+                    <span>Hourly / Average Rate</span>
+                    <input type="number" inputMode="decimal" value={sourceHourlyRateInput} onChange={(e) => setSourceHourlyRateInput(e.target.value)} placeholder="25" />
+                  </label>
+                  <label>
+                    <span>Average Hours / Week</span>
+                    <input type="number" inputMode="decimal" value={sourceHoursPerWeek} onChange={(e) => setSourceHoursPerWeek(e.target.value)} placeholder="10" />
+                  </label>
+                </>
+              )}
+
+              <label>
+                <span>Note</span>
+                <input value={sourceNote} onChange={(e) => setSourceNote(e.target.value)} placeholder="Optional" />
+              </label>
+
+              <button onClick={handleAddIncomeSource} disabled={saving} className="save-btn">
+                {saving ? "Saving…" : "Save Income Source"}
+              </button>
+            </div>
+
+            <div className="source-list">
+              {incomeSources.length === 0 ? (
+                <p className="empty">No income sources added yet.</p>
+              ) : (
+                incomeSources.map((item) => (
+                  <div key={item.id} className="source-row">
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p>
+                        {item.income_type} · {money(projectedWeeklyIncome(item))}/week · {money(projectedMonthlyIncome(item))}/month
+                      </p>
+                    </div>
+
+                    <button onClick={() => void handleDeleteIncomeSource(item.id)}>
+                      Delete
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </RoomCard>
         )}
@@ -661,9 +950,7 @@ export default function IncomePage() {
         {drawer === "scan" && (
           <RoomCard className="drawer-panel">
             <h2>Scan Income Proof</h2>
-            <p className="card-sub">
-              Upload a DoorDash screenshot, paycheck, deposit, or income proof.
-            </p>
+            <p className="card-sub">Upload a DoorDash screenshot, paycheck, deposit, or income proof.</p>
 
             <PaperScrollScanner
               title="Scan Income Proof"
@@ -682,28 +969,21 @@ export default function IncomePage() {
                       <input
                         type="checkbox"
                         checked={row.selected}
-                        onChange={(event) => {
+                        onChange={(e) => {
                           setScanRows((prev) =>
                             prev.map((item, i) =>
-                              i === index
-                                ? { ...item, selected: event.target.checked }
-                                : item
+                              i === index ? { ...item, selected: e.target.checked } : item
                             )
                           );
                         }}
                       />{" "}
                       {row.source_name}
                     </span>
-
                     <strong className="amount">{money(row.amount)}</strong>
                   </label>
                 ))}
 
-                <button
-                  onClick={importScannedIncome}
-                  disabled={saving}
-                  className="save-btn"
-                >
+                <button onClick={importScannedIncome} disabled={saving} className="save-btn">
                   {saving ? "Importing…" : "Import Selected Income"}
                 </button>
               </div>
@@ -711,18 +991,16 @@ export default function IncomePage() {
           </RoomCard>
         )}
 
-        {(drawer === "plan" || drawer === "hourly") && (
+        {drawer === "hourly" && (
           <RoomCard className="drawer-panel">
-            <h2>{drawer === "hourly" ? "Need Money Fast" : "Income Plan"}</h2>
-            <p className="card-sub">
-              Start with the exact amount needed, then choose the fastest earning path.
-            </p>
+            <h2>Need Money Fast</h2>
+            <p className="card-sub">Use your saved sources to choose the fastest path.</p>
 
             <div className="plan-grid">
               <MiniMetric icon="☀️" label="Today Goal" value={money(todayGoal)} />
               <MiniMetric icon="🗓️" label="Weekly Goal" value={money(weeklyGoal)} />
-              <MiniMetric icon="💇‍♀️" label="Service Idea" value="$75+" />
-              <MiniMetric icon="🚗" label="Dash Shift" value="$60+" />
+              <MiniMetric icon="📈" label="Projected Weekly" value={money(projectedWeekly)} />
+              <MiniMetric icon="🎯" label="Need Left" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
             </div>
 
             <div className="hourly-grid mini-hourly">
@@ -733,11 +1011,6 @@ export default function IncomePage() {
                 </div>
               ))}
             </div>
-
-            <p className="plan-note">
-              Ben says: choose the fastest ethical earning path first — one shift,
-              one service, one sale, or one client.
-            </p>
           </RoomCard>
         )}
 
@@ -774,8 +1047,8 @@ export default function IncomePage() {
             <div className="mini-grid">
               <MiniMetric icon="📈" label="Average Month" value={money(avgMonthly)} />
               <MiniMetric icon="📜" label="Entries" value={String(entries.length)} />
-              <MiniMetric icon="💸" label="Paid Out" value={money(thisMonthPayments)} />
-              <MiniMetric icon="🎯" label="Need Left" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
+              <MiniMetric icon="👥" label="Recorded Sources" value={String(sourcesCount)} />
+              <MiniMetric icon="💼" label="Saved Sources" value={String(incomeSources.length)} />
             </div>
           </div>
         </RoomCard>
@@ -789,9 +1062,8 @@ export default function IncomePage() {
             ) : (
               entries.slice(0, 8).map((entry) => {
                 const cat =
-                  CATEGORIES.find((item) =>
-                    entry.note?.includes(`Category: ${item.value}`)
-                  ) || CATEGORIES[5];
+                  CATEGORIES.find((item) => entry.note?.includes(`Category: ${item.value}`)) ||
+                  CATEGORIES[5];
 
                 return (
                   <div key={entry.id} className="recent-row">
@@ -802,7 +1074,6 @@ export default function IncomePage() {
                         <p>{entryDate(entry)}</p>
                       </div>
                     </div>
-
                     <strong className="amount">{money(entry.amount)}</strong>
                   </div>
                 );
@@ -811,28 +1082,25 @@ export default function IncomePage() {
           </div>
         </RoomCard>
 
-        <p className="quote">
-          “Diligence is the mother of good luck.” — Benjamin Franklin
-        </p>
+        <p className="quote">“Diligence is the mother of good luck.” — Benjamin Franklin</p>
       </section>
 
       <style jsx global>{`
         .bank-page {
           min-height: 100vh;
-          padding-top: 250px;
+          padding-top: 0;
           padding-bottom: 100px;
           background:
             radial-gradient(circle at top, rgba(245, 196, 88, 0.12), transparent 32rem),
             linear-gradient(180deg, #050302, #140a04 45%, #050302);
           color: #fff7ed;
-          font-family: var(--font-inter), system-ui, sans-serif;
+          font-family: var(--font-cormorant), Georgia, serif;
         }
 
         .loading-room {
           display: grid;
           place-items: center;
           color: #c9a84c;
-          font-family: var(--font-cormorant), Georgia, serif;
           font-size: 22px;
         }
 
@@ -842,6 +1110,84 @@ export default function IncomePage() {
           padding: 0 18px 18px;
           display: grid;
           gap: 18px;
+        }
+
+        .bank-hero {
+          max-width: 1100px;
+          margin: 0 auto;
+          padding: 12px;
+        }
+
+        .bank-hero-frame {
+          position: relative;
+          border-radius: 28px;
+          overflow: hidden;
+          border: 1px solid rgba(201, 168, 76, 0.35);
+          background: #050302;
+          box-shadow: 0 28px 90px rgba(0, 0, 0, 0.65);
+        }
+
+        .bank-hero-img {
+          display: block;
+          width: 100%;
+          height: auto;
+          max-height: 430px;
+          object-fit: cover;
+          object-position: center top;
+        }
+
+        .bank-hero-shade {
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(180deg, rgba(5, 3, 2, 0.05), rgba(5, 3, 2, 0.22) 45%, rgba(5, 3, 2, 0.88)),
+            linear-gradient(90deg, rgba(5, 3, 2, 0.58), transparent 50%, rgba(5, 3, 2, 0.38));
+        }
+
+        .bank-back-btn {
+          position: absolute;
+          top: 14px;
+          left: 14px;
+          z-index: 3;
+          color: #f5e6c8;
+          text-decoration: none;
+          border: 1px solid rgba(201, 168, 76, 0.42);
+          background: rgba(0, 0, 0, 0.64);
+          border-radius: 999px;
+          padding: 10px 16px;
+          font-weight: 800;
+        }
+
+        .bank-hero-title {
+          position: absolute;
+          left: 22px;
+          right: 22px;
+          bottom: 18px;
+          z-index: 3;
+          max-width: 680px;
+        }
+
+        .bank-eyebrow {
+          margin: 0 0 8px;
+          color: #facc15;
+          letter-spacing: 0.32em;
+          text-transform: uppercase;
+          font-weight: 900;
+          font-size: 13px;
+        }
+
+        .bank-hero-title h1 {
+          margin: 0;
+          font-size: clamp(42px, 8vw, 78px);
+          line-height: 0.9;
+          font-family: var(--font-cormorant), Georgia, serif;
+        }
+
+        .bank-hero-title p:not(.bank-eyebrow) {
+          max-width: 620px;
+          margin: 10px 0 0;
+          color: #ead9bd;
+          font-size: 18px;
         }
 
         .notice {
@@ -857,17 +1203,25 @@ export default function IncomePage() {
         .drawer-buttons,
         .form-grid,
         .chart-grid,
-        .plan-grid {
+        .plan-grid,
+        .mini-grid {
           display: grid;
           gap: 14px;
         }
 
-        .stats-grid {
+        .stats-grid,
+        .drawer-buttons {
           grid-template-columns: repeat(4, minmax(0, 1fr));
         }
 
-        .drawer-buttons {
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+        .form-grid,
+        .plan-grid,
+        .mini-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .chart-grid {
+          grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
         }
 
         .income-room-card {
@@ -883,7 +1237,6 @@ export default function IncomePage() {
           color: #f5e6c8;
           font-size: 30px;
           line-height: 1;
-          font-family: var(--font-cormorant), Georgia, serif;
         }
 
         .card-sub {
@@ -897,7 +1250,6 @@ export default function IncomePage() {
           border: 1px solid rgba(201, 168, 76, 0.36);
           background: rgba(0, 0, 0, 0.68);
           color: #f5e6c8;
-          font-family: var(--font-cormorant), Georgia, serif;
           font-size: 23px;
           font-weight: 900;
         }
@@ -910,19 +1262,6 @@ export default function IncomePage() {
         .income-drawer-button.danger {
           color: #fecaca;
           border-color: rgba(248, 113, 113, 0.55);
-        }
-
-        .drawer-panel {
-          animation: drawerOpen 0.24s ease-out both;
-        }
-
-        @keyframes drawerOpen {
-          from { opacity: 0; transform: translateY(-10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        .form-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         label span {
@@ -958,30 +1297,6 @@ export default function IncomePage() {
           font-weight: 900;
         }
 
-        .chart-grid {
-          grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
-        }
-
-        .mini-grid,
-        .plan-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .big-money {
-          color: #4ade80;
-          font-size: 46px;
-          font-weight: 900;
-          margin: 10px 0 0;
-          font-family: var(--font-cormorant), Georgia, serif;
-        }
-
-        .chart-box {
-          height: 190px;
-          margin-top: 18px;
-        }
-
         .gap-box,
         .covered-box {
           margin-top: 16px;
@@ -1005,7 +1320,6 @@ export default function IncomePage() {
           margin: 8px 0 0;
           font-size: 44px;
           font-weight: 900;
-          font-family: var(--font-cormorant), Georgia, serif;
         }
 
         .gap-money.good {
@@ -1017,7 +1331,6 @@ export default function IncomePage() {
         }
 
         .gap-note,
-        .plan-note,
         .covered-box p {
           margin-top: 10px;
           color: #e8d5b7;
@@ -1055,7 +1368,6 @@ export default function IncomePage() {
           margin-top: 8px;
           color: #c9a84c;
           font-size: 24px;
-          font-family: var(--font-cormorant), Georgia, serif;
         }
 
         .hour-card.good strong {
@@ -1070,13 +1382,27 @@ export default function IncomePage() {
           color: #f87171;
         }
 
-        .recent-list {
+        .big-money {
+          color: #4ade80;
+          font-size: 46px;
+          font-weight: 900;
+          margin: 10px 0 0;
+        }
+
+        .chart-box {
+          height: 190px;
+          margin-top: 18px;
+        }
+
+        .recent-list,
+        .source-list {
           display: grid;
           gap: 10px;
           margin-top: 14px;
         }
 
-        .recent-row {
+        .recent-row,
+        .source-row {
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -1085,6 +1411,15 @@ export default function IncomePage() {
           padding: 14px;
           background: rgba(255, 255, 255, 0.04);
           border: 1px solid rgba(201, 168, 76, 0.18);
+        }
+
+        .source-row button {
+          border-radius: 12px;
+          border: 1px solid rgba(248, 113, 113, 0.45);
+          background: rgba(127, 29, 29, 0.35);
+          color: #fecaca;
+          padding: 9px 12px;
+          font-weight: 900;
         }
 
         .recent-left {
@@ -1097,11 +1432,8 @@ export default function IncomePage() {
           font-size: 24px;
         }
 
-        .recent-left strong {
-          color: #f5e6c8;
-        }
-
-        .recent-left p {
+        .recent-left p,
+        .source-row p {
           margin: 3px 0 0;
           color: #9a7d5a;
           font-size: 13px;
@@ -1110,7 +1442,6 @@ export default function IncomePage() {
         .recent-row .amount {
           color: #4ade80;
           font-size: 22px;
-          font-family: var(--font-cormorant), Georgia, serif;
         }
 
         .empty {
@@ -1128,20 +1459,13 @@ export default function IncomePage() {
         @media (max-width: 900px) {
           .stats-grid,
           .drawer-buttons,
-          .chart-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
+          .chart-grid,
           .hourly-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
 
         @media (max-width: 640px) {
-          .bank-page {
-            padding-top: 250px;
-          }
-
           .stats-grid,
           .drawer-buttons,
           .form-grid,
@@ -1152,7 +1476,8 @@ export default function IncomePage() {
             grid-template-columns: 1fr;
           }
 
-          .recent-row {
+          .recent-row,
+          .source-row {
             flex-direction: column;
             align-items: flex-start;
           }
@@ -1165,3 +1490,4 @@ export default function IncomePage() {
     </main>
   );
 }
+  
