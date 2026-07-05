@@ -153,7 +153,45 @@ export default function IncomePage() {
     setScanning(false);
   }
 }
+async function importScannedIncome() {
+  if (!userId) {
+    setMessage("Not signed in.");
+    return;
+  }
 
+  const selectedRows = scanRows.filter((row) => row.selected);
+
+  if (selectedRows.length === 0) {
+    setMessage("Select at least one income line.");
+    return;
+  }
+
+  setSaving(true);
+
+  const { error } = await supabase.from("income_entries").insert(
+    selectedRows.map((row) => ({
+      user_id: userId,
+      source_name: row.source_name,
+      amount: row.amount,
+      date_iso: row.date_iso,
+      note: "Imported from scanner",
+    }))
+  );
+
+  setSaving(false);
+
+  if (error) {
+    playError();
+    setMessage(error.message);
+    return;
+  }
+
+  playCoins();
+  setScanRows([]);
+  setImageFile(null);
+  setMessage(`${selectedRows.length} income lines imported.`);
+  await loadData();
+}
 async function handleAddIncome() {
   setMessage("");
 
@@ -417,6 +455,36 @@ const avgHourly = 0;
               onFileChange={setImageFile}
               onScan={() => void handleScanIncome()}
             />
+            {scanRows.length > 0 && (
+  <div className="recent-list">
+    {scanRows.map((row, index) => (
+      <label key={index} className="recent-row">
+        <span>
+          <input
+            type="checkbox"
+            checked={row.selected}
+            onChange={(event) => {
+              setScanRows((prev) =>
+                prev.map((item, i) =>
+                  i === index
+                    ? { ...item, selected: event.target.checked }
+                    : item
+                )
+              );
+            }}
+          />{" "}
+          {row.source_name}
+        </span>
+
+        <strong className="amount">{money(row.amount)}</strong>
+      </label>
+    ))}
+
+    <button onClick={importScannedIncome} disabled={saving} className="save-btn">
+      {saving ? "Importing…" : "Import Selected Income"}
+    </button>
+  </div>
+)}
           </RoomCard>
         )}
 
