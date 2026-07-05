@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useMemo, useState } from "react";
 import BankHero from "@/components/income/BankHero";
 import RoomCard from "@/components/income/RoomCard";
