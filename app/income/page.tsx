@@ -47,9 +47,8 @@ const CATEGORIES = [
 ];
 
 function entryDate(entry: IncomeEntry) {
-  return (entry.date_iso || entry.received_on || entry.created_at || "").slice(0, 10);
+  return (entry.date_iso || entry.created_at || "").slice(0, 10);
 }
-
 function monthPrefix(date: string) {
   return date.slice(0, 7);
 }
