@@ -183,6 +183,41 @@ function LightningModel() {
   );
 }
 
+function HarborShipModel(props: any) {
+  return <Model url="/models/harbor-ship.glb" {...props} />;
+}
+
+function DefenseCannonModel(props: any) {
+  return <Model url="/models/defense_cannon.glb" {...props} />;
+}
+
+function ColonialHouseModel(props: any) {
+  return <Model url="/models/colonial_house.glb" {...props} />;
+}
+
+function LakeModel(props: any) {
+  return <Model url="/models/lake.glb" {...props} />;
+}
+
+function TreeModel(props: any) {
+  return <Model url="/models/tree.glb" {...props} />;
+}
+
+function ColonialCitizenModel(props: any) {
+  return <Model url="/models/colonial_citizen.glb" {...props} />;
+}
+
+function ColonialPersonModel(props: any) {
+  return <Model url="/models/colonial-person.glb" {...props} />;
+}
+
+function TownDogModel(props: any) {
+  return <Model url="/models/town-dog.glb" {...props} />;
+}
+
+function TownCatModel(props: any) {
+  return <Model url="/models/town-cat.glb" {...props} />;
+}
 function WorldModels() {
   return (
     <>
