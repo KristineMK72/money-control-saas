@@ -186,14 +186,84 @@ function LightningModel() {
 function WorldModels() {
   return (
     <>
+      {/* Main Buildings */}
       <StoneHouseModel />
       <TavernModel />
       <LighthouseModel />
+
+      {/* Harbor */}
+      <HarborShipModel
+        position={[-28, 0, -45]}
+        rotation={[0, Math.PI / 2, 0]}
+        scale={2}
+      />
+
+      <DefenseCannonModel
+        position={[-22, 0, -32]}
+        rotation={[0, Math.PI / 4, 0]}
+      />
+
+      {/* Colonial Houses */}
+      <ColonialHouseModel
+        position={[12, 0, -18]}
+        rotation={[0, Math.PI / 2, 0]}
+      />
+
+      <ColonialHouseModel
+        position={[18, 0, -10]}
+      />
+
+      <ColonialHouseModel
+        position={[5, 0, -12]}
+      />
+
+      {/* Lake */}
+      <LakeModel
+        position={[40, -0.1, 35]}
+        scale={5}
+      />
+
+      {/* Trees */}
+      <TreeModel position={[8, 0, 20]} />
+      <TreeModel position={[15, 0, 22]} />
+      <TreeModel position={[20, 0, 18]} />
+      <TreeModel position={[32, 0, 30]} />
+      <TreeModel position={[35, 0, 15]} />
+      <TreeModel position={[-12, 0, 10]} />
+      <TreeModel position={[-25, 0, 18]} />
+      <TreeModel position={[-32, 0, 28]} />
+
+      {/* Citizens */}
+      <ColonialCitizenModel
+        position={[10, 0, 2]}
+      />
+
+      <ColonialCitizenModel
+        position={[6, 0, -5]}
+      />
+
+      <ColonialPersonModel
+        position={[18, 0, 5]}
+      />
+
+      <ColonialPersonModel
+        position={[-8, 0, -12]}
+      />
+
+      {/* Animals */}
+      <TownDogModel
+        position={[14, 0, 12]}
+      />
+
+      <TownCatModel
+        position={[9, 0, -7]}
+      />
+
+      {/* Effects */}
       <LightningModel />
     </>
   );
-}
-export default function ColonialTown3D() {
+}export default function ColonialTown3D() {
   const router = useRouter();
   const moveRef = useRef({ f: 0, r: 0 });
   const mobileYaw = useRef(0);
