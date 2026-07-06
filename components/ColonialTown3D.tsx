@@ -8,6 +8,7 @@ import {
   Environment,
   Sparkles,
   Text,
+  useGLTF,
 } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette, SMAA } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
@@ -130,7 +131,18 @@ function useMultiplayer(userId: string | null, username: string, avatarIdx: numb
 
   return { others, broadcast };
 }
+function StoneHouseModel() {
+  const { scene } = useGLTF("/models/stone_house_exterior.glb");
 
+  return (
+    <primitive
+      object={scene}
+      position={[0, 0, -34]}
+      scale={2}
+      rotation={[0, Math.PI, 0]}
+    />
+  );
+}
 export default function ColonialTown3D() {
   const router = useRouter();
   const moveRef = useRef({ f: 0, r: 0 });
@@ -531,7 +543,7 @@ function Scene({
       {BUILDINGS.map((b) => (
         <Building key={b.id} def={b} active={nearId === b.id} />
       ))}
-
+    <StoneHouseModel />
       {[-22, -14, -6, 2, 10, 18, 26].map((z) => (
         <group key={`lantern-row-${z}`}>
           <LanternPost position={[-3.8, 0, z]} />
