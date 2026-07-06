@@ -143,6 +143,56 @@ function StoneHouseModel() {
     />
   );
 }
+
+function TavernModel() {
+  const { scene } = useGLTF("/models/tavern_detailed.glb");
+
+  return (
+    <primitive
+      object={scene.clone()}
+      position={[18, 0, 4]}
+      scale={1.8}
+      rotation={[0, -Math.PI / 2, 0]}
+    />
+  );
+}
+
+function LighthouseModel() {
+  const { scene } = useGLTF("/models/lighthouse.glb");
+
+  return (
+    <primitive
+      object={scene.clone()}
+      position={[34, 0, -48]}
+      scale={2.4}
+      rotation={[0, Math.PI, 0]}
+    />
+  );
+}
+
+function LightningModel() {
+  const { scene } = useGLTF("/models/lighting_pack_2_forked_lightning.glb");
+
+  return (
+    <primitive
+      object={scene.clone()}
+      position={[-28, 10, -42]}
+      scale={2}
+      rotation={[0, 0, 0]}
+    />
+  );
+}
+
+function WorldModels() {
+  return (
+    <>
+      <StoneHouseModel />
+      <TavernModel />
+      <LighthouseModel />
+      <LightningModel />
+    </>
+  );
+}
 export default function ColonialTown3D() {
   const router = useRouter();
   const moveRef = useRef({ f: 0, r: 0 });
@@ -543,7 +593,8 @@ function Scene({
       {BUILDINGS.map((b) => (
         <Building key={b.id} def={b} active={nearId === b.id} />
       ))}
-    <StoneHouseModel />
+        <StoneHouseModel />
+        <WorldModels />
       {[-22, -14, -6, 2, 10, 18, 26].map((z) => (
         <group key={`lantern-row-${z}`}>
           <LanternPost position={[-3.8, 0, z]} />
