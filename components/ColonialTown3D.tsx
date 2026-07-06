@@ -182,7 +182,18 @@ function LightningModel() {
     />
   );
 }
+function Model({ url, position = [0, 0, 0], rotation = [0, 0, 0], scale = 1 }: any) {
+  const gltf = useGLTF(url);
 
+  return (
+    <primitive
+      object={gltf.scene.clone()}
+      position={position}
+      rotation={rotation}
+      scale={scale}
+    />
+  );
+}
 function HarborShipModel(props: any) {
   return <Model url="/models/harbor-ship.glb" {...props} />;
 }
