@@ -183,7 +183,7 @@ function LightningModel() {
   );
 }
 function Model({ url, position = [0, 0, 0], rotation = [0, 0, 0], scale = 1 }: any) {
-  const gltf = useGLTF(url);
+  const gltf = useGLTF(url) as any;
 
   return (
     <primitive
