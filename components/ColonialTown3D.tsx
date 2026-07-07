@@ -316,6 +316,7 @@ function WorldModels() {
   const controlsApiRef = useRef<any>(null);
 
   const [locked, setLocked] = useState(false);
+  const [birdPeek, setBirdPeek] = useState(false);
   const [near, setNear] = useState<BuildingDef | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [entering, setEntering] = useState<BuildingDef | null>(null);
@@ -512,6 +513,7 @@ function WorldModels() {
 
 function Scene({
   locked,
+  birdPeek={birdPeek},
   moveRef,
   mobileYaw,
   isMobile,
@@ -523,6 +525,7 @@ function Scene({
   broadcast,
 }: {
   locked: boolean;
+  birdPeek: boolean;
   moveRef: React.MutableRefObject<{ f: number; r: number }>;
   mobileYaw: React.MutableRefObject<number>;
   isMobile: boolean;
@@ -597,10 +600,11 @@ function Scene({
     const cam = state.camera;
     const dt = Math.min(delta, 0.05);
 
-    if (!locked) {
-      cam.lookAt(0, 1, 0);
-      return;
-    }
+    if (!locked || birdPeek) {
+  cam.position.lerp(new THREE.Vector3(0, 70, 70), 0.04);
+  cam.lookAt(0, 0, 0);
+  return;
+}
 
     if (!introDone.current && cam.position.y > EYE_HEIGHT + 0.08) {
       const target = new THREE.Vector3(...FIRST_PERSON_POS);
