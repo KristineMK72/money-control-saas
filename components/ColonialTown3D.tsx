@@ -396,6 +396,7 @@ function WorldModels() {
         <Suspense fallback={null}>
           <Scene
             locked={locked}
+            birdPeek={birdPeek}
             moveRef={moveRef}
             mobileYaw={mobileYaw}
             isMobile={isMobile}
