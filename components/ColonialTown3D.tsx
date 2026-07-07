@@ -514,7 +514,7 @@ function WorldModels() {
 
 function Scene({
   locked,
-  birdPeek={birdPeek},
+  birdPeek,
   moveRef,
   mobileYaw,
   isMobile,
