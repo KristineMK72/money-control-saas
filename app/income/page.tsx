@@ -43,12 +43,14 @@ type IncomeSource = {
   income_type:
     | "hourly"
     | "salary"
+    | "weekly"
     | "monthly"
     | "project"
     | "commission"
     | "gig";
   hourly_rate: number | string | null;
   hours_per_week: number | string | null;
+  weekly_amount: number | string | null;
   annual_salary: number | string | null;
   monthly_amount: number | string | null;
   active: boolean | null;
@@ -77,6 +79,9 @@ type SpendRow = {
 
 type Drawer = "record" | "scan" | "sources" | "hourly" | null;
 
+const WEEKS_PER_MONTH = 4.333;
+const HOURLY_TARGETS = [40, 30, 20, 10, 5];
+
 const CATEGORIES = [
   { value: "employment", label: "Employment", icon: "🏛" },
   { value: "entrepreneurship", label: "Entrepreneurship", icon: "⚙️" },
@@ -85,8 +90,6 @@ const CATEGORIES = [
   { value: "gifts", label: "Gifts", icon: "🎁" },
   { value: "other", label: "Other", icon: "💰" },
 ];
-
-const HOURLY_TARGETS = [40, 30, 20, 10, 5];
 
 function safeNum(value: unknown) {
   const n = Number(value ?? 0);
@@ -114,17 +117,19 @@ function readHoursFromNote(note?: string | null) {
 function projectedMonthlyIncome(source: IncomeSource) {
   const hourlyRate = clampMoney(source.hourly_rate);
   const hoursPerWeek = safeNum(source.hours_per_week);
+  const weeklyAmount = clampMoney(source.weekly_amount);
   const annualSalary = clampMoney(source.annual_salary);
   const monthlyAmount = clampMoney(source.monthly_amount);
 
   if (source.income_type === "salary") return annualSalary / 12;
+  if (source.income_type === "weekly") return weeklyAmount * WEEKS_PER_MONTH;
   if (source.income_type === "monthly") return monthlyAmount;
 
-  return hourlyRate * hoursPerWeek * 4.333;
+  return hourlyRate * hoursPerWeek * WEEKS_PER_MONTH;
 }
 
 function projectedWeeklyIncome(source: IncomeSource) {
-  return projectedMonthlyIncome(source) / 4.333;
+  return projectedMonthlyIncome(source) / WEEKS_PER_MONTH;
 }
 
 function getSourceHourlyRate(source: IncomeSource) {
@@ -168,6 +173,7 @@ export default function IncomePage() {
     useState<IncomeSource["income_type"]>("hourly");
   const [sourceHourlyRateInput, setSourceHourlyRateInput] = useState("");
   const [sourceHoursPerWeek, setSourceHoursPerWeek] = useState("");
+  const [sourceWeeklyAmount, setSourceWeeklyAmount] = useState("");
   const [sourceAnnualSalary, setSourceAnnualSalary] = useState("");
   const [sourceMonthlyAmount, setSourceMonthlyAmount] = useState("");
   const [sourceNote, setSourceNote] = useState("");
@@ -254,6 +260,7 @@ export default function IncomePage() {
     setSourceType("hourly");
     setSourceHourlyRateInput("");
     setSourceHoursPerWeek("");
+    setSourceWeeklyAmount("");
     setSourceAnnualSalary("");
     setSourceMonthlyAmount("");
     setSourceNote("");
@@ -276,6 +283,7 @@ export default function IncomePage() {
 
     const hourlyRate = clampMoney(sourceHourlyRateInput);
     const hoursPerWeek = safeNum(sourceHoursPerWeek);
+    const weeklyAmount = clampMoney(sourceWeeklyAmount);
     const annualSalary = clampMoney(sourceAnnualSalary);
     const monthlyAmount = clampMoney(sourceMonthlyAmount);
 
@@ -285,13 +293,23 @@ export default function IncomePage() {
       return;
     }
 
+    if (sourceType === "weekly" && weeklyAmount <= 0) {
+      playError();
+      setMessage("Enter the weekly amount.");
+      return;
+    }
+
     if (sourceType === "monthly" && monthlyAmount <= 0) {
       playError();
       setMessage("Enter the monthly amount.");
       return;
     }
 
-    if (sourceType !== "salary" && sourceType !== "monthly") {
+    if (
+      sourceType !== "salary" &&
+      sourceType !== "weekly" &&
+      sourceType !== "monthly"
+    ) {
       if (hourlyRate <= 0 || hoursPerWeek <= 0) {
         playError();
         setMessage("Enter rate and average hours per week.");
@@ -307,6 +325,7 @@ export default function IncomePage() {
       income_type: sourceType,
       hourly_rate: hourlyRate || null,
       hours_per_week: hoursPerWeek || null,
+      weekly_amount: weeklyAmount || null,
       annual_salary: annualSalary || null,
       monthly_amount: monthlyAmount || null,
       active: true,
@@ -568,21 +587,28 @@ export default function IncomePage() {
   );
 
   const projectedGap = Math.max(0, monthlyNeed - projectedMonthly);
+  const projectedSurplus = Math.max(0, projectedMonthly - monthlyNeed);
 
   const hourlyNeeded = useMemo(
     () =>
-      HOURLY_TARGETS.map((hours) => ({
-        hours,
-        hourly: hours > 0 ? monthlyNeed / hours : 0,
+      HOURLY_TARGETS.map((weeklyHours) => ({
+        hours: weeklyHours,
+        hourly:
+          weeklyHours > 0
+            ? monthlyNeed / (weeklyHours * WEEKS_PER_MONTH)
+            : 0,
       })),
     [monthlyNeed]
   );
 
   const catchUpHourlyNeeded = useMemo(
     () =>
-      HOURLY_TARGETS.map((hours) => ({
-        hours,
-        hourly: hours > 0 ? remainingIncomeNeeded / hours : 0,
+      HOURLY_TARGETS.map((weeklyHours) => ({
+        hours: weeklyHours,
+        hourly:
+          weeklyHours > 0
+            ? remainingIncomeNeeded / (weeklyHours * WEEKS_PER_MONTH)
+            : 0,
       })),
     [remainingIncomeNeeded]
   );
@@ -607,7 +633,7 @@ export default function IncomePage() {
   }, [thisMonthEntries, activeSources]);
 
   const todayGoal = Math.ceil(remainingIncomeNeeded / 7);
-  const weeklyGoal = Math.ceil(remainingIncomeNeeded / 4);
+  const weeklyGoal = Math.ceil(remainingIncomeNeeded / WEEKS_PER_MONTH);
 
   const allTimeTotal = useMemo(
     () => addMoney(entries.map((entry) => entry.amount)),
@@ -673,22 +699,24 @@ export default function IncomePage() {
         {message && <div className="notice">{message}</div>}
 
         <div className="stats-grid">
-          <MiniMetric icon="🪙" label="This Month" value={money(thisMonthTotal)} good />
-          <MiniMetric icon="🎯" label="Need Left" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
-          <MiniMetric icon="🏦" label="Outgoing Need" value={money(monthlyNeed)} danger={monthlyNeed > thisMonthTotal} />
-          <MiniMetric icon="⏱️" label="Avg Hourly" value={avgHourly > 0 ? money(avgHourly) : "—"} />
+          <MiniMetric icon="🪙" label="Earned This Month" value={money(thisMonthTotal)} good />
+          <MiniMetric icon="🎯" label="Still Need" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
+          <MiniMetric icon="🏦" label="Monthly Need" value={money(monthlyNeed)} danger={monthlyNeed > thisMonthTotal} />
+          <MiniMetric icon="📈" label="Planned Income" value={money(projectedMonthly)} good={projectedMonthly >= monthlyNeed && monthlyNeed > 0} />
         </div>
 
         <RoomCard>
           <h2>Ben&apos;s Bank Briefing</h2>
-          <p className="card-sub">Income, monthly obligations, spending pressure, and the fastest way to close the gap.</p>
+          <p className="card-sub">
+            Need is based on outgoing money. Planned income is based on saved income sources. Earned income is what you actually recorded.
+          </p>
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </RoomCard>
 
         <RoomCard>
-          <h2>Income Needed Breakdown</h2>
+          <h2>Monthly Need</h2>
           <p className="card-sub">
-            This uses bills, debt minimums, and live/historical spending. If outgoing money rises, Ben raises the target.
+            This is what the household needs based on bills, debt minimums, and live/historical spending.
           </p>
 
           <div className="plan-grid">
@@ -696,24 +724,34 @@ export default function IncomePage() {
             <MiniMetric icon="💳" label="Debt Minimums" value={money(monthlyDebtMinimums)} />
             <MiniMetric icon="🛒" label="Spending Need" value={money(spendingNeed)} />
             <MiniMetric icon="🏦" label="Monthly Need" value={money(monthlyNeed)} />
-            <MiniMetric icon="📈" label="Projected Monthly" value={money(projectedMonthly)} good={projectedMonthly >= monthlyNeed && monthlyNeed > 0} />
-            <MiniMetric icon="💼" label="Projected Gap" value={money(projectedGap)} danger={projectedGap > 0} />
+          </div>
+        </RoomCard>
+
+        <RoomCard>
+          <h2>Can My Income Plan Cover It?</h2>
+          <p className="card-sub">
+            Income sources are planning numbers. They show whether your expected work and average income can cover the outgoing need.
+          </p>
+
+          <div className="plan-grid">
+            <MiniMetric icon="📈" label="Projected Weekly" value={money(projectedWeekly)} />
+            <MiniMetric icon="💼" label="Projected Monthly" value={money(projectedMonthly)} good={projectedMonthly >= monthlyNeed && monthlyNeed > 0} />
+            <MiniMetric icon="🚨" label="Plan Gap" value={money(projectedGap)} danger={projectedGap > 0} />
+            <MiniMetric icon="🌿" label="Plan Surplus" value={money(projectedSurplus)} good={projectedSurplus > 0} />
           </div>
 
           <div className="gap-box">
-            {remainingIncomeNeeded > 0 ? (
+            {projectedGap > 0 ? (
               <>
-                <p className="gap-eyebrow">Still Need This Month</p>
-                <p className="gap-money danger">{money(remainingIncomeNeeded)}</p>
-                <p className="gap-note">
-                  Ben says: income lowers the gap, but the hourly target stays based on outgoing money.
-                </p>
+                <p className="gap-eyebrow">Income Plan Short</p>
+                <p className="gap-money danger">{money(projectedGap)}</p>
+                <p className="gap-note">Ben says: add another source, raise hours, or lower outgoing money.</p>
               </>
             ) : (
               <>
-                <p className="gap-eyebrow">Covered</p>
-                <p className="gap-money good">{money(leftAfterNeed)}</p>
-                <p className="gap-note">Your income is covering the current monthly need.</p>
+                <p className="gap-eyebrow">Income Plan Covers Need</p>
+                <p className="gap-money good">{money(projectedSurplus)}</p>
+                <p className="gap-note">Your saved income sources are projected to cover the monthly need.</p>
               </>
             )}
           </div>
@@ -722,7 +760,7 @@ export default function IncomePage() {
         <RoomCard>
           <h2>How Much Per Hour?</h2>
           <p className="card-sub">
-            Required hourly rate based on current outgoing money, not income already added.
+            Required hourly rate based on weekly work hours. This does not go down when income is recorded.
           </p>
 
           <div className="hourly-grid">
@@ -733,7 +771,7 @@ export default function IncomePage() {
                   item.hourly <= 20 ? "good" : item.hourly <= 35 ? "warn" : "danger"
                 }`}
               >
-                <p>{item.hours} hours</p>
+                <p>{item.hours} hrs/week</p>
                 <strong>{money(item.hourly)}/hr</strong>
               </div>
             ))}
@@ -761,7 +799,7 @@ export default function IncomePage() {
         {drawer === "record" && (
           <RoomCard className="drawer-panel">
             <h2>Record Income</h2>
-            <p className="card-sub">Earn it, name it, and put it in Franklin&apos;s ledger.</p>
+            <p className="card-sub">This is actual money received this month.</p>
 
             <div className="form-grid">
               <label>
@@ -802,8 +840,10 @@ export default function IncomePage() {
 
         {drawer === "sources" && (
           <RoomCard className="drawer-panel">
-            <h2>Franklin&apos;s Employment Ledger</h2>
-            <p className="card-sub">Add hourly, salary, monthly, gig, project, or commission income.</p>
+            <h2>Income Sources</h2>
+            <p className="card-sub">
+              These are planning sources. Use hourly, weekly, monthly, or salary.
+            </p>
 
             <div className="form-grid">
               <label>
@@ -814,12 +854,13 @@ export default function IncomePage() {
               <label>
                 <span>Income Type</span>
                 <select value={sourceType} onChange={(e) => setSourceType(e.target.value as IncomeSource["income_type"])}>
-                  <option value="hourly">Hourly</option>
-                  <option value="salary">Salary</option>
+                  <option value="hourly">Hourly / Gig Hourly</option>
+                  <option value="weekly">Weekly Fixed</option>
                   <option value="monthly">Monthly Fixed</option>
-                  <option value="gig">Gig Work</option>
-                  <option value="project">Per Project</option>
-                  <option value="commission">Commission</option>
+                  <option value="salary">Salary</option>
+                  <option value="project">Project / Average Rate</option>
+                  <option value="commission">Commission / Average Rate</option>
+                  <option value="gig">Gig / Average Rate</option>
                 </select>
               </label>
 
@@ -834,20 +875,25 @@ export default function IncomePage() {
                     <input type="number" inputMode="decimal" value={sourceHoursPerWeek} onChange={(e) => setSourceHoursPerWeek(e.target.value)} placeholder="40" />
                   </label>
                 </>
+              ) : sourceType === "weekly" ? (
+                <label>
+                  <span>Weekly Amount</span>
+                  <input type="number" inputMode="decimal" value={sourceWeeklyAmount} onChange={(e) => setSourceWeeklyAmount(e.target.value)} placeholder="700" />
+                </label>
               ) : sourceType === "monthly" ? (
                 <label>
                   <span>Monthly Amount</span>
-                  <input type="number" inputMode="decimal" value={sourceMonthlyAmount} onChange={(e) => setSourceMonthlyAmount(e.target.value)} placeholder="2500" />
+                  <input type="number" inputMode="decimal" value={sourceMonthlyAmount} onChange={(e) => setSourceMonthlyAmount(e.target.value)} placeholder="3000" />
                 </label>
               ) : (
                 <>
                   <label>
                     <span>Hourly / Average Rate</span>
-                    <input type="number" inputMode="decimal" value={sourceHourlyRateInput} onChange={(e) => setSourceHourlyRateInput(e.target.value)} placeholder="25" />
+                    <input type="number" inputMode="decimal" value={sourceHourlyRateInput} onChange={(e) => setSourceHourlyRateInput(e.target.value)} placeholder="18" />
                   </label>
                   <label>
                     <span>Average Hours / Week</span>
-                    <input type="number" inputMode="decimal" value={sourceHoursPerWeek} onChange={(e) => setSourceHoursPerWeek(e.target.value)} placeholder="10" />
+                    <input type="number" inputMode="decimal" value={sourceHoursPerWeek} onChange={(e) => setSourceHoursPerWeek(e.target.value)} placeholder="20" />
                   </label>
                 </>
               )}
@@ -938,13 +984,13 @@ export default function IncomePage() {
               <MiniMetric icon="☀️" label="Today Goal" value={money(todayGoal)} />
               <MiniMetric icon="🗓️" label="Weekly Goal" value={money(weeklyGoal)} />
               <MiniMetric icon="📈" label="Projected Weekly" value={money(projectedWeekly)} />
-              <MiniMetric icon="🎯" label="Need Left" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
+              <MiniMetric icon="🎯" label="Still Need" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
             </div>
 
             <div className="hourly-grid mini-hourly">
               {catchUpHourlyNeeded.map((item) => (
                 <div key={item.hours} className="hour-card">
-                  <p>{item.hours} hrs</p>
+                  <p>{item.hours} hrs/week</p>
                   <strong>{money(item.hourly)}/hr</strong>
                 </div>
               ))}
@@ -1022,409 +1068,296 @@ export default function IncomePage() {
 
         <p className="quote">“Diligence is the mother of good luck.” — Benjamin Franklin</p>
       </section>
-
       <style jsx global>{`
-        .bank-page {
-          min-height: 100vh;
-          padding-top: 0;
-          padding-bottom: 100px;
-          background:
-            radial-gradient(circle at top, rgba(245, 196, 88, 0.12), transparent 32rem),
-            linear-gradient(180deg, #050302, #140a04 45%, #050302);
-          color: #fff7ed;
-          font-family: var(--font-cormorant), Georgia, serif;
-        }
+  .bank-page {
+    min-height: 100vh;
+    padding-top: 0;
+    padding-bottom: 100px;
+    background:
+      radial-gradient(circle at top, rgba(245, 196, 88, 0.12), transparent 32rem),
+      linear-gradient(180deg, #050302, #140a04 45%, #050302);
+    color: #fff7ed;
+    font-family: var(--font-cormorant), Georgia, serif;
+  }
 
-        .loading-room {
-          display: grid;
-          place-items: center;
-          color: #c9a84c;
-          font-size: 22px;
-        }
+  .loading-room {
+    display: grid;
+    place-items: center;
+    color: #c9a84c;
+    font-size: 22px;
+  }
 
-        .desk-wrap {
-          max-width: 1100px;
-          margin: 0 auto;
-          padding: 0 18px 18px;
-          display: grid;
-          gap: 18px;
-        }
+  .desk-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 18px 18px;
+    display: grid;
+    gap: 18px;
+  }
 
-        .bank-hero {
-          max-width: 1100px;
-          margin: 0 auto;
-          padding: 12px;
-        }
+  .notice {
+    border-radius: 20px;
+    padding: 14px 16px;
+    color: #facc15;
+    background: rgba(15, 8, 4, 0.92);
+    border: 1px solid rgba(201, 168, 76, 0.35);
+    text-align: center;
+  }
 
-        .bank-hero-frame {
-          position: relative;
-          border-radius: 28px;
-          overflow: hidden;
-          border: 1px solid rgba(201, 168, 76, 0.35);
-          background: #050302;
-          box-shadow: 0 28px 90px rgba(0, 0, 0, 0.65);
-        }
+  .stats-grid,
+  .drawer-buttons,
+  .form-grid,
+  .chart-grid,
+  .plan-grid,
+  .mini-grid {
+    display: grid;
+    gap: 14px;
+  }
 
-        .bank-hero-img {
-          display: block;
-          width: 100%;
-          height: auto;
-          max-height: 430px;
-          object-fit: cover;
-          object-position: center top;
-        }
+  .stats-grid,
+  .drawer-buttons {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 
-        .bank-hero-shade {
-          position: absolute;
-          inset: 0;
-          background:
-            linear-gradient(180deg, rgba(5, 3, 2, 0.05), rgba(5, 3, 2, 0.22) 45%, rgba(5, 3, 2, 0.88)),
-            linear-gradient(90deg, rgba(5, 3, 2, 0.58), transparent 50%, rgba(5, 3, 2, 0.38));
-        }
+  .form-grid,
+  .plan-grid,
+  .mini-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
-        .bank-back-btn {
-          position: absolute;
-          top: 14px;
-          left: 14px;
-          z-index: 3;
-          color: #f5e6c8;
-          text-decoration: none;
-          border: 1px solid rgba(201, 168, 76, 0.42);
-          background: rgba(0, 0, 0, 0.64);
-          border-radius: 999px;
-          padding: 10px 16px;
-          font-weight: 800;
-        }
+  .chart-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  }
 
-        .bank-hero-title {
-          position: absolute;
-          left: 22px;
-          right: 22px;
-          bottom: 18px;
-          z-index: 3;
-          max-width: 680px;
-        }
+  .card-sub {
+    color: #b99b60;
+    margin: 8px 0 18px;
+  }
 
-        .bank-eyebrow {
-          margin: 0 0 8px;
-          color: #facc15;
-          letter-spacing: 0.32em;
-          text-transform: uppercase;
-          font-weight: 900;
-          font-size: 13px;
-        }
+  label span {
+    display: block;
+    color: #d6c09a;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 900;
+    margin-bottom: 7px;
+  }
 
-        .bank-hero-title h1 {
-          margin: 0;
-          font-size: clamp(42px, 8vw, 78px);
-          line-height: 0.9;
-          font-family: var(--font-cormorant), Georgia, serif;
-        }
+  input,
+  select,
+  textarea {
+    width: 100%;
+    border-radius: 16px;
+    border: 1px solid rgba(201, 168, 76, 0.45);
+    background: rgba(255, 245, 220, 0.95);
+    color: #24130a;
+    padding: 13px 14px;
+    font-size: 16px;
+    outline: none;
+  }
 
-        .bank-hero-title p:not(.bank-eyebrow) {
-          max-width: 620px;
-          margin: 10px 0 0;
-          color: #ead9bd;
-          font-size: 18px;
-        }
+  .save-btn {
+    border: 1px solid rgba(74, 222, 128, 0.65);
+    border-radius: 20px;
+    padding: 16px 18px;
+    background: linear-gradient(180deg, #16a34a, #15803d);
+    color: #f0fdf4;
+    font-size: 18px;
+    font-weight: 900;
+  }
 
-        .notice {
-          border-radius: 20px;
-          padding: 14px 16px;
-          color: #facc15;
-          background: rgba(15, 8, 4, 0.92);
-          border: 1px solid rgba(201, 168, 76, 0.35);
-          text-align: center;
-        }
+  .gap-box,
+  .covered-box {
+    margin-top: 16px;
+    border-radius: 24px;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.48);
+    border: 1px solid rgba(201, 168, 76, 0.25);
+    text-align: center;
+  }
 
-        .stats-grid,
-        .drawer-buttons,
-        .form-grid,
-        .chart-grid,
-        .plan-grid,
-        .mini-grid {
-          display: grid;
-          gap: 14px;
-        }
+  .gap-eyebrow {
+    margin: 0;
+    color: #d6c09a;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 900;
+  }
 
-        .stats-grid,
-        .drawer-buttons {
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-        }
+  .gap-money {
+    margin: 8px 0 0;
+    font-size: 44px;
+    font-weight: 900;
+  }
 
-        .form-grid,
-        .plan-grid,
-        .mini-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
+  .gap-money.good {
+    color: #4ade80;
+  }
 
-        .chart-grid {
-          grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
-        }
+  .gap-money.danger {
+    color: #f87171;
+  }
 
-        .income-room-card {
-          border-radius: 28px;
-          padding: 22px;
-          background: linear-gradient(180deg, rgba(18, 10, 4, 0.94), rgba(5, 3, 2, 0.97));
-          border: 1px solid rgba(201, 168, 76, 0.34);
-          box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
-        }
+  .gap-note,
+  .covered-box p {
+    margin-top: 10px;
+    color: #e8d5b7;
+  }
 
-        .income-room-card h2 {
-          margin: 0;
-          color: #f5e6c8;
-          font-size: 30px;
-          line-height: 1;
-        }
+  .hourly-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+  }
 
-        .card-sub {
-          color: #b99b60;
-          margin: 8px 0 18px;
-        }
+  .mini-hourly {
+    margin-top: 16px;
+  }
 
-        .income-drawer-button {
-          min-height: 76px;
-          border-radius: 26px;
-          border: 1px solid rgba(201, 168, 76, 0.36);
-          background: rgba(0, 0, 0, 0.68);
-          color: #f5e6c8;
-          font-size: 23px;
-          font-weight: 900;
-        }
+  .hour-card {
+    border-radius: 20px;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(201, 168, 76, 0.25);
+    text-align: center;
+  }
 
-        .income-drawer-button.active {
-          background: rgba(22, 101, 52, 0.95);
-          border-color: rgba(74, 222, 128, 0.7);
-        }
+  .hour-card p {
+    margin: 0;
+    color: #d6c09a;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 900;
+  }
 
-        .income-drawer-button.danger {
-          color: #fecaca;
-          border-color: rgba(248, 113, 113, 0.55);
-        }
+  .hour-card strong {
+    display: block;
+    margin-top: 8px;
+    color: #c9a84c;
+    font-size: 24px;
+  }
 
-        label span {
-          display: block;
-          color: #d6c09a;
-          font-size: 11px;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
-          font-weight: 900;
-          margin-bottom: 7px;
-        }
+  .hour-card.good strong {
+    color: #4ade80;
+  }
 
-        input,
-        select,
-        textarea {
-          width: 100%;
-          border-radius: 16px;
-          border: 1px solid rgba(201, 168, 76, 0.45);
-          background: rgba(255, 245, 220, 0.95);
-          color: #24130a;
-          padding: 13px 14px;
-          font-size: 16px;
-          outline: none;
-        }
+  .hour-card.warn strong {
+    color: #facc15;
+  }
 
-        .save-btn {
-          border: 1px solid rgba(74, 222, 128, 0.65);
-          border-radius: 20px;
-          padding: 16px 18px;
-          background: linear-gradient(180deg, #16a34a, #15803d);
-          color: #f0fdf4;
-          font-size: 18px;
-          font-weight: 900;
-        }
+  .hour-card.danger strong {
+    color: #f87171;
+  }
 
-        .gap-box,
-        .covered-box {
-          margin-top: 16px;
-          border-radius: 24px;
-          padding: 20px;
-          background: rgba(0, 0, 0, 0.48);
-          border: 1px solid rgba(201, 168, 76, 0.25);
-          text-align: center;
-        }
+  .big-money {
+    color: #4ade80;
+    font-size: 46px;
+    font-weight: 900;
+    margin: 10px 0 0;
+  }
 
-        .gap-eyebrow {
-          margin: 0;
-          color: #d6c09a;
-          font-size: 11px;
-          letter-spacing: 0.18em;
-          text-transform: uppercase;
-          font-weight: 900;
-        }
+  .chart-box {
+    height: 190px;
+    margin-top: 18px;
+  }
 
-        .gap-money {
-          margin: 8px 0 0;
-          font-size: 44px;
-          font-weight: 900;
-        }
+  .recent-list,
+  .source-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+  }
 
-        .gap-money.good {
-          color: #4ade80;
-        }
+  .recent-row,
+  .source-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    border-radius: 18px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(201, 168, 76, 0.18);
+  }
 
-        .gap-money.danger {
-          color: #f87171;
-        }
+  .source-row button {
+    border-radius: 12px;
+    border: 1px solid rgba(248, 113, 113, 0.45);
+    background: rgba(127, 29, 29, 0.35);
+    color: #fecaca;
+    padding: 9px 12px;
+    font-weight: 900;
+  }
 
-        .gap-note,
-        .covered-box p {
-          margin-top: 10px;
-          color: #e8d5b7;
-        }
+  .recent-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
 
-        .hourly-grid {
-          display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 12px;
-        }
+  .recent-left span {
+    font-size: 24px;
+  }
 
-        .mini-hourly {
-          margin-top: 16px;
-        }
+  .recent-left p,
+  .source-row p {
+    margin: 3px 0 0;
+    color: #9a7d5a;
+    font-size: 13px;
+  }
 
-        .hour-card {
-          border-radius: 20px;
-          padding: 16px;
-          background: rgba(0, 0, 0, 0.55);
-          border: 1px solid rgba(201, 168, 76, 0.25);
-          text-align: center;
-        }
+  .recent-row .amount {
+    color: #4ade80;
+    font-size: 22px;
+  }
 
-        .hour-card p {
-          margin: 0;
-          color: #d6c09a;
-          font-size: 11px;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          font-weight: 900;
-        }
+  .empty {
+    text-align: center;
+    color: #9a7d5a;
+  }
 
-        .hour-card strong {
-          display: block;
-          margin-top: 8px;
-          color: #c9a84c;
-          font-size: 24px;
-        }
+  .quote {
+    text-align: center;
+    color: #c9a84c;
+    font-style: italic;
+    padding: 18px;
+  }
 
-        .hour-card.good strong {
-          color: #4ade80;
-        }
+  @media (max-width: 900px) {
+    .stats-grid,
+    .drawer-buttons,
+    .chart-grid,
+    .hourly-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
 
-        .hour-card.warn strong {
-          color: #facc15;
-        }
+  @media (max-width: 640px) {
+    .stats-grid,
+    .drawer-buttons,
+    .form-grid,
+    .chart-grid,
+    .mini-grid,
+    .plan-grid,
+    .hourly-grid {
+      grid-template-columns: 1fr;
+    }
 
-        .hour-card.danger strong {
-          color: #f87171;
-        }
+    .recent-row,
+    .source-row {
+      flex-direction: column;
+      align-items: flex-start;
+    }
 
-        .big-money {
-          color: #4ade80;
-          font-size: 46px;
-          font-weight: 900;
-          margin: 10px 0 0;
-        }
-
-        .chart-box {
-          height: 190px;
-          margin-top: 18px;
-        }
-
-        .recent-list,
-        .source-list {
-          display: grid;
-          gap: 10px;
-          margin-top: 14px;
-        }
-
-        .recent-row,
-        .source-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 12px;
-          border-radius: 18px;
-          padding: 14px;
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid rgba(201, 168, 76, 0.18);
-        }
-
-        .source-row button {
-          border-radius: 12px;
-          border: 1px solid rgba(248, 113, 113, 0.45);
-          background: rgba(127, 29, 29, 0.35);
-          color: #fecaca;
-          padding: 9px 12px;
-          font-weight: 900;
-        }
-
-        .recent-left {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .recent-left span {
-          font-size: 24px;
-        }
-
-        .recent-left p,
-        .source-row p {
-          margin: 3px 0 0;
-          color: #9a7d5a;
-          font-size: 13px;
-        }
-
-        .recent-row .amount {
-          color: #4ade80;
-          font-size: 22px;
-        }
-
-        .empty {
-          text-align: center;
-          color: #9a7d5a;
-        }
-
-        .quote {
-          text-align: center;
-          color: #c9a84c;
-          font-style: italic;
-          padding: 18px;
-        }
-
-        @media (max-width: 900px) {
-          .stats-grid,
-          .drawer-buttons,
-          .chart-grid,
-          .hourly-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-        }
-
-        @media (max-width: 640px) {
-          .stats-grid,
-          .drawer-buttons,
-          .form-grid,
-          .chart-grid,
-          .mini-grid,
-          .plan-grid,
-          .hourly-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .recent-row,
-          .source-row {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-
-          .recent-row .amount {
-            align-self: flex-end;
-          }
-        }
-      `}</style>
+    .recent-row .amount {
+      align-self: flex-end;
+    }
+  }
+`}
+  </style>
     </main>
   );
 }
