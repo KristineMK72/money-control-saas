@@ -68,6 +68,13 @@ type DebtRow = {
   monthly_min_payment: number | string | null;
 };
 
+type SpendRow = {
+  id: string;
+  amount: number | string | null;
+  date_iso: string | null;
+  created_at: string;
+};
+
 type Drawer = "record" | "scan" | "sources" | "hourly" | null;
 
 const CATEGORIES = [
@@ -87,6 +94,10 @@ function safeNum(value: unknown) {
 }
 
 function entryDate(entry: IncomeEntry) {
+  return (entry.date_iso || entry.created_at || "").slice(0, 10);
+}
+
+function spendDate(entry: SpendRow) {
   return (entry.date_iso || entry.created_at || "").slice(0, 10);
 }
 
@@ -142,6 +153,7 @@ export default function IncomePage() {
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
   const [bills, setBills] = useState<BillRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
+  const [spendEntries, setSpendEntries] = useState<SpendRow[]>([]);
 
   const [drawer, setDrawer] = useState<Drawer>("record");
 
@@ -191,39 +203,48 @@ export default function IncomePage() {
 
     setUserId(user.id);
 
-    const [incomeRes, sourcesRes, billsRes, debtsRes] = await Promise.all([
-      supabase
-        .from("income_entries")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false }),
+    const [incomeRes, sourcesRes, billsRes, debtsRes, spendRes] =
+      await Promise.all([
+        supabase
+          .from("income_entries")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
 
-      supabase
-        .from("income_sources")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false }),
+        supabase
+          .from("income_sources")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
 
-      supabase
-        .from("bills")
-        .select("id, target, monthly_target")
-        .eq("user_id", user.id),
+        supabase
+          .from("bills")
+          .select("id, target, monthly_target")
+          .eq("user_id", user.id),
 
-      supabase
-        .from("debts")
-        .select("id, min_payment, monthly_min_payment")
-        .eq("user_id", user.id),
-    ]);
+        supabase
+          .from("debts")
+          .select("id, min_payment, monthly_min_payment")
+          .eq("user_id", user.id),
+
+        supabase
+          .from("spend_entries")
+          .select("id, amount, date_iso, created_at")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+      ]);
 
     if (incomeRes.error) setMessage(incomeRes.error.message);
     if (sourcesRes.error) setMessage(sourcesRes.error.message);
     if (billsRes.error) setMessage(billsRes.error.message);
     if (debtsRes.error) setMessage(debtsRes.error.message);
+    if (spendRes.error) setMessage(spendRes.error.message);
 
     setEntries((incomeRes.data || []) as IncomeEntry[]);
     setIncomeSources((sourcesRes.data || []) as IncomeSource[]);
     setBills((billsRes.data || []) as BillRow[]);
     setDebts((debtsRes.data || []) as DebtRow[]);
+    setSpendEntries((spendRes.data || []) as SpendRow[]);
 
     setLoading(false);
   }
@@ -495,6 +516,42 @@ export default function IncomePage() {
     [debts]
   );
 
+  const thisMonthSpendEntries = useMemo(
+    () =>
+      spendEntries.filter((entry) => monthPrefix(spendDate(entry)) === thisMonth),
+    [spendEntries, thisMonth]
+  );
+
+  const thisMonthSpending = useMemo(
+    () => addMoney(thisMonthSpendEntries.map((entry) => entry.amount)),
+    [thisMonthSpendEntries]
+  );
+
+  const avgMonthlySpending = useMemo(() => {
+    if (!spendEntries.length) return 0;
+
+    const monthMap = new Map<string, number>();
+
+    spendEntries.forEach((entry) => {
+      const key = monthPrefix(spendDate(entry));
+      const current = monthMap.get(key) || 0;
+      monthMap.set(key, current + clampMoney(entry.amount));
+    });
+
+    const totals = Array.from(monthMap.values());
+    return totals.length ? addMoney(totals) / totals.length : 0;
+  }, [spendEntries]);
+
+  const spendingNeed = Math.max(avgMonthlySpending, thisMonthSpending);
+
+  const monthlyNeed = Math.max(
+    0,
+    monthlyBillsTotal + monthlyDebtMinimums + spendingNeed
+  );
+
+  const remainingIncomeNeeded = Math.max(0, monthlyNeed - thisMonthTotal);
+  const leftAfterNeed = Math.max(0, thisMonthTotal - monthlyNeed);
+
   const activeSources = useMemo(
     () => incomeSources.filter((item) => item.active !== false),
     [incomeSources]
@@ -510,12 +567,18 @@ export default function IncomePage() {
     [activeSources]
   );
 
-  const monthlyNeed = Math.max(0, monthlyBillsTotal + monthlyDebtMinimums);
-  const remainingIncomeNeeded = Math.max(0, monthlyNeed - thisMonthTotal);
   const projectedGap = Math.max(0, monthlyNeed - projectedMonthly);
-  const leftAfterNeed = Math.max(0, thisMonthTotal - monthlyNeed);
 
   const hourlyNeeded = useMemo(
+    () =>
+      HOURLY_TARGETS.map((hours) => ({
+        hours,
+        hourly: hours > 0 ? monthlyNeed / hours : 0,
+      })),
+    [monthlyNeed]
+  );
+
+  const catchUpHourlyNeeded = useMemo(
     () =>
       HOURLY_TARGETS.map((hours) => ({
         hours,
@@ -612,24 +675,28 @@ export default function IncomePage() {
         <div className="stats-grid">
           <MiniMetric icon="🪙" label="This Month" value={money(thisMonthTotal)} good />
           <MiniMetric icon="🎯" label="Need Left" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
-          <MiniMetric icon="📈" label="Projected Monthly" value={money(projectedMonthly)} good={projectedMonthly >= monthlyNeed && monthlyNeed > 0} />
+          <MiniMetric icon="🏦" label="Outgoing Need" value={money(monthlyNeed)} danger={monthlyNeed > thisMonthTotal} />
           <MiniMetric icon="⏱️" label="Avg Hourly" value={avgHourly > 0 ? money(avgHourly) : "—"} />
         </div>
 
         <RoomCard>
           <h2>Ben&apos;s Bank Briefing</h2>
-          <p className="card-sub">Income, monthly obligations, and the fastest way to close the gap.</p>
+          <p className="card-sub">Income, monthly obligations, spending pressure, and the fastest way to close the gap.</p>
           <BenBubble message={benInsight.text} mood={benInsight.mood} />
         </RoomCard>
 
         <RoomCard>
           <h2>Income Needed Breakdown</h2>
-          <p className="card-sub">This uses bills + debt minimums, not extra spending, so the hourly number stays consistent.</p>
+          <p className="card-sub">
+            This uses bills, debt minimums, and live/historical spending. If outgoing money rises, Ben raises the target.
+          </p>
 
           <div className="plan-grid">
             <MiniMetric icon="📋" label="Bills" value={money(monthlyBillsTotal)} />
             <MiniMetric icon="💳" label="Debt Minimums" value={money(monthlyDebtMinimums)} />
+            <MiniMetric icon="🛒" label="Spending Need" value={money(spendingNeed)} />
             <MiniMetric icon="🏦" label="Monthly Need" value={money(monthlyNeed)} />
+            <MiniMetric icon="📈" label="Projected Monthly" value={money(projectedMonthly)} good={projectedMonthly >= monthlyNeed && monthlyNeed > 0} />
             <MiniMetric icon="💼" label="Projected Gap" value={money(projectedGap)} danger={projectedGap > 0} />
           </div>
 
@@ -638,7 +705,9 @@ export default function IncomePage() {
               <>
                 <p className="gap-eyebrow">Still Need This Month</p>
                 <p className="gap-money danger">{money(remainingIncomeNeeded)}</p>
-                <p className="gap-note">Ben says: break it into hours, shifts, or services.</p>
+                <p className="gap-note">
+                  Ben says: income lowers the gap, but the hourly target stays based on outgoing money.
+                </p>
               </>
             ) : (
               <>
@@ -652,28 +721,23 @@ export default function IncomePage() {
 
         <RoomCard>
           <h2>How Much Per Hour?</h2>
-          <p className="card-sub">What the remaining gap means at different work-hour levels.</p>
+          <p className="card-sub">
+            Required hourly rate based on current outgoing money, not income already added.
+          </p>
 
-          {remainingIncomeNeeded <= 0 ? (
-            <div className="covered-box">
-              <strong>No extra hourly income needed right now.</strong>
-              <p>The Treasury is covered based on this month&apos;s numbers.</p>
-            </div>
-          ) : (
-            <div className="hourly-grid">
-              {hourlyNeeded.map((item) => (
-                <div
-                  key={item.hours}
-                  className={`hour-card ${
-                    item.hourly <= 20 ? "good" : item.hourly <= 35 ? "warn" : "danger"
-                  }`}
-                >
-                  <p>{item.hours} hours</p>
-                  <strong>{money(item.hourly)}/hr</strong>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="hourly-grid">
+            {hourlyNeeded.map((item) => (
+              <div
+                key={item.hours}
+                className={`hour-card ${
+                  item.hourly <= 20 ? "good" : item.hourly <= 35 ? "warn" : "danger"
+                }`}
+              >
+                <p>{item.hours} hours</p>
+                <strong>{money(item.hourly)}/hr</strong>
+              </div>
+            ))}
+          </div>
         </RoomCard>
 
         <div className="drawer-buttons">
@@ -868,7 +932,7 @@ export default function IncomePage() {
         {drawer === "hourly" && (
           <RoomCard className="drawer-panel">
             <h2>Need Money Fast</h2>
-            <p className="card-sub">Use your saved sources to choose the fastest path.</p>
+            <p className="card-sub">This shows what is still left to earn this month.</p>
 
             <div className="plan-grid">
               <MiniMetric icon="☀️" label="Today Goal" value={money(todayGoal)} />
@@ -878,7 +942,7 @@ export default function IncomePage() {
             </div>
 
             <div className="hourly-grid mini-hourly">
-              {hourlyNeeded.map((item) => (
+              {catchUpHourlyNeeded.map((item) => (
                 <div key={item.hours} className="hour-card">
                   <p>{item.hours} hrs</p>
                   <strong>{money(item.hourly)}/hr</strong>
