@@ -285,12 +285,7 @@ export default function CalendarPage() {
   }
 
   return (
-<<<<<<< HEAD
-    <main className="min-h-screen bg-zinc-950/82 -md text-white">
-      <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-10">
-        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-5 shadow-2xl md:p-8">
-          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-=======
+
     <div className="min-h-screen bg-ben-postoffice bg-cover bg-center bg-fixed"
          style={{ fontFamily: "EB Garamond, serif" }}>
       <div className="min-h-screen pb-28" style={{ background: "rgba(10,5,2,0.72)" }}>
@@ -298,7 +293,7 @@ export default function CalendarPage() {
 
           {/* ── Header ── */}
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pt-2">
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
+
             <div>
               <p className="text-xs uppercase tracking-[0.2em] font-cinzel font-semibold"
                  style={{ color: "#6b4423" }}>AskBen Calendar</p>
