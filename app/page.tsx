@@ -2,7 +2,7 @@ import Image from "next/image";
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-zinc-950/88 backdrop-blur-md text-white">
+    <main className="min-h-screen bg-zinc-950/88 -md text-white">
       <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="max-w-3xl">
@@ -51,7 +51,7 @@ export default function HomePage() {
           </div>
 
           <div className="flex justify-center lg:justify-end">
-            <div className="w-full max-w-md rounded-3xl border border-cyan-300/20 bg-white/5 p-6 shadow-2xl shadow-cyan-500/10 backdrop-blur">
+            <div className="w-full max-w-md rounded-3xl border border-cyan-300/20 bg-white/5 p-6 shadow-2xl shadow-cyan-500/10 ">
               <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
                 <Image
                   src="/ben.png"

@@ -221,7 +221,7 @@ export default function PaymentsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950/82 backdrop-blur-md text-white">
+    <main className="min-h-screen bg-zinc-950/82 -md text-white">
       <div className="mx-auto max-w-5xl px-6 py-10">
 
         <h1 className="text-4xl font-black">Payments</h1>

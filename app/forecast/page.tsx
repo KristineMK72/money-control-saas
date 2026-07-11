@@ -72,7 +72,7 @@ export default function ForecastPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen p-6 bg-zinc-50/78 backdrop-blur-sm">
+      <main className="min-h-screen p-6 bg-zinc-50/78 -sm">
         <BenBubble message="Crunching the numbers…" mood="witty" />
         <p className="mt-4 text-sm text-zinc-600">Loading your forecast…</p>
       </main>
@@ -81,7 +81,7 @@ export default function ForecastPage() {
 
   if (!forecast) {
     return (
-      <main className="min-h-screen p-6 bg-zinc-50/78 backdrop-blur-sm">
+      <main className="min-h-screen p-6 bg-zinc-50/78 -sm">
         <BenBubble
           message="I could not gather enough data to forecast your month. Log in and add a few entries, then come back."
           mood="stern"
@@ -91,7 +91,7 @@ export default function ForecastPage() {
   }
 
   return (
-    <main className="min-h-screen space-y-6 bg-zinc-50/78 backdrop-blur-sm p-6 pb-24">
+    <main className="min-h-screen space-y-6 bg-zinc-50/78 -sm p-6 pb-24">
       <BenBubble message={forecast.ben.text} mood={forecast.ben.mood} />
 
       <div className="grid max-w-lg grid-cols-1 gap-4">

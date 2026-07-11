@@ -114,7 +114,7 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950/88 backdrop-blur-md text-white">
+    <main className="min-h-screen bg-zinc-950/88 -md text-white">
       <div className="mx-auto flex min-h-screen max-w-6xl items-center px-6 py-16">
         <div className="grid w-full gap-8 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-8 shadow-2xl">

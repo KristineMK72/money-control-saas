@@ -189,7 +189,7 @@ export default function DebtPage() {
   if (loading) return <div className="p-6">Loading...</div>;
 
   return (
-    <main className="min-h-screen bg-zinc-50/78 backdrop-blur-sm p-6">
+    <main className="min-h-screen bg-zinc-50/78 -sm p-6">
       <h1 className="text-3xl font-black">Debt</h1>
 
       {message && (
