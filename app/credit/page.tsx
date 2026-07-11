@@ -1,24 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
 
-import CreditHealthSection from "./CreditHealthSection";
-import CreditRecoverySection from "./CreditRecoverySection";
-import DisputeLetterSection from "./DisputeLetterSection";
-import GoodwillLetterSection from "./GoodwillLetterSection";
-
-const tabs = [
-  { id: "health", label: "Credit Health" },
-  { id: "recovery", label: "Recovery Plan" },
-  { id: "dispute", label: "Dispute Letter" },
-  { id: "goodwill", label: "Goodwill Letter" },
-] as const;
-
-type TabId = (typeof tabs)[number]["id"];
+const cards = [
+  {
+    href: "/credit-health",
+    title: "Credit Health",
+    description: "Review credit utilization, balances, and overall credit progress.",
+  },
+  {
+    href: "/credit-recovery",
+    title: "Recovery Plan",
+    description: "Build a strategy to reduce debt and improve your credit position.",
+  },
+  {
+    href: "/dispute-letter",
+    title: "Dispute Letter",
+    description: "Create a credit dispute letter for inaccurate information.",
+  },
+  {
+    href: "/goodwill-letter",
+    title: "Goodwill Letter",
+    description: "Generate a goodwill request letter for past payment issues.",
+  },
+];
 
 export default function CreditPage() {
-  const [activeTab, setActiveTab] = useState<TabId>("health");
-
   return (
     <main className="min-h-screen bg-transparent p-4 md:p-6">
       <div className="mx-auto max-w-6xl rounded-2xl border border-white/40 bg-slate-950/70 p-6 shadow-2xl backdrop-blur-xl md:p-8">
@@ -36,27 +43,23 @@ export default function CreditPage() {
           </p>
         </header>
 
-        <div className="mb-8 flex flex-wrap gap-3">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`rounded-xl px-4 py-3 text-sm font-black transition ${
-                activeTab === tab.id
-                  ? "bg-emerald-400 text-black"
-                  : "border border-white/15 bg-white/5 text-white hover:bg-white/10"
-              }`}
+        <div className="grid gap-4 md:grid-cols-2">
+          {cards.map((card) => (
+            <Link
+              key={card.href}
+              href={card.href}
+              className="rounded-2xl border border-white/20 bg-white/10 p-6 text-white transition hover:bg-white/20"
             >
-              {tab.label}
-            </button>
+              <h2 className="text-2xl font-black">
+                {card.title}
+              </h2>
+
+              <p className="mt-2 text-white/80">
+                {card.description}
+              </p>
+            </Link>
           ))}
         </div>
-
-        {activeTab === "health" && <CreditHealthSection />}
-        {activeTab === "recovery" && <CreditRecoverySection />}
-        {activeTab === "dispute" && <DisputeLetterSection />}
-        {activeTab === "goodwill" && <GoodwillLetterSection />}
       </div>
     </main>
   );
