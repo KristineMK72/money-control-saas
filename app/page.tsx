@@ -3,109 +3,111 @@ import StripeCheckoutButton from "@/components/StripeCheckoutButton";
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-transparent text-white">
-      <section className="mx-auto max-w-6xl px-6 py-20">
-        <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="max-w-3xl rounded-3xl border border-white/30 bg-slate-950/75 p-8 shadow-2xl backdrop-blur-xl">
-            <div className="mb-4 inline-flex rounded-full border border-yellow-300/30 bg-yellow-300/10 px-4 py-1 text-xs font-black uppercase tracking-[0.25em] text-yellow-200">
-              Welcome to Franklin&apos;s Landing
+    <main className="public-landing-page min-h-screen bg-transparent text-white">
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            body:has(.public-landing-page) nav[aria-label="AskBen navigation"],
+            body:has(.public-landing-page) a[aria-label="Settings"],
+            body:has(.public-landing-page) button[aria-label="Open menu"],
+            body:has(.public-landing-page) div:has(> img[alt="AskBen mascot"]),
+            body:has(.public-landing-page) details,
+            body:has(.public-landing-page) a[aria-label="Ask Ben"] {
+              display: none !important;
+            }
+          `,
+        }}
+      />
+
+      <section className="mx-auto max-w-6xl px-5 pb-16 pt-8 sm:px-6 lg:pt-12">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/15 bg-black/45 px-4 py-3 shadow-2xl backdrop-blur-xl">
+          <div className="text-xs font-black uppercase tracking-[0.22em] text-yellow-200">
+            Franklin&apos;s Landing
+          </div>
+
+          <nav
+            aria-label="Landing navigation"
+            className="flex flex-wrap items-center gap-2 text-sm font-black"
+          >
+            <a
+              href="#how-it-works"
+              className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-white/85 transition hover:bg-white/15"
+            >
+              How It Works
+            </a>
+            <a
+              href="#pricing"
+              className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-white/85 transition hover:bg-white/15"
+            >
+              Pricing
+            </a>
+            <a
+              href="/login"
+              className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-white/85 transition hover:bg-white/15"
+            >
+              Login
+            </a>
+            <a
+              href="/signup"
+              className="rounded-full bg-cyan-300 px-4 py-2 text-zinc-950 transition hover:bg-cyan-200"
+            >
+              Start Free
+            </a>
+          </nav>
+        </div>
+
+        <div className="grid items-center gap-10 lg:min-h-[calc(100vh-210px)] lg:grid-cols-[1.02fr_0.98fr]">
+          <div className="max-w-3xl">
+            <div className="mb-4 inline-flex rounded-full border border-yellow-300/35 bg-black/45 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-yellow-200 shadow-xl backdrop-blur-xl">
+              AskBen financial triage
             </div>
 
-            <h1 className="text-5xl font-black tracking-tight sm:text-6xl">
-              Rebuild your treasury.
-              <span className="block text-cyan-300">
-                One bill, one win, one level at a time.
-              </span>
+            <h1 className="max-w-4xl text-4xl font-black tracking-tight text-white drop-shadow-2xl sm:text-6xl lg:text-7xl">
+              Know what to pay first.
+              <span className="block text-cyan-300">Then make the next move.</span>
             </h1>
 
-            <p className="mt-6 max-w-2xl text-lg font-semibold leading-8 text-white/90">
-              AskBen turns financial chaos into a clear game plan. Track bills,
-              tame debt, earn victories, and let Benjamin Franklin help you
-              decide what to do next.
+            <p className="mt-6 max-w-2xl text-lg font-semibold leading-8 text-white/90 drop-shadow-xl sm:text-xl">
+              AskBen looks at your bills, debts, income, spending, and payments
+              to turn money stress into a clear next step.
             </p>
-
-            <div className="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm font-bold leading-7 text-cyan-50">
-              No shame. No confusing spreadsheets. Just calm money triage,
-              witty colonial encouragement, and a path back to control.
-            </div>
 
             <div className="mt-8 flex flex-wrap gap-3">
               <a
-                href="/dashboard"
-                className="rounded-xl bg-cyan-400 px-5 py-3 font-black text-black transition hover:opacity-90"
-              >
-                Preview App
-              </a>
-
-              <a
                 href="/signup"
-                className="rounded-xl border border-white/25 bg-white/10 px-5 py-3 font-black text-white transition hover:bg-white/15"
+                className="rounded-xl bg-cyan-300 px-6 py-4 text-lg font-black text-zinc-950 shadow-2xl shadow-cyan-950/30 transition hover:bg-cyan-200"
               >
                 Start Free
               </a>
 
               <a
-                href="/login"
-                className="rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-5 py-3 font-black text-cyan-100 transition hover:bg-cyan-300/15"
+                href="#product-preview"
+                className="rounded-xl border border-white/25 bg-black/45 px-6 py-4 text-lg font-black text-white shadow-2xl backdrop-blur-xl transition hover:bg-white/10"
               >
-                Login
+                See Ben in Action
               </a>
 
-              <a
-                href="/world"
-                className="rounded-xl border border-yellow-300/30 bg-yellow-300/10 px-5 py-3 font-black text-yellow-100 transition hover:bg-yellow-300/15"
-              >
-                Enter Franklin&apos;s Landing
-              </a>
             </div>
 
-            <p className="mt-4 text-sm font-semibold text-white/75">
-              Start free. Upgrade later when you want smarter planning tools.
+            <div className="mt-6 grid max-w-2xl gap-2 sm:grid-cols-2">
+              <TrustPill text="No bank passwords required" />
+              <TrustPill text="No Social Security number required" />
+              <TrustPill text="You choose what to enter" />
+              <TrustPill text="Payments handled by Stripe" />
+            </div>
+
+            <p className="mt-4 max-w-xl text-sm font-semibold leading-6 text-white/75">
+              Start with the free ledger. Upgrade later when you want deeper
+              forecasting, imports, and crisis-mode planning.
             </p>
           </div>
 
-          <div className="flex justify-center lg:justify-end">
-            <div className="w-full max-w-md rounded-3xl border border-white/30 bg-slate-950/75 p-6 shadow-2xl shadow-cyan-500/10 backdrop-blur-xl">
-              <div className="overflow-hidden rounded-2xl border border-white/15 bg-slate-900">
-                <Image
-                  src="/ben.png"
-                  alt="Ben, your AI financial guide"
-                  width={1200}
-                  height={1200}
-                  className="h-auto w-full object-cover"
-                  priority
-                />
-              </div>
-
-              <div className="mt-5">
-                <div className="text-sm font-black uppercase tracking-[0.25em] text-cyan-200">
-                  Meet Ben
-                </div>
-
-                <p className="mt-3 text-lg font-black leading-7 text-white">
-                  &quot;America trusted me with the $100 bill.
-                  <br />
-                  I can probably help you with your electric bill too.&quot;
-                </p>
-
-                <p className="mt-3 text-sm font-semibold leading-6 text-white/75">
-                  Ben helps you figure out what is urgent, what can wait, and
-                  how to rebuild your treasury without feeling buried alive by
-                  numbers.
-                </p>
-
-                <a
-                  href="/chat"
-                  className="mt-5 inline-flex rounded-xl bg-white px-5 py-3 font-black text-black transition hover:bg-zinc-100"
-                >
-                  Ask Ben 💰
-                </a>
-              </div>
-            </div>
+          <div id="product-preview" className="scroll-mt-28">
+            <ProductMock />
           </div>
         </div>
 
-        <div className="mt-16 grid gap-4 md:grid-cols-3">
+        <div id="how-it-works" className="mt-16 grid scroll-mt-28 gap-4 md:grid-cols-3">
           <FeatureCard
             title="Know what to pay first"
             text="Ben ranks bills, debts, and due dates so you can stop guessing and make the next smart move."
@@ -197,7 +199,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="mt-16 grid gap-6 lg:grid-cols-2">
+        <div id="pricing" className="mt-16 grid scroll-mt-28 gap-6 lg:grid-cols-2">
           <PricingCard
             eyebrow="Pro Monthly"
             price="$5"
@@ -231,6 +233,110 @@ export default function HomePage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function TrustPill({ text }: { text: string }) {
+  return (
+    <div className="rounded-xl border border-cyan-300/20 bg-black/45 px-4 py-3 text-sm font-black text-cyan-50 shadow-xl backdrop-blur-xl">
+      {text}
+    </div>
+  );
+}
+
+function ProductMock() {
+  return (
+    <div className="w-full rounded-3xl border border-white/25 bg-slate-950/82 p-4 shadow-2xl shadow-cyan-950/30 backdrop-blur-xl sm:p-5">
+      <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+        <Image
+          src="/ben.png"
+          alt="Ben, your AI financial guide"
+          width={96}
+          height={96}
+          className="h-14 w-14 rounded-2xl border border-cyan-200/25 object-cover"
+          priority
+        />
+
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">
+            Live Triage Preview
+          </div>
+          <p className="mt-1 text-sm font-bold text-white/75">
+            The kind of answer Ben gives when your ledger has real data.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        <MockPanel
+          eyebrow="Due Soon"
+          title="Electric bill"
+          value="$148.20"
+          detail="Due tomorrow. Protect utilities before optional spending."
+          tone="danger"
+        />
+
+        <MockPanel
+          eyebrow="Top Priority"
+          title="Car payment"
+          value="$312.00"
+          detail="Keeps transportation stable. Ranked above extra debt payments."
+          tone="warning"
+        />
+
+        <div className="rounded-2xl border border-cyan-300/25 bg-cyan-300/10 p-4">
+          <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">
+            Ben&apos;s Advice
+          </div>
+          <p className="mt-2 text-lg font-black leading-7 text-white">
+            Pay the electric bill first, then set aside the car payment. The
+            credit card can wait until essentials are covered.
+          </p>
+          <p className="mt-3 text-sm font-semibold leading-6 text-white/70">
+            AskBen uses due dates, minimums, payments already made, income, and
+            spending patterns before giving advice.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MockPanel({
+  eyebrow,
+  title,
+  value,
+  detail,
+  tone,
+}: {
+  eyebrow: string;
+  title: string;
+  value: string;
+  detail: string;
+  tone: "danger" | "warning";
+}) {
+  const toneClass =
+    tone === "danger"
+      ? "border-red-300/25 bg-red-400/10 text-red-100"
+      : "border-yellow-300/25 bg-yellow-300/10 text-yellow-100";
+
+  return (
+    <div className={`rounded-2xl border p-4 ${toneClass}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.22em] opacity-80">
+            {eyebrow}
+          </div>
+          <h2 className="mt-1 text-xl font-black text-white">{title}</h2>
+        </div>
+        <div className="shrink-0 rounded-xl bg-black/35 px-3 py-2 text-lg font-black text-white">
+          {value}
+        </div>
+      </div>
+      <p className="mt-3 text-sm font-semibold leading-6 text-white/75">
+        {detail}
+      </p>
+    </div>
   );
 }
 
