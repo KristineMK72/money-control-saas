@@ -38,6 +38,37 @@ function buildPrefix(name: string | null, timeframeLabel: string): string {
   return who + where;
 }
 
+function money(value: number): string {
+  return value.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+}
+
+function buildDataReadout(input: BenInput): string {
+  const { totalNeeded, incomeSoFar, incomeGap, dailyIncomeNeeded } = input;
+
+  if (totalNeeded <= 0 && incomeSoFar > 0) {
+    return ` I see ${money(incomeSoFar)} logged. The next sensible move is to give those dollars a job before they wander off.`;
+  }
+
+  if (totalNeeded <= 0) {
+    return " Add a few entries and I can turn this room from vibes into a proper ledger.";
+  }
+
+  if (incomeGap > 0) {
+    return ` The ledger shows ${money(totalNeeded)} needed, ${money(incomeSoFar)} covered, and ${money(incomeGap)} still open. Aim for about ${money(dailyIncomeNeeded)} per day until this gap behaves.`;
+  }
+
+  const cushion = Math.max(0, incomeSoFar - totalNeeded);
+  if (cushion > 0) {
+    return ` The ledger shows ${money(totalNeeded)} needed and ${money(incomeSoFar)} covered, leaving about ${money(cushion)} of breathing room. Guard it like a tiny treasury.`;
+  }
+
+  return ` The ledger shows ${money(totalNeeded)} needed and ${money(incomeSoFar)} covered. You are balanced, which is delightfully boring and useful.`;
+}
+
 /* ---------------- ENGINE ---------------- */
 
 export const BenEngine = {
@@ -52,7 +83,7 @@ export const BenEngine = {
     const prefix = buildPrefix(input.name, input.timeframeLabel);
 
     return {
-      text: `${prefix}${baseMessage}`,
+      text: `${prefix}${baseMessage}${buildDataReadout(input)}`,
       mood,
     };
   },

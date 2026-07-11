@@ -1,710 +1,645 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
-import type { ChatMessage } from "@/lib/ai/types";
-import { buildFinancialSnapshot } from "@/lib/ai/finance";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { clampMoney, money } from "@/lib/money/math";
+import {
+  currentMonthStartISO,
+  daysUntil,
+  isWithinNextDays,
+  nextDateFromDueDay,
+  todayLocalISO,
+} from "@/lib/money/dates";
+import {
+  prioritizeMoneyItems,
+  type PriorityInput,
+} from "@/lib/money/priorityV2";
 
-type SummaryData = {
-  next7BillsTotal: number;
-  next14BillsTotal: number;
-  next7IncomeTotal: number;
-  shortfall7: number;
-  availableCash: number;
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+type BenMasterRow = {
+  user_id: string;
+  month?: string | null;
+  total_income?: number | string | null;
+  total_spend?: number | string | null;
+  bills?: number | string | null;
+  total_bills?: number | string | null;
+  payments?: number | string | null;
+  leftover?: number | string | null;
+  net?: number | string | null;
+  pressure_pct?: number | string | null;
+  total_debt?: number | string | null;
+  total_debt_balance?: number | string | null;
+  total_debt_minimums?: number | string | null;
+  monthly_minimums?: number | string | null;
 };
 
 type BillRow = {
-  id?: string;
-  name: string;
+  id: string;
+  user_id?: string;
+  name: string | null;
   kind?: string | null;
   category?: string | null;
   target?: number | string | null;
   saved?: number | string | null;
   due_date?: string | null;
   due?: string | null;
-  priority?: number | null;
+  priority?: number | string | null;
   focus?: boolean | null;
   balance?: number | string | null;
+  apr?: number | string | null;
   min_payment?: number | string | null;
+  credit_limit?: number | string | null;
   is_monthly?: boolean | null;
   monthly_target?: number | string | null;
-  due_day?: number | null;
+  due_day?: number | string | null;
+  created_at?: string | null;
 };
 
-type DebtStatusRow = {
-  id?: string;
-  name: string;
+type DebtRow = {
+  id: string;
+  user_id?: string;
+  name: string | null;
   kind?: string | null;
-  original_balance?: number | string | null;
-  remaining_balance?: number | string | null;
+  balance?: number | string | null;
   min_payment?: number | string | null;
-  due_date?: string | null;
   monthly_min_payment?: number | string | null;
+  due_date?: string | null;
+  due_day?: number | string | null;
+  apr?: number | string | null;
+  credit_limit?: number | string | null;
+  note?: string | null;
   is_monthly?: boolean | null;
-  due_day?: number | null;
-  total_paid?: number | string | null;
-};
-
-type IncomeRow = {
-  source_name?: string | null;
-  amount?: number | string | null;
-  date_iso?: string | null;
+  created_at?: string | null;
 };
 
 type PaymentRow = {
-  id?: string;
-  merchant?: string | null;
+  id: string;
+  user_id?: string;
   amount?: number | string | null;
-  date_iso?: string | null;
+  bill_id?: string | null;
   debt_id?: string | null;
-  note?: string | null;
-};
-
-type SpendRow = {
-  merchant?: string | null;
-  amount?: number | string | null;
-  category?: string | null;
   date_iso?: string | null;
+  paid_at?: string | null;
+  created_at?: string | null;
 };
 
-type PendingAction =
-  | {
-      type:
-        | "add_payment"
-        | "add_bill"
-        | "delete_payment"
-        | "delete_bill"
-        | "add_debt"
-        | "delete_debt";
-      payload: Record<string, unknown>;
-      requiresConfirmation?: boolean;
-    }
-  | null;
-
-type AIResponse = {
-  reply: string;
-  action?: PendingAction;
+type MoneyContext = {
+  master: BenMasterRow | null;
+  bills: BillRow[];
+  debts: DebtRow[];
+  payments: PaymentRow[];
 };
 
-type NormalizedBill = {
-  name: string;
-  amount: number;
-  dueDate?: string;
-  kind?: string;
-  essential: boolean;
-  effectiveDueDate?: string;
-  focus: boolean;
-  saved: number;
-};
+function formatDate(value?: string | null) {
+  if (!value) return "No due date";
 
-type NormalizedDebt = {
-  name: string;
-  kind: string;
-  remainingBalance: number;
-  baselineBalance: number;
-  minimumPayment: number;
-  paidTotal: number;
-  effectiveDueDate?: string;
-  isMonthly: boolean;
-  dueDay: number | null;
-};
+  const clean = value.slice(0, 10);
+  const [y, m, d] = clean.split("-").map(Number);
 
-function asNumber(value: unknown): number {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
+  if (!y || !m || !d) return value;
 
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function toIsoDate(date: Date) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
-    date.getDate()
-  )}`;
-}
-
-function resolveDueDate(
-  dueDate?: string | null,
-  dueDay?: number | null,
-  isMonthly?: boolean | null
-) {
-  if (dueDate) return dueDate;
-  if (!isMonthly || !dueDay || dueDay < 1 || dueDay > 31) return undefined;
-
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
-
-  const daysInCurrentMonth = new Date(year, month + 1, 0).getDate();
-  const currentMonthDay = Math.min(dueDay, daysInCurrentMonth);
-  const candidate = new Date(year, month, currentMonthDay);
-
-  const todayMid = new Date(year, month, today.getDate());
-
-  if (candidate >= todayMid) {
-    return toIsoDate(candidate);
-  }
-
-  const nextMonthDate = new Date(year, month + 1, 1);
-  const nextYear = nextMonthDate.getFullYear();
-  const nextMonth = nextMonthDate.getMonth();
-  const daysInNextMonth = new Date(nextYear, nextMonth + 1, 0).getDate();
-  const nextMonthDay = Math.min(dueDay, daysInNextMonth);
-
-  return toIsoDate(new Date(nextYear, nextMonth, nextMonthDay));
-}
-
-function sortByDateAsc<T extends { effectiveDueDate?: string }>(rows: T[]) {
-  return [...rows].sort((a, b) => {
-    const aTime = a.effectiveDueDate
-      ? new Date(a.effectiveDueDate + "T12:00:00").getTime()
-      : Number.POSITIVE_INFINITY;
-    const bTime = b.effectiveDueDate
-      ? new Date(b.effectiveDueDate + "T12:00:00").getTime()
-      : Number.POSITIVE_INFINITY;
-    return aTime - bTime;
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 
-function isWithinDays(dateStr?: string, days = 14) {
-  if (!dateStr) return false;
-  const today = new Date();
-  const target = new Date(dateStr + "T12:00:00");
-  const diffMs = target.getTime() - today.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  return diffDays >= 0 && diffDays <= days;
+function dueText(value?: string | null) {
+  const days = daysUntil(value);
+
+  if (days === null) return "No due date";
+  if (days < 0) return `${formatDate(value)} — overdue by ${Math.abs(days)} day(s)`;
+  if (days === 0) return `${formatDate(value)} — due today`;
+  if (days === 1) return `${formatDate(value)} — due tomorrow`;
+  if (days <= 7) return `${formatDate(value)} — due in ${days} days`;
+
+  return formatDate(value);
 }
 
-function formatPendingAction(action: PendingAction) {
-  if (!action) return "";
-  const payload = action.payload ?? {};
-
-  switch (action.type) {
-    case "add_payment":
-      return `Add payment: ${String(payload.merchant ?? "Unknown")} — $${asNumber(
-        payload.amount
-      ).toFixed(2)}${payload.date_iso ? ` on ${String(payload.date_iso)}` : ""}${
-        payload.debt_name ? ` to ${String(payload.debt_name)}` : ""
-      }`;
-
-    case "add_bill":
-      return `Add bill: ${String(payload.name ?? "Unknown")} — $${asNumber(
-        payload.amount
-      ).toFixed(2)}${
-        payload.due_date ? ` due ${String(payload.due_date)}` : ""
-      }${payload.due_day ? ` due day ${String(payload.due_day)}` : ""}`;
-
-    case "delete_payment":
-      return `Delete payment${
-        payload.payment_id ? ` ${String(payload.payment_id)}` : ""
-      }${
-        payload.merchant ? ` (${String(payload.merchant)})` : ""
-      }${payload.amount ? ` for $${asNumber(payload.amount).toFixed(2)}` : ""}`;
-
-    case "delete_bill":
-      return `Delete bill${
-        payload.bill_id ? ` ${String(payload.bill_id)}` : ""
-      }${payload.name ? ` (${String(payload.name)})` : ""}`;
-
-    case "add_debt":
-      return `Add debt: ${String(payload.name ?? "Unknown")} — $${asNumber(
-        payload.balance
-      ).toFixed(2)}${
-        payload.monthly_min_payment
-          ? `, monthly minimum $${asNumber(payload.monthly_min_payment).toFixed(2)}`
-          : payload.min_payment
-          ? `, minimum $${asNumber(payload.min_payment).toFixed(2)}`
-          : ""
-      }`;
-
-    case "delete_debt":
-      return `Delete debt${
-        payload.debt_id ? ` ${String(payload.debt_id)}` : ""
-      }${payload.name ? ` (${String(payload.name)})` : ""}`;
-
-    default:
-      return JSON.stringify(action, null, 2);
-  }
+function resolvedBillDueDate(bill: BillRow) {
+  return bill.due_date ?? bill.due ?? nextDateFromDueDay(bill.due_day);
 }
+
+function resolvedDebtDueDate(debt: DebtRow) {
+  return debt.due_date ?? nextDateFromDueDay(debt.due_day);
+}
+
+function billAmount(bill: BillRow) {
+  return clampMoney(
+    bill.target ?? bill.monthly_target ?? bill.balance ?? bill.min_payment
+  );
+}
+
+function debtMinimum(debt: DebtRow) {
+  return clampMoney(debt.monthly_min_payment ?? debt.min_payment);
+}
+
+function paymentDate(payment: PaymentRow) {
+  return (
+    payment.date_iso ??
+    payment.paid_at ??
+    payment.created_at ??
+    ""
+  ).slice(0, 10);
+}
+
+function buildFinancialSummary(context: MoneyContext) {
+  const { master, bills, debts, payments } = context;
+
+  const incomeTotal = clampMoney(master?.total_income);
+  const spendTotal = clampMoney(master?.total_spend);
+
+  const billsTotal =
+    clampMoney(master?.total_bills ?? master?.bills) ||
+    bills.reduce((sum, row) => sum + billAmount(row), 0);
+
+  const paymentsTotal =
+    clampMoney(master?.payments) ||
+    payments.reduce((sum, row) => sum + clampMoney(row.amount), 0);
+
+  const debtBalance =
+    clampMoney(master?.total_debt_balance ?? master?.total_debt) ||
+    debts.reduce((sum, row) => sum + clampMoney(row.balance), 0);
+
+  const debtMinimums =
+    clampMoney(master?.total_debt_minimums ?? master?.monthly_minimums) ||
+    debts.reduce((sum, row) => sum + debtMinimum(row), 0);
+
+  const net =
+    clampMoney(master?.net ?? master?.leftover) ||
+    incomeTotal - spendTotal - billsTotal - debtMinimums;
+
+  const pressure = clampMoney(master?.pressure_pct);
+  const monthStart = currentMonthStartISO();
+
+  const paidThisMonthByBill: Record<string, number> = {};
+  const paidThisMonthByDebt: Record<string, number> = {};
+
+  payments.forEach((payment) => {
+    const date = paymentDate(payment);
+    if (!date || date < monthStart) return;
+
+    const amount = clampMoney(payment.amount);
+
+    if (payment.bill_id) {
+      paidThisMonthByBill[payment.bill_id] =
+        (paidThisMonthByBill[payment.bill_id] || 0) + amount;
+    }
+
+    if (payment.debt_id) {
+      paidThisMonthByDebt[payment.debt_id] =
+        (paidThisMonthByDebt[payment.debt_id] || 0) + amount;
+    }
+  });
+
+  const priorityItems: PriorityInput[] = [
+    ...bills.map((bill) => {
+      const amountDue = billAmount(bill);
+      const paidThisMonth = paidThisMonthByBill[bill.id] || 0;
+      const remainingDue = Math.max(0, amountDue - paidThisMonth);
+
+      return {
+        id: bill.id,
+        type: "bill" as const,
+        name: bill.name,
+        amount: remainingDue,
+        due_date: bill.due_date,
+        due: bill.due,
+        due_day: bill.due_day,
+        category: bill.category,
+        kind: bill.kind,
+        focus: bill.focus,
+        is_paid_this_month: paidThisMonth >= amountDue && amountDue > 0,
+      };
+    }),
+    ...debts.map((debt) => {
+      const amountDue = debtMinimum(debt);
+      const paidThisMonth = paidThisMonthByDebt[debt.id] || 0;
+      const remainingDue = Math.max(0, amountDue - paidThisMonth);
+
+      return {
+        id: debt.id,
+        type: "debt" as const,
+        name: debt.name,
+        amount: remainingDue,
+        balance: debt.balance,
+        due_date: debt.due_date,
+        due_day: debt.due_day,
+        kind: debt.kind,
+        apr: debt.apr,
+        is_paid_this_month: paidThisMonth >= amountDue && amountDue > 0,
+      };
+    }),
+  ];
+
+  const rankedPriorities = prioritizeMoneyItems(priorityItems);
+
+  const activeRankedPriorities = rankedPriorities.filter(
+    (row) => !row.item.is_paid_this_month && row.amount > 0
+  );
+
+  const paidLines =
+    rankedPriorities
+      .filter((row) => row.item.is_paid_this_month)
+      .map((row) => {
+        return `- PAID THIS MONTH: ${row.item.type.toUpperCase()} ${
+          row.item.name ?? "Unnamed"
+        } — regular amount ${money(row.amount)}`;
+      })
+      .join("\n") || "- No paid-this-month bill/debt matches found.";
+
+  const priorityLines =
+    activeRankedPriorities.length > 0
+      ? activeRankedPriorities
+          .slice(0, 10)
+          .map((row, index) => {
+            return `${index + 1}. ${row.item.type.toUpperCase()}: ${
+              row.item.name ?? "Unnamed"
+            } — remaining due ${money(row.amount)}; due ${dueText(
+              row.resolvedDueDate
+            )}; score ${row.score}; reasons: ${row.reasons.join(", ")}`;
+          })
+          .join("\n")
+      : "- No active unpaid priority items found.";
+
+  const unpaidBills = bills.filter((bill) => {
+    const amountDue = billAmount(bill);
+    const paidThisMonth = paidThisMonthByBill[bill.id] || 0;
+    return !(paidThisMonth >= amountDue && amountDue > 0);
+  });
+
+  const unpaidDebts = debts.filter((debt) => {
+    const amountDue = debtMinimum(debt);
+    const paidThisMonth = paidThisMonthByDebt[debt.id] || 0;
+    return !(paidThisMonth >= amountDue && amountDue > 0);
+  });
+
+  const upcomingBills = unpaidBills.filter((bill) =>
+    isWithinNextDays(resolvedBillDueDate(bill), 7)
+  );
+
+  const upcomingDebts = unpaidDebts.filter((debt) =>
+    isWithinNextDays(resolvedDebtDueDate(debt), 7)
+  );
+
+  const overdueBills = unpaidBills.filter((bill) => {
+    const days = daysUntil(resolvedBillDueDate(bill));
+    return days !== null && days < 0;
+  });
+
+  const overdueDebts = unpaidDebts.filter((debt) => {
+    const days = daysUntil(resolvedDebtDueDate(debt));
+    return days !== null && days < 0;
+  });
+
+  const next7Lines = [
+    ...upcomingBills.map((bill) => {
+      const due = resolvedBillDueDate(bill);
+      const remainingDue = Math.max(
+        0,
+        billAmount(bill) - (paidThisMonthByBill[bill.id] || 0)
+      );
+
+      return `- BILL: ${bill.name ?? "Unnamed bill"} — remaining due ${money(
+        remainingDue
+      )}; ${dueText(due)}; category: ${
+        bill.category ?? "uncategorized"
+      }; priority: ${bill.priority ?? "not set"}; focus: ${
+        bill.focus ? "yes" : "no"
+      }`;
+    }),
+
+    ...upcomingDebts.map((debt) => {
+      const due = resolvedDebtDueDate(debt);
+      const remainingDue = Math.max(
+        0,
+        debtMinimum(debt) - (paidThisMonthByDebt[debt.id] || 0)
+      );
+
+      return `- DEBT: ${debt.name ?? "Unnamed debt"} — remaining minimum due ${money(
+        remainingDue
+      )}; balance ${money(clampMoney(debt.balance))}; ${dueText(
+        due
+      )}; APR: ${debt.apr ?? "unknown"}; type: ${debt.kind ?? "debt"}`;
+    }),
+  ].join("\n");
+
+  const overdueLines = [
+    ...overdueBills.map((bill) => {
+      const due = resolvedBillDueDate(bill);
+      const remainingDue = Math.max(
+        0,
+        billAmount(bill) - (paidThisMonthByBill[bill.id] || 0)
+      );
+
+      return `- OVERDUE BILL: ${bill.name ?? "Unnamed bill"} — remaining due ${money(
+        remainingDue
+      )}; ${dueText(due)}`;
+    }),
+
+    ...overdueDebts.map((debt) => {
+      const due = resolvedDebtDueDate(debt);
+      const remainingDue = Math.max(
+        0,
+        debtMinimum(debt) - (paidThisMonthByDebt[debt.id] || 0)
+      );
+
+      return `- OVERDUE DEBT: ${
+        debt.name ?? "Unnamed debt"
+      } — remaining minimum due ${money(remainingDue)}; ${dueText(due)}`;
+    }),
+  ].join("\n");
+
+  const billLines =
+    bills.length > 0
+      ? bills
+          .map((bill) => {
+            const due = resolvedBillDueDate(bill);
+            const amountDue = billAmount(bill);
+            const paidThisMonth = paidThisMonthByBill[bill.id] || 0;
+            const remainingDue = Math.max(0, amountDue - paidThisMonth);
+            const status =
+              paidThisMonth >= amountDue && amountDue > 0
+                ? "paid this month"
+                : "not fully paid this month";
+
+            return `- ${bill.name ?? "Unnamed bill"}: regular amount ${money(
+              amountDue
+            )}; paid this month ${money(paidThisMonth)}; remaining ${money(
+              remainingDue
+            )}; status ${status}; due ${dueText(due)}; category: ${
+              bill.category ?? "uncategorized"
+            }; priority: ${bill.priority ?? "not set"}; focus: ${
+              bill.focus ? "yes" : "no"
+            }`;
+          })
+          .join("\n")
+      : "- No bill rows found.";
+
+  const debtLines =
+    debts.length > 0
+      ? debts
+          .map((debt) => {
+            const due = resolvedDebtDueDate(debt);
+            const amountDue = debtMinimum(debt);
+            const paidThisMonth = paidThisMonthByDebt[debt.id] || 0;
+            const remainingDue = Math.max(0, amountDue - paidThisMonth);
+            const status =
+              paidThisMonth >= amountDue && amountDue > 0
+                ? "paid this month"
+                : "not fully paid this month";
+
+            return `- ${debt.name ?? "Unnamed debt"}: balance ${money(
+              clampMoney(debt.balance)
+            )}; regular minimum ${money(
+              amountDue
+            )}; paid this month ${money(paidThisMonth)}; remaining minimum ${money(
+              remainingDue
+            )}; status ${status}; due ${dueText(due)}; APR: ${
+              debt.apr ?? "unknown"
+            }; type: ${debt.kind ?? "debt"}`;
+          })
+          .join("\n")
+      : "- No debt rows found.";
+
+  return `
+ASKBEN FINANCIAL CONTEXT
+Today: ${formatDate(todayLocalISO())}
+Current month starts: ${formatDate(monthStart)}
+
+MONTHLY SNAPSHOT FROM ben_master_monthly
+- Income logged this month: ${money(incomeTotal)}
+- Spending logged this month: ${money(spendTotal)}
+- Bills total: ${money(billsTotal)}
+- Debt payments logged this month: ${money(paymentsTotal)}
+- Total debt balance: ${money(debtBalance)}
+- Monthly debt minimums: ${money(debtMinimums)}
+- Estimated net after spending, bills, and debt minimums: ${money(net)}
+- Debt pressure: ${pressure.toFixed(1)}%
+
+PAID THIS MONTH — DO NOT RECOMMEND AGAIN
+${paidLines}
+
+TOP UNPAID PRIORITIES FROM PRIORITY ENGINE
+${priorityLines}
+
+OVERDUE UNPAID ITEMS — EXACT LIST
+${overdueLines || "- No overdue unpaid bills or debts found."}
+
+NEXT 7 DAYS — UNPAID DUE ITEMS
+${next7Lines || "- Nothing unpaid is due in the next 7 days based on due_date, due, or due_day."}
+
+BILLS FROM bills TABLE WITH PAYMENT STATUS
+${billLines}
+
+DEBTS FROM debts TABLE WITH PAYMENT STATUS
+${debtLines}
+
+RULES FOR BEN
+- This financial context is the source of truth.
+- Never recommend items listed under "PAID THIS MONTH — DO NOT RECOMMEND AGAIN."
+- When asked what to pay first, use "TOP UNPAID PRIORITIES FROM PRIORITY ENGINE" first.
+- Explain the recommendation using the listed reasons.
+- When asked what is due in the next 7 days, use "NEXT 7 DAYS — UNPAID DUE ITEMS."
+- When asked what is overdue, use "OVERDUE UNPAID ITEMS — EXACT LIST."
+- Be specific. Name the bill, debt, amount remaining, and due date when available.
+- If a bill or debt is paid this month, say it appears paid and do not include it in the active payment plan.
+- If data is missing, say exactly what is missing instead of pretending nothing exists.
+`.trim();
+}
+
+const BEN_PERSONA = `
+You are Benjamin Franklin serving as a modern financial triage advisor.
+
+Voice:
+- Wise, warm, practical, and slightly witty.
+- Use light colonial flavor, not Shakespeare cosplay.
+- Occasional phrases are welcome: "good friend", "thy", "pray tell", "verily", "hath".
+- Keep advice clear, modern, and useful.
+- Sound intelligent and grounded, not gimmicky.
+
+Financial behavior:
+- Use the supplied financialSummary as factual context.
+- Give concrete next steps.
+- For urgent money questions, prioritize survival: housing, utilities, transportation, food, insurance, unpaid minimum payments, then extra debt payments.
+- Do not shame the user.
+- Do not recommend risky financial decisions.
+- Do not recommend bills or debts already marked paid this month.
+- If the user asks what to pay first, give a ranked list using the TOP UNPAID PRIORITIES section.
+- Explain why each item is ranked using the priority reasons.
+- If the user asks what is due this week or in the next 7 days, answer only from the NEXT 7 DAYS — UNPAID DUE ITEMS section.
+- If the user asks for a plan, give a short action plan using only unpaid items.
+`.trim();
 
 export default function ChatPage() {
-  const supabase = createSupabaseBrowserClient();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
       content:
-        "Hi — I’m Ben, your Money Control AI. I can help you decide what to pay first, estimate your 7-day risk, and turn your bills into a practical plan.",
+        "Good morrow, friend. I am Benjamin Franklin, at thy service in matters of coin and prudence. Ask me what to pay first, what is due soon, or how to steady thy finances this week.",
     },
   ]);
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [stressScore, setStressScore] = useState<number | null>(null);
-  const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [financialSummary, setFinancialSummary] = useState<string>("");
-  const [dataReady, setDataReady] = useState(false);
-  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
-  const [hasLoadedInitialOutlook, setHasLoadedInitialOutlook] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [moneyContext, setMoneyContext] = useState<MoneyContext>({
+    master: null,
+    bills: [],
+    debts: [],
+    payments: [],
+  });
 
-  function stressLabel(score: number | null) {
-    if (score === null) return "Loading";
-    if (score >= 80) return "Safe";
-    if (score >= 60) return "Stable";
-    if (score >= 40) return "Tight";
-    if (score >= 20) return "High stress";
-    return "Critical";
-  }
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-  async function loadFinancialContext() {
-    try {
+  useEffect(() => {
+    async function loadMoneyContext() {
+      setNotice("");
+
       const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (userError || !user) {
-        setFinancialSummary("No signed-in user found.");
-        setDataReady(true);
+      if (sessionError) {
+        setNotice(sessionError.message);
         return;
       }
 
-      const userId = user.id;
+      const user = session?.user;
 
-      const [billsRes, debtsRes, incomeRes, paymentsRes, spendRes] =
+      if (!user) {
+        setNotice("Log in to let Ben see your money snapshot.");
+        return;
+      }
+
+      const monthStart = currentMonthStartISO();
+
+      const [masterResult, billsResult, debtsResult, paymentsResult] =
         await Promise.all([
           supabase
+            .from("ben_master_monthly")
+            .select("*")
+            .eq("user_id", user.id)
+            .gte("month", monthStart)
+            .order("month", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+
+          supabase
             .from("bills")
-            .select(
-              "id, name, kind, category, target, saved, due_date, due, priority, focus, balance, min_payment, is_monthly, monthly_target, due_day"
-            )
-            .eq("user_id", userId),
+            .select("*")
+            .eq("user_id", user.id)
+            .order("due_date", { ascending: true, nullsFirst: false }),
 
           supabase
-            .from("debt_status")
-            .select(
-              "id, name, kind, original_balance, remaining_balance, min_payment, due_date, monthly_min_payment, is_monthly, due_day, total_paid"
-            )
-            .eq("user_id", userId),
+            .from("debts")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("due_date", { ascending: true, nullsFirst: false }),
 
-          supabase
-            .from("income_entries")
-            .select("source_name, amount, date_iso")
-            .eq("user_id", userId)
-            .order("date_iso", { ascending: false }),
-
-          supabase
-            .from("payments")
-            .select("id, merchant, amount, date_iso, debt_id, note")
-            .eq("user_id", userId)
-            .order("date_iso", { ascending: false })
-            .limit(20),
-
-          supabase
-            .from("spend_entries")
-            .select("merchant, amount, category, date_iso")
-            .eq("user_id", userId)
-            .order("date_iso", { ascending: false })
-            .limit(10),
+          supabase.from("payments").select("*").eq("user_id", user.id),
         ]);
 
-      const bills = (billsRes.data ?? []) as BillRow[];
-      const debts = (debtsRes.data ?? []) as DebtStatusRow[];
-      const incomeEntries = (incomeRes.data ?? []) as IncomeRow[];
-      const payments = (paymentsRes.data ?? []) as PaymentRow[];
-      const spendEntries = (spendRes.data ?? []) as SpendRow[];
+      if (masterResult.error) {
+        setNotice(`ben_master_monthly: ${masterResult.error.message}`);
+        return;
+      }
 
-      const availableCash = bills.reduce((sum, b) => sum + asNumber(b.saved), 0);
+      if (billsResult.error) {
+        setNotice(`bills: ${billsResult.error.message}`);
+        return;
+      }
 
-      const normalizedBills: NormalizedBill[] = bills.map((b) => {
-        const effectiveDueDate = resolveDueDate(
-          b.due_date,
-          b.due_day,
-          b.is_monthly
-        );
+      if (debtsResult.error) {
+        setNotice(`debts: ${debtsResult.error.message}`);
+        return;
+      }
 
-        const amount = asNumber(
-          b.min_payment ?? b.monthly_target ?? b.balance ?? b.target ?? 0
-        );
+      if (paymentsResult.error) {
+        setNotice(`payments: ${paymentsResult.error.message}`);
+        return;
+      }
 
-        const essential = [
-          "power",
-          "utility",
-          "insurance",
-          "rent",
-          "housing",
-          "phone",
-          "internet",
-          "electric",
-          "gas",
-          "water",
-        ].some((word) =>
-          `${b.name || ""} ${b.category || ""}`.toLowerCase().includes(word)
-        );
-
-        return {
-          name: b.name,
-          amount,
-          dueDate: effectiveDueDate,
-          kind: (b.kind ?? b.category ?? undefined) || undefined,
-          essential,
-          effectiveDueDate,
-          focus: !!b.focus,
-          saved: asNumber(b.saved),
-        };
+      setMoneyContext({
+        master: (masterResult.data || null) as BenMasterRow | null,
+        bills: (billsResult.data || []) as BillRow[],
+        debts: (debtsResult.data || []) as DebtRow[],
+        payments: (paymentsResult.data || []) as PaymentRow[],
       });
-
-      const normalizedDebts: NormalizedDebt[] = debts.map((d) => {
-        const effectiveDueDate = resolveDueDate(
-          d.due_date,
-          d.due_day,
-          d.is_monthly
-        );
-
-        return {
-          name: d.name,
-          kind: d.kind ?? "debt",
-          remainingBalance: asNumber(d.remaining_balance),
-          baselineBalance: asNumber(d.original_balance),
-          minimumPayment: asNumber(d.monthly_min_payment ?? d.min_payment),
-          paidTotal: asNumber(d.total_paid),
-          effectiveDueDate,
-          isMonthly: !!d.is_monthly,
-          dueDay: d.due_day ?? null,
-        };
-      });
-
-      const mappedBills = [
-        ...normalizedBills.map((b) => ({
-          name: b.name,
-          amount: b.amount,
-          dueDate: b.effectiveDueDate,
-          kind: b.kind,
-          essential: b.essential,
-        })),
-
-        ...normalizedDebts.map((d) => ({
-          name: d.name,
-          amount: d.minimumPayment || d.remainingBalance,
-          dueDate: d.effectiveDueDate,
-          kind: d.kind,
-          essential: d.kind === "loan",
-        })),
-      ];
-
-      const mappedIncome = incomeEntries.map((i) => ({
-        name: i.source_name || "Income",
-        amount: asNumber(i.amount),
-        expectedDate: i.date_iso ?? undefined,
-      }));
-
-      const mappedBuckets = normalizedBills
-        .filter((b) => b.focus || b.saved > 0)
-        .map((b) => ({
-          name: b.name,
-          saved: b.saved,
-          focus: b.focus,
-        }));
-
-      const snapshot = buildFinancialSnapshot({
-        availableCash,
-        bills: mappedBills,
-        expectedIncome: mappedIncome,
-        buckets: mappedBuckets,
-      });
-
-      const upcomingBills = sortByDateAsc(
-        normalizedBills.filter((b) => isWithinDays(b.effectiveDueDate, 14))
-      );
-
-      const upcomingDebts = sortByDateAsc(
-        normalizedDebts.filter((d) => isWithinDays(d.effectiveDueDate, 14))
-      );
-
-      const recentlyPaidDebts = normalizedDebts.filter((d) => d.paidTotal > 0);
-
-      const billLines = normalizedBills.map((b) => {
-        return `- ${b.name}: $${b.amount.toFixed(2)}${
-          b.effectiveDueDate ? `, due ${b.effectiveDueDate}` : ""
-        }${b.kind ? `, kind ${b.kind}` : ""}${b.focus ? ", focus bucket" : ""}${
-          b.essential ? ", essential" : ""
-        }`;
-      });
-
-      const debtStatusLines = normalizedDebts.map((d) => {
-        return `- ${d.name}: remaining balance $${d.remainingBalance.toFixed(
-          2
-        )}, minimum $${d.minimumPayment.toFixed(2)}${
-          d.paidTotal > 0 ? `, paid so far $${d.paidTotal.toFixed(2)}` : ""
-        }${
-          d.effectiveDueDate
-            ? `, due ${d.effectiveDueDate}`
-            : d.dueDay
-            ? `, due day ${d.dueDay}`
-            : ""
-        }, kind ${d.kind}`;
-      });
-
-      const upcomingBillLines = upcomingBills.map((b) => {
-        return `- ${b.name}: $${b.amount.toFixed(2)}${
-          b.effectiveDueDate ? `, due ${b.effectiveDueDate}` : ""
-        }${b.essential ? ", essential" : ""}`;
-      });
-
-      const upcomingDebtLines = upcomingDebts.map((d) => {
-        return `- ${d.name}: minimum $${d.minimumPayment.toFixed(
-          2
-        )}, remaining balance $${d.remainingBalance.toFixed(2)}, due ${
-          d.effectiveDueDate
-        }`;
-      });
-
-      const recentlyPaidDebtLines = recentlyPaidDebts.map((d) => {
-        return `- ${d.name}: paid $${d.paidTotal.toFixed(
-          2
-        )}, remaining balance $${d.remainingBalance.toFixed(2)}${
-          d.effectiveDueDate ? `, due ${d.effectiveDueDate}` : ""
-        }`;
-      });
-
-      const incomeLines = mappedIncome.map(
-        (i) =>
-          `- ${i.name}: $${asNumber(i.amount).toFixed(2)}${
-            i.expectedDate ? ` expected ${i.expectedDate}` : ""
-          }`
-      );
-
-      const recentPaymentsSummary = payments.map(
-        (p) =>
-          `- ${p.merchant || "Payment"}: $${asNumber(p.amount).toFixed(2)} on ${
-            p.date_iso || "unknown date"
-          }${p.note ? ` (${p.note})` : ""}`
-      );
-
-      const recentSpendingSummary = spendEntries.map(
-        (s) =>
-          `- ${s.merchant || "Spend"}: $${asNumber(s.amount).toFixed(2)}${
-            s.category ? ` (${s.category})` : ""
-          } on ${s.date_iso || "unknown date"}`
-      );
-
-      const fullSummary = `
-${snapshot.summaryText}
-
-Important Instructions For Ben:
-- Use Debt Status as the truth for debt and credit balances.
-- If a debt shows "paid so far", mention that payment has already been applied.
-- Distinguish between remaining balance and minimum payment due.
-- Call out upcoming items due within 14 days first.
-- Include credit cards and loans together unless the user asks to separate them.
-- For follow-up questions, do not repeat the full financial summary unless the user explicitly asks for a recap.
-
-Upcoming Bills In Next 14 Days:
-${
-  upcomingBillLines.length
-    ? upcomingBillLines.join("\n")
-    : "- No upcoming bill records found."
-}
-
-Upcoming Debt And Credit Payments In Next 14 Days:
-${
-  upcomingDebtLines.length
-    ? upcomingDebtLines.join("\n")
-    : "- No upcoming debt or credit payments found."
-}
-
-Recently Applied Debt Payments:
-${
-  recentlyPaidDebtLines.length
-    ? recentlyPaidDebtLines.join("\n")
-    : "- No recently applied debt payments found."
-}
-
-Bill Records:
-${billLines.length ? billLines.join("\n") : "- No bill records found."}
-
-Debt Status:
-${debtStatusLines.length ? debtStatusLines.join("\n") : "- No debts found."}
-
-Expected Income:
-${incomeLines.length ? incomeLines.join("\n") : "- No expected income found."}
-
-Recent Payments:
-${
-  recentPaymentsSummary.length
-    ? recentPaymentsSummary.join("\n")
-    : "- No recent payments found."
-}
-
-Recent Spending:
-${
-  recentSpendingSummary.length
-    ? recentSpendingSummary.join("\n")
-    : "- No recent spending found."
-}
-`.trim();
-
-      setStressScore(snapshot.stressScore);
-      setSummary({
-        next7BillsTotal: snapshot.next7BillsTotal,
-        next14BillsTotal: snapshot.next14BillsTotal,
-        next7IncomeTotal: snapshot.next7IncomeTotal,
-        shortfall7: snapshot.shortfall7,
-        availableCash,
-      });
-      setFinancialSummary(fullSummary);
-      setDataReady(true);
-    } catch (error) {
-      console.error("Failed to load financial context:", error);
-      setFinancialSummary("Failed to load financial context.");
-      setDataReady(true);
-    }
-  }
-
-  useEffect(() => {
-    void loadFinancialContext();
-  }, []);
-
-  async function sendToAI(
-    nextMessages: ChatMessage[],
-    options?: { initial?: boolean }
-  ) {
-    const initial = !!options?.initial;
-
-    const trimmedMessages = initial ? nextMessages : nextMessages.slice(-8);
-
-    const contextualSummary = initial
-      ? financialSummary
-      : [
-          "Use the financial snapshot as background context, but do not repeat the full summary unless the user explicitly asks for a full recap.",
-          "For follow-up questions, answer directly and briefly.",
-          financialSummary,
-        ].join("\n\n");
-
-    const res = await fetch("/api/ai", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        mode: "money",
-        messages: trimmedMessages,
-        stressScore,
-        financialSummary: contextualSummary,
-      }),
-    });
-
-    const data = (await res.json()) as AIResponse | { error?: string };
-
-    if (!res.ok) {
-      throw new Error((data as { error?: string }).error || "Request failed");
     }
 
-    return data as AIResponse;
-  }
-
-  async function runFinanceAction(action: NonNullable<PendingAction>) {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.access_token) {
-      throw new Error("No session found.");
-    }
-
-    const res = await fetch("/api/finance-action", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        action: action.type,
-        payload: action.payload,
-        accessToken: session.access_token,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error || "Finance action failed.");
-    }
-
-    await loadFinancialContext();
-    return data;
-  }
-
-  async function confirmPendingAction() {
-    if (!pendingAction) return;
-
-    try {
-      setActionLoading(true);
-
-      await runFinanceAction(pendingAction);
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Done — I updated your finances successfully.",
-        },
-      ]);
-
-      setPendingAction(null);
-    } catch (error: any) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content:
-            error?.message || "Sorry, I couldn't apply that finance update.",
-        },
-      ]);
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  function cancelPendingAction() {
-    setPendingAction(null);
-  }
+    void loadMoneyContext();
+  }, [supabase]);
 
   async function sendMessage(customText?: string) {
     const text = (customText ?? input).trim();
-    if (!text || loading || !dataReady) return;
+
+    if (!text || loading) return;
 
     const userMessage: ChatMessage = {
       role: "user",
       content: text,
     };
 
-    const nextMessages = [...messages, userMessage];
-    setMessages(nextMessages);
+    const newMessages = [...messages, userMessage];
+
+    setMessages(newMessages);
     setInput("");
     setLoading(true);
 
     try {
-      const data = await sendToAI(nextMessages, { initial: false });
+      const financialSummary = buildFinancialSummary(moneyContext);
 
-      setMessages([
-        ...nextMessages,
-        {
-          role: "assistant",
-          content: data.reply || "Sorry, I couldn’t generate a response.",
+      console.log("ASKBEN FINANCIAL SUMMARY SENT:", financialSummary);
+
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      ]);
+        body: JSON.stringify({
+          mode: "money",
+          messages: newMessages,
+          financialSummary,
+          context: BEN_PERSONA,
+        }),
+      });
 
-      setPendingAction(data.action ?? null);
-      await loadFinancialContext();
-    } catch {
-      setMessages([
-        ...nextMessages,
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Ben could not answer right now.");
+      }
+
+      setMessages((prev) => [
+        ...prev,
         {
           role: "assistant",
           content:
-            "Sorry, something went wrong while generating your money plan.",
+            data.reply ||
+            "Forgive me, friend. My thoughts are unclear at present.",
+        },
+      ]);
+    } catch (err) {
+      console.error("AskBen chat error:", err);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "Forgive me, good friend. The wires between us are troubled. Pray ask again in a moment.",
         },
       ]);
     } finally {
@@ -712,487 +647,132 @@ ${
     }
   }
 
-  useEffect(() => {
-    if (!dataReady || !financialSummary || hasLoadedInitialOutlook) return;
-
-    let cancelled = false;
-
-    async function loadInitialOutlook() {
-      setLoading(true);
-
-      try {
-        const starterMessages: ChatMessage[] = [
-          {
-            role: "user",
-            content:
-              "Give me my 7-day outlook, stress level, what I should focus on first, explicitly mention any debt payments already applied, and list upcoming debt or credit payments due soon by date.",
-          },
-        ];
-
-        const data = await sendToAI(starterMessages, { initial: true });
-
-        if (cancelled) return;
-
-        setMessages([
-          {
-            role: "assistant",
-            content: data.reply || "I couldn’t load your 7-day outlook yet.",
-          },
-        ]);
-
-        setPendingAction(data.action ?? null);
-        setHasLoadedInitialOutlook(true);
-      } catch {
-        if (cancelled) return;
-
-        setMessages([
-          {
-            role: "assistant",
-            content:
-              "I couldn’t load your financial outlook yet. Try asking what you should pay first.",
-          },
-        ]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void loadInitialOutlook();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [dataReady, financialSummary, hasLoadedInitialOutlook]);
+  const hasData =
+    !!moneyContext.master ||
+    moneyContext.bills.length > 0 ||
+    moneyContext.debts.length > 0 ||
+    moneyContext.payments.length > 0;
 
   return (
-    <main style={styles.page}>
-      <section style={styles.card}>
-        <div style={styles.header}>
+    <main className="min-h-screen bg-transparent p-4 pb-24">
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-8 flex items-center gap-4">
+          <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/30 shadow-xl">
+            <img
+              src="/ben.png"
+              alt="Benjamin Franklin"
+              className="h-full w-full object-cover"
+            />
+          </div>
+
           <div>
-            <div style={styles.eyebrow}>Ask Ben</div>
-            <h1 style={styles.title}>Money AI Assistant</h1>
-            <p style={styles.subtitle}>
-              Ask Ben about bills, weekly funding, daily targets, or what to
-              prioritize.
+            <h1 className="text-4xl font-black text-white">Ask Ben</h1>
+            <p className="text-white/75">
+              Benjamin Franklin’s Counsel on Money
             </p>
           </div>
         </div>
 
-        <div style={styles.forecastCard}>
-          <div style={styles.forecastTop}>
-            <div>
-              <div style={styles.forecastTitle}>Financial Radar</div>
-              <div style={styles.forecastSub}>
-                Your forward-looking money snapshot for the next 7 to 14 days.
-              </div>
-            </div>
-
-            <div style={styles.scoreCard}>
-              <div style={styles.scoreLabel}>Stress Score</div>
-              <div style={styles.scoreValue}>
-                {stressScore !== null ? stressScore : "—"}
-              </div>
-              <div style={styles.scoreHint}>{stressLabel(stressScore)}</div>
-            </div>
-          </div>
-
-          <div style={styles.summaryGrid}>
-            <div style={styles.statCard}>
-              <div style={styles.statLabel}>Bills next 7 days</div>
-              <div style={styles.statValue}>
-                ${summary ? summary.next7BillsTotal.toFixed(2) : "—"}
-              </div>
-            </div>
-
-            <div style={styles.statCard}>
-              <div style={styles.statLabel}>Bills next 14 days</div>
-              <div style={styles.statValue}>
-                ${summary ? summary.next14BillsTotal.toFixed(2) : "—"}
-              </div>
-            </div>
-
-            <div style={styles.statCard}>
-              <div style={styles.statLabel}>Income next 7 days</div>
-              <div style={styles.statValue}>
-                ${summary ? summary.next7IncomeTotal.toFixed(2) : "—"}
-              </div>
-            </div>
-
-            <div style={styles.statCard}>
-              <div style={styles.statLabel}>7-day shortfall</div>
-              <div style={styles.statValue}>
-                ${summary ? summary.shortfall7.toFixed(2) : "—"}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div style={styles.quickRow}>
-          <button
-            type="button"
-            style={styles.quickBtn}
-            onClick={() => void sendMessage("What should I pay first?")}
-            disabled={loading || !dataReady}
-          >
-            What should I pay first?
-          </button>
-
-          <button
-            type="button"
-            style={styles.quickBtn}
-            onClick={() => void sendMessage("Give me a 7-day survival plan.")}
-            disabled={loading || !dataReady}
-          >
-            7-day survival plan
-          </button>
-
-          <button
-            type="button"
-            style={styles.quickBtn}
-            onClick={() =>
-              void sendMessage("How much do I need to earn per day this week?")
-            }
-            disabled={loading || !dataReady}
-          >
-            Daily target
-          </button>
-        </div>
-
-        <div style={styles.chatBox}>
-          {messages.map((msg, i) => (
-            <div
-              key={i}
-              style={{
-                ...styles.message,
-                ...(msg.role === "user" ? styles.user : styles.assistant),
-              }}
-            >
-              <div style={styles.messageLabel}>
-                {msg.role === "user" ? "You" : "Ben"}
-              </div>
-              <div style={styles.messageText}>{msg.content}</div>
-            </div>
-          ))}
-
-          {loading && (
-            <div style={{ ...styles.message, ...styles.assistant }}>
-              <div style={styles.messageLabel}>Ben</div>
-              <div style={styles.messageText}>Thinking...</div>
-            </div>
-          )}
-        </div>
-
-        {pendingAction && (
-          <div
-            style={{
-              border: "1px solid #d6d3d1",
-              borderRadius: 16,
-              padding: 14,
-              background: "#fff7ed",
-              marginBottom: 14,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 800,
-                textTransform: "uppercase",
-                letterSpacing: 0.8,
-                color: "#9a3412",
-                marginBottom: 8,
-              }}
-            >
-              Pending finance action
-            </div>
-
-            <div
-              style={{
-                fontSize: 14,
-                color: "#431407",
-                marginBottom: 8,
-                whiteSpace: "pre-wrap",
-                fontWeight: 600,
-              }}
-            >
-              {formatPendingAction(pendingAction)}
-            </div>
-
-            <pre
-              style={{
-                fontSize: 12,
-                color: "#7c2d12",
-                marginBottom: 12,
-                whiteSpace: "pre-wrap",
-                background: "rgba(255,255,255,0.65)",
-                borderRadius: 10,
-                padding: 10,
-                overflowX: "auto",
-              }}
-            >
-              {JSON.stringify(pendingAction, null, 2)}
-            </pre>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => void confirmPendingAction()}
-                disabled={actionLoading}
-                style={{
-                  border: "none",
-                  borderRadius: 12,
-                  padding: "10px 14px",
-                  background: "#111827",
-                  color: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                }}
-              >
-                {actionLoading ? "Applying..." : "Confirm and apply"}
-              </button>
-
-              <button
-                type="button"
-                onClick={cancelPendingAction}
-                disabled={actionLoading}
-                style={{
-                  border: "1px solid #d6d3d1",
-                  borderRadius: 12,
-                  padding: "10px 14px",
-                  background: "#fff",
-                  color: "#1c1917",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                Cancel
-              </button>
-            </div>
+        {notice && (
+          <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50/95 p-4 text-sm font-semibold text-amber-950 shadow-xl">
+            {notice}
           </div>
         )}
 
-        <div style={styles.inputRow}>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                void sendMessage();
-              }
-            }}
-            placeholder="Ask what to pay first, your 7-day risk, or tell Ben what you paid..."
-            style={styles.input}
-            disabled={loading || !dataReady || actionLoading}
-          />
-          <button
-            type="button"
-            onClick={() => void sendMessage()}
-            disabled={loading || !dataReady || actionLoading}
-            style={styles.button}
-          >
-            Send
-          </button>
+        {!notice && (
+          <div className="mb-4 rounded-2xl border border-white/15 bg-black/45 p-4 text-sm font-semibold text-white/80 shadow-xl backdrop-blur-xl">
+            {hasData
+              ? `Ben can currently see ${moneyContext.bills.length} bill(s), ${
+                  moneyContext.debts.length
+                } debt(s), ${moneyContext.payments.length} payment(s), and ${
+                  moneyContext.master
+                    ? "the monthly master snapshot"
+                    : "no monthly master snapshot"
+                }.`
+              : "Ben is connected, but no money rows were found yet."}
+          </div>
+        )}
+
+        <div className="flex h-[65vh] flex-col overflow-hidden rounded-3xl border border-white/20 bg-black/70 shadow-2xl backdrop-blur-2xl">
+          <div className="flex-1 space-y-6 overflow-y-auto p-6">
+            {messages.map((msg, i) => (
+              <div
+                key={`${msg.role}-${i}`}
+                className={`flex ${
+                  msg.role === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
+                <div
+                  className={`max-w-[85%] rounded-3xl px-5 py-4 text-sm font-semibold leading-relaxed shadow-lg md:text-base ${
+                    msg.role === "user"
+                      ? "rounded-br-none bg-yellow-400 text-zinc-950"
+                      : "rounded-bl-none bg-white/95 text-zinc-950"
+                  }`}
+                >
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+
+            {loading && (
+              <div className="flex justify-start">
+                <div className="flex items-center gap-3 rounded-3xl rounded-bl-none bg-white/95 px-5 py-4 text-zinc-950">
+                  <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
+                  <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 delay-150" />
+                  <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 delay-300" />
+                  <span className="ml-2 text-sm text-zinc-500">
+                    Ben is thinking...
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div ref={chatEndRef} />
+          </div>
+
+          <div className="border-t border-white/20 bg-black/80 p-4">
+            <div className="flex gap-3">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void sendMessage();
+                }}
+                placeholder="What should I pay first, good sir?"
+                className="flex-1 rounded-2xl bg-white/90 px-6 py-4 text-zinc-950 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                disabled={loading}
+              />
+
+              <button
+                onClick={() => void sendMessage()}
+                disabled={loading || !input.trim()}
+                className="rounded-2xl bg-yellow-400 px-8 font-black text-zinc-950 transition hover:bg-yellow-300 disabled:opacity-50"
+              >
+                Send
+              </button>
+            </div>
+          </div>
         </div>
-      </section>
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          {[
+            "What should I pay first this week?",
+            "What is due in the next 7 days?",
+            "Give me a 7-day survival plan, good sir.",
+            "How much coin must I earn daily?",
+            "What is my greatest risk at present?",
+          ].map((prompt) => (
+            <button
+              key={prompt}
+              onClick={() => void sendMessage(prompt)}
+              disabled={loading}
+              className="rounded-full border border-white/30 bg-white/10 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/20 disabled:opacity-50"
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      </div>
     </main>
   );
 }
-
-const styles: Record<string, CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    background:
-      "linear-gradient(180deg, rgba(248, 245, 239, 0.72) 0%, rgba(244, 239, 231, 0.72) 100%)",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
-    padding: 24,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 960,
-    margin: "0 auto",
-    background: "#ffffff",
-    borderRadius: 24,
-    padding: 24,
-    boxShadow: "0 20px 60px rgba(0,0,0,0.08)",
-    border: "1px solid rgba(0,0,0,0.06)",
-  },
-  header: {
-    marginBottom: 18,
-  },
-  eyebrow: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    letterSpacing: 1.2,
-    color: "#8a7f73",
-    marginBottom: 8,
-    fontWeight: 700,
-  },
-  title: {
-    margin: 0,
-    fontSize: 32,
-    lineHeight: 1.05,
-    color: "#1c1917",
-  },
-  subtitle: {
-    marginTop: 10,
-    marginBottom: 0,
-    color: "#57534e",
-    fontSize: 15,
-  },
-  forecastCard: {
-    border: "1px solid #e7e5e4",
-    borderRadius: 18,
-    background: "#fafaf9",
-    padding: 18,
-    marginBottom: 16,
-  },
-  forecastTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 16,
-    alignItems: "flex-start",
-    flexWrap: "wrap",
-    marginBottom: 16,
-  },
-  forecastTitle: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    color: "#78716c",
-    fontWeight: 700,
-    marginBottom: 6,
-  },
-  forecastSub: {
-    color: "#57534e",
-    fontSize: 14,
-    maxWidth: 520,
-  },
-  scoreCard: {
-    minWidth: 140,
-    borderRadius: 16,
-    padding: 14,
-    background: "#ffffff",
-    border: "1px solid #e7e5e4",
-    textAlign: "center",
-  },
-  scoreLabel: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    color: "#78716c",
-    marginBottom: 6,
-    fontWeight: 700,
-  },
-  scoreValue: {
-    fontSize: 34,
-    lineHeight: 1,
-    fontWeight: 800,
-    color: "#1c1917",
-  },
-  scoreHint: {
-    marginTop: 6,
-    fontSize: 13,
-    color: "#57534e",
-    fontWeight: 600,
-  },
-  summaryGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 12,
-  },
-  statCard: {
-    borderRadius: 14,
-    background: "#ffffff",
-    border: "1px solid #ece7df",
-    padding: 14,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#78716c",
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    fontWeight: 700,
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: 800,
-    color: "#1c1917",
-  },
-  quickRow: {
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-    marginBottom: 16,
-  },
-  quickBtn: {
-    border: "1px solid #d6d3d1",
-    borderRadius: 999,
-    padding: "10px 14px",
-    background: "#fff",
-    color: "#1c1917",
-    cursor: "pointer",
-    fontSize: 14,
-    fontWeight: 600,
-  },
-  chatBox: {
-    height: 430,
-    overflowY: "auto",
-    borderRadius: 18,
-    border: "1px solid #e7e5e4",
-    background: "#fcfcfb",
-    padding: 16,
-    marginBottom: 14,
-  },
-  message: {
-    maxWidth: "88%",
-    padding: 14,
-    borderRadius: 16,
-    marginBottom: 12,
-    whiteSpace: "pre-wrap",
-  },
-  user: {
-    marginLeft: "auto",
-    background: "#dbeafe",
-  },
-  assistant: {
-    marginRight: "auto",
-    background: "#f3f4f6",
-  },
-  messageLabel: {
-    fontSize: 11,
-    fontWeight: 800,
-    marginBottom: 6,
-    opacity: 0.7,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  messageText: {
-    fontSize: 15,
-    lineHeight: 1.5,
-    color: "#111827",
-  },
-  inputRow: {
-    display: "flex",
-    gap: 10,
-  },
-  input: {
-    flex: 1,
-    borderRadius: 14,
-    border: "1px solid #d6d3d1",
-    padding: "14px 16px",
-    fontSize: 16,
-    outline: "none",
-    background: "#fff",
-  },
-  button: {
-    border: "none",
-    borderRadius: 14,
-    padding: "14px 18px",
-    fontSize: 16,
-    background: "#111827",
-    color: "#fff",
-    cursor: "pointer",
-    fontWeight: 700,
-  },
-};

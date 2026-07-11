@@ -1,310 +1,251 @@
 "use client";
 
-
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import BenBubble from "@/components/BenBubble";
+import { BenEngine } from "@/lib/ben/engine";
+import { clampMoney, money } from "@/lib/money/math";
+import { currentMonthStartISO } from "@/lib/money/dates";
+import {
+  prioritizeMoneyItems,
+  type PriorityInput,
+} from "@/lib/money/priorityV2";
 
 type BillRow = {
   id: string;
-  name: string;
-  category: "housing" | "utilities" | "transportation" | "debt" | "food" | "other" | null;
-  target: number;
-  due_date: string | null;
-  focus: boolean | null;
-  kind: "bill" | "credit" | "loan";
-  is_monthly: boolean | null;
-  monthly_target: number | null;
-  due_day: number | null;
+  name: string | null;
+  target?: number | string | null;
+  monthly_target?: number | string | null;
+  balance?: number | string | null;
+  min_payment?: number | string | null;
+  due_date?: string | null;
+  due?: string | null;
+  due_day?: number | string | null;
+  category?: string | null;
+  kind?: string | null;
+  focus?: boolean | null;
 };
-
-type IncomeRow = { id: string; amount: number; date_iso: string };
-type SpendRow = { id: string; amount: number; date_iso: string };
-type PaymentRow = { id: string; amount: number; date_iso: string };
 
 type DebtRow = {
   id: string;
-  name: string;
-  kind: "credit" | "loan";
-  balance: number;
-  min_payment: number | null;
-  due_date: string | null;
-  apr: number | null;
-  is_monthly: boolean | null;
-  due_day: number | null;
-  monthly_min_payment: number | null;
+  name: string | null;
+  balance?: number | string | null;
+  min_payment?: number | string | null;
+  monthly_min_payment?: number | string | null;
+  due_date?: string | null;
+  due_day?: number | string | null;
+  apr?: number | string | null;
+  kind?: string | null;
 };
 
-type CrisisItem = {
+type IncomeEntryRow = {
   id: string;
-  name: string;
-  amount: number;
-  dueDate: string | null;
-  category: string | null;
-  source: "bill" | "debt";
-  score: number;
+  amount: number | string | null;
+  date_iso: string | null;
 };
 
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+type PaymentRow = {
+  id: string;
+  amount: number | string | null;
+  bill_id: string | null;
+  debt_id: string | null;
+  date_iso: string | null;
+  created_at?: string | null;
+};
 
-function parseDateSafe(dateISO?: string | null) {
-  if (!dateISO) return null;
-  const d = new Date(`${dateISO}T12:00:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
+const shellClass =
+  "rounded-2xl border border-white/40 bg-slate-950/70 p-6 shadow-2xl backdrop-blur-xl md:p-8";
 
-function getNextDueDateFromDay(dueDay?: number | null) {
-  if (!dueDay || dueDay < 1 || dueDay > 31) return null;
+const cardClass =
+  "rounded-2xl border border-white/80 bg-white/95 p-6 text-zinc-950 shadow-2xl shadow-zinc-950/10 backdrop-blur-xl transition hover:bg-white";
 
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const today = startOfToday();
-
-  const lastDayThisMonth = new Date(year, month + 1, 0).getDate();
-  const safeDayThisMonth = Math.min(dueDay, lastDayThisMonth);
-  const thisMonthDue = new Date(year, month, safeDayThisMonth, 12, 0, 0, 0);
-
-  if (thisMonthDue >= today) return thisMonthDue.toISOString().slice(0, 10);
-
-  const nextMonthYear = month === 11 ? year + 1 : year;
-  const nextMonth = month === 11 ? 0 : month + 1;
-  const lastDayNextMonth = new Date(nextMonthYear, nextMonth + 1, 0).getDate();
-  const safeDayNextMonth = Math.min(dueDay, lastDayNextMonth);
-  const nextMonthDue = new Date(nextMonthYear, nextMonth, safeDayNextMonth, 12, 0, 0, 0);
-
-  return nextMonthDue.toISOString().slice(0, 10);
-}
-
-function effectiveBillDueDate(bill: BillRow) {
-  if (bill.due_date) return bill.due_date;
-  if (bill.is_monthly && bill.due_day) return getNextDueDateFromDay(bill.due_day);
-  return null;
-}
-
-function effectiveBillAmount(bill: BillRow) {
-  return Number(bill.monthly_target || bill.target || 0);
-}
-
-function effectiveDebtDueDate(debt: DebtRow) {
-  if (debt.due_date) return debt.due_date;
-  if (debt.is_monthly && debt.due_day) return getNextDueDateFromDay(debt.due_day);
-  return null;
-}
-
-function effectiveDebtAmount(debt: DebtRow) {
-  return Number(debt.monthly_min_payment || debt.min_payment || 0);
-}
-
-function daysUntil(dateISO?: string | null) {
-  const due = parseDateSafe(dateISO);
-  if (!due) return null;
-  const today = startOfToday();
-  return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function formatUSD(n: number) {
-  return `$${n.toFixed(2)}`;
-}
-
-function scoreItem(item: Omit<CrisisItem, "score">) {
-  let score = 0;
-  const d = daysUntil(item.dueDate);
-
-  if (d != null) {
-    if (d < 0) score += 50;
-    else if (d === 0) score += 42;
-    else if (d === 1) score += 36;
-    else if (d <= 3) score += 28;
-    else if (d <= 7) score += 20;
-    else score += 8;
-  }
-
-  if (item.category === "housing") score += 35;
-  if (item.category === "utilities") score += 28;
-  if (item.category === "transportation") score += 24;
-  if (item.source === "debt") score += 14;
-
-  return score;
-}
-
-function formatDueLabel(dateISO?: string | null) {
-  if (!dateISO) return "No due date";
-  const d = daysUntil(dateISO);
-  if (d == null) return dateISO;
-  if (d < 0) return `Overdue · ${dateISO}`;
-  if (d === 0) return "Due today";
-  if (d === 1) return "Due tomorrow";
-  return `Due ${dateISO}`;
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
-      <div className="text-sm text-zinc-500">{label}</div>
-      <div className="mt-2 text-3xl font-black text-zinc-950">{value}</div>
-    </div>
+function billAmount(bill: BillRow) {
+  return clampMoney(
+    bill.monthly_target ?? bill.target ?? bill.balance ?? bill.min_payment
   );
 }
 
+function debtMinimum(debt: DebtRow) {
+  return clampMoney(debt.monthly_min_payment ?? debt.min_payment);
+}
+
+function dueLabel(days: number | null) {
+  if (days === null) return "No due date";
+  if (days < 0) return `Overdue by ${Math.abs(days)} day(s)`;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due tomorrow";
+  return `Due in ${days} days`;
+}
+
 export default function CrisisPage() {
-  const supabase = createSupabaseBrowserClient();
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-  const [userId, setUserId] = useState<string | null>(null);
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [bills, setBills] = useState<BillRow[]>([]);
-  const [incomeEntries, setIncomeEntries] = useState<IncomeRow[]>([]);
-  const [spendEntries, setSpendEntries] = useState<SpendRow[]>([]);
-  const [paymentEntries, setPaymentEntries] = useState<PaymentRow[]>([]);
   const [debts, setDebts] = useState<DebtRow[]>([]);
+  const [incomeEntries, setIncomeEntries] = useState<IncomeEntryRow[]>([]);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadCrisis() {
-      setLoading(true);
-      setMessage("");
-
-      const { data, error } = await supabase.auth.getSession();
-      if (error) {
-        setMessage(error.message);
-        setLoading(false);
-        return;
-      }
-
-      const session = data.session;
-      if (!session?.user) {
-        setMessage("Please log in to view Crisis Mode.");
-        setLoading(false);
-        return;
-      }
-
-      setUserId(session.user.id);
-
-      const [billsRes, incomeRes, spendRes, paymentsRes, debtsRes] = await Promise.all([
-        supabase.from("bills").select("*").order("created_at", { ascending: false }),
-        supabase.from("income_entries").select("id, amount, date_iso"),
-        supabase.from("spend_entries").select("id, amount, date_iso"),
-        supabase.from("payments").select("id, amount, date_iso"),
-        supabase.from("debts").select("*").order("created_at", { ascending: false }),
-      ]);
-
-      if (billsRes.error) setMessage(billsRes.error.message);
-      else setBills((billsRes.data || []) as BillRow[]);
-
-      if (!incomeRes.error) setIncomeEntries((incomeRes.data || []) as IncomeRow[]);
-      if (!spendRes.error) setSpendEntries((spendRes.data || []) as SpendRow[]);
-      if (!paymentsRes.error) setPaymentEntries((paymentsRes.data || []) as PaymentRow[]);
-      if (!debtsRes.error) setDebts((debtsRes.data || []) as DebtRow[]);
-
-      setLoading(false);
-    }
-
-    loadCrisis();
+    void loadCrisisData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const totals = useMemo(() => {
-    const income = incomeEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    const spending = spendEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    const payments = paymentEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    const debtMinimums = debts.reduce((sum, row) => sum + effectiveDebtAmount(row), 0);
+  async function loadCrisisData() {
+    setLoading(true);
+    setMessage("");
 
-    return { income, spending, payments, debtMinimums };
-  }, [incomeEntries, spendEntries, paymentEntries, debts]);
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      setMessage(sessionError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!session?.user) {
+      setMessage("Please log in to access Crisis Mode.");
+      setLoading(false);
+      return;
+    }
+
+    const uid = session.user.id;
+
+    const [billsRes, debtsRes, incomeRes, paymentsRes] = await Promise.all([
+      supabase.from("bills").select("*").eq("user_id", uid),
+      supabase.from("debts").select("*").eq("user_id", uid),
+      supabase.from("income_entries").select("*").eq("user_id", uid),
+      supabase
+        .from("payments")
+        .select("id, amount, bill_id, debt_id, date_iso, created_at")
+        .eq("user_id", uid),
+    ]);
+
+    if (billsRes.error) setMessage(billsRes.error.message);
+    if (debtsRes.error) setMessage(debtsRes.error.message);
+    if (incomeRes.error) setMessage(incomeRes.error.message);
+    if (paymentsRes.error) setMessage(paymentsRes.error.message);
+
+    setBills((billsRes.data || []) as BillRow[]);
+    setDebts((debtsRes.data || []) as DebtRow[]);
+    setIncomeEntries((incomeRes.data || []) as IncomeEntryRow[]);
+    setPayments((paymentsRes.data || []) as PaymentRow[]);
+    setLoading(false);
+  }
+
+  const paidThisMonth = useMemo(() => {
+    const monthStart = currentMonthStartISO();
+
+    const byBill: Record<string, number> = {};
+    const byDebt: Record<string, number> = {};
+
+    payments.forEach((payment) => {
+      const date = (payment.date_iso || payment.created_at || "").slice(0, 10);
+      if (!date || date < monthStart) return;
+
+      const amount = clampMoney(payment.amount);
+
+      if (payment.bill_id) {
+        byBill[payment.bill_id] = (byBill[payment.bill_id] || 0) + amount;
+      }
+
+      if (payment.debt_id) {
+        byDebt[payment.debt_id] = (byDebt[payment.debt_id] || 0) + amount;
+      }
+    });
+
+    return { byBill, byDebt };
+  }, [payments]);
+
+  const priorityItems = useMemo<PriorityInput[]>(() => {
+    return [
+      ...bills.map((bill) => {
+        const due = billAmount(bill);
+        const paid = paidThisMonth.byBill[bill.id] || 0;
+        const remaining = Math.max(0, due - paid);
+
+        return {
+          id: bill.id,
+          type: "bill" as const,
+          name: bill.name,
+          amount: remaining,
+          due_date: bill.due_date,
+          due: bill.due,
+          due_day: bill.due_day,
+          category: bill.category,
+          kind: bill.kind,
+          focus: bill.focus,
+          is_paid_this_month: paid >= due && due > 0,
+        };
+      }),
+
+      ...debts.map((debt) => {
+        const due = debtMinimum(debt);
+        const paid = paidThisMonth.byDebt[debt.id] || 0;
+        const remaining = Math.max(0, due - paid);
+
+        return {
+          id: debt.id,
+          type: "debt" as const,
+          name: debt.name,
+          amount: remaining,
+          balance: debt.balance,
+          due_date: debt.due_date,
+          due_day: debt.due_day,
+          kind: debt.kind,
+          apr: debt.apr,
+          is_paid_this_month: paid >= due && due > 0,
+        };
+      }),
+    ];
+  }, [bills, debts, paidThisMonth]);
 
   const rankedItems = useMemo(() => {
-    const billItems = bills.map((bill) => {
-      const item = {
-        id: `bill-${bill.id}`,
-        name: bill.name,
-        amount: effectiveBillAmount(bill),
-        dueDate: effectiveBillDueDate(bill),
-        category: bill.category,
-        source: "bill" as const,
-      };
-      return { ...item, score: scoreItem(item) };
-    });
-
-    const debtItems = debts
-      .filter((debt) => effectiveDebtAmount(debt) > 0)
-      .map((debt) => {
-        const item = {
-          id: `debt-${debt.id}`,
-          name: debt.name,
-          amount: effectiveDebtAmount(debt),
-          dueDate: effectiveDebtDueDate(debt),
-          category: "debt",
-          source: "debt" as const,
-        };
-        return { ...item, score: scoreItem(item) };
-      });
-
-    return [...billItems, ...debtItems].sort((a, b) => b.score - a.score);
-  }, [bills, debts]);
+    return prioritizeMoneyItems(priorityItems).filter(
+      (row) => !row.item.is_paid_this_month && row.amount > 0
+    );
+  }, [priorityItems]);
 
   const top3 = rankedItems.slice(0, 3);
+  const criticalNext7Total = rankedItems
+    .filter((row) => row.daysUntilDue !== null && row.daysUntilDue <= 7)
+    .reduce((sum, row) => sum + row.amount, 0);
 
-  const criticalNext7Total = useMemo(() => {
-    return rankedItems
-      .filter((item) => {
-        const d = daysUntil(item.dueDate);
-        return d != null && d <= 7;
-      })
-      .reduce((sum, item) => sum + item.amount, 0);
-  }, [rankedItems]);
+  const totalUnpaidObligations = rankedItems.reduce(
+    (sum, row) => sum + row.amount,
+    0
+  );
 
-  const stabilizationRoom =
-    totals.income - criticalNext7Total - totals.spending - totals.payments;
+  const incomeThisMonth = useMemo(() => {
+    const monthStart = currentMonthStartISO();
 
-  const headline = useMemo(() => {
-    if (rankedItems.length === 0) {
-      return "Add bills and debt accounts to generate a calm action plan.";
-    }
+    return incomeEntries
+      .filter((entry) => (entry.date_iso || "").slice(0, 10) >= monthStart)
+      .reduce((sum, entry) => sum + clampMoney(entry.amount), 0);
+  }, [incomeEntries]);
 
-    const topCategories = top3.map((item) => item.category);
+  const crisisGap = Math.max(0, criticalNext7Total - incomeThisMonth);
 
-    if (topCategories.includes("housing")) {
-      return "Protect housing first, then utilities and transportation.";
-    }
-    if (topCategories.includes("utilities")) {
-      return "Protect essential services first, then minimum debt obligations.";
-    }
-    if (topCategories.includes("transportation")) {
-      return "Protect transportation first so income stays possible.";
-    }
+  const benInsight = BenEngine.getForecastMessage({
+    name: null,
+    timeframeLabel: "Crisis Mode",
+    totalNeeded: criticalNext7Total,
+    incomeSoFar: incomeThisMonth,
+    incomeGap: crisisGap,
+    dailyIncomeNeeded: Math.ceil(crisisGap / 7),
+  });
 
-    return "Focus on the highest-risk obligations first and ignore lower-priority noise today.";
-  }, [rankedItems, top3]);
-
-  const actions = useMemo(() => {
-    if (top3.length === 0) {
-      return [
-        "Add your most urgent bill first.",
-        "Set due dates or due days for what matters most.",
-        "Come back here to see your top priorities.",
-      ];
-    }
-
-    return top3.map((item) => {
-      if (item.category === "housing") {
-        return `Pay ${item.name} first to protect housing stability.`;
-      }
-      if (item.category === "utilities") {
-        return `Fund ${item.name} to reduce shutoff risk.`;
-      }
-      if (item.category === "transportation") {
-        return `Protect ${item.name} so transportation stays available.`;
-      }
-      if (item.source === "debt") {
-        return `Cover the monthly minimum on ${item.name} if possible.`;
-      }
-      return `Put money toward ${item.name} next.`;
-    });
-  }, [top3]);
+  if (loading) {
+    return <div className="p-8 text-center">Loading crisis triage...</div>;
+  }
 
   return (
+<<<<<<< HEAD
     <main className="min-h-screen bg-zinc-950/82 -md text-white">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 md:p-8 shadow-2xl">
@@ -320,181 +261,142 @@ export default function CrisisPage() {
                 Calm triage for what matters most right now, powered by your real data.
               </p>
             </div>
+=======
+    <main className="min-h-screen bg-transparent p-4 md:p-6">
+      <div className={`${shellClass} mx-auto max-w-6xl space-y-10`}>
+        <header>
+          <h1 className="text-5xl font-black text-white">Crisis Mode</h1>
+          <p className="mt-2 text-lg font-semibold text-white/90">
+            72-hour triage — focus only on unpaid obligations that matter most.
+          </p>
+        </header>
+>>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
 
-            <div className="flex flex-wrap gap-3">
-              <a
-                href="/dashboard"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Dashboard
-              </a>
-              <a
-                href="/forecast"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Forecast
-              </a>
-            </div>
+        {message ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950">
+            {message}
           </div>
+        ) : null}
 
-          {message ? (
-            <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
-              {message}
-            </div>
-          ) : null}
+        <div className="rounded-2xl border border-white/20 bg-slate-950/80 p-6 shadow-xl backdrop-blur-xl">
+          <BenBubble message={benInsight.text} mood={benInsight.mood} />
+        </div>
 
-          {!userId && !loading ? (
-            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
-              <div className="font-semibold text-white">You are not logged in.</div>
-              <p className="mt-2 text-sm text-zinc-300">
-                Go to signup/login first, then come back here.
-              </p>
-              <div className="mt-4">
-                <a
-                  href="/signup"
-                  className="inline-flex rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-black hover:bg-emerald-300"
+        <div className="grid gap-4 md:grid-cols-3">
+          <StatCard
+            label="Critical Next 7 Days"
+            value={money(criticalNext7Total)}
+          />
+          <StatCard label="Top Priority Items" value={top3.length.toString()} />
+          <StatCard
+            label="Total Unpaid Obligations"
+            value={money(totalUnpaidObligations)}
+          />
+        </div>
+
+        <div className={cardClass}>
+          <h2 className="mb-6 text-2xl font-black">
+            Top 3 Actions Right Now
+          </h2>
+
+          <div className="space-y-4">
+            {top3.length > 0 ? (
+              top3.map((row, i) => (
+                <div
+                  key={`${row.item.type}-${row.item.id}`}
+                  onClick={() =>
+                    setExpandedId(
+                      expandedId === `${row.item.type}-${row.item.id}`
+                        ? null
+                        : `${row.item.type}-${row.item.id}`
+                    )
+                  }
+                  className="cursor-pointer rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-sm transition hover:bg-white"
                 >
-                  Go to Signup / Login
-                </a>
-              </div>
-            </div>
-          ) : null}
+                  <div className="flex items-center gap-4">
+                    <div className="text-3xl font-black text-emerald-600">
+                      #{i + 1}
+                    </div>
 
-          <div className="mt-8 rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-            <div className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-              Today’s focus
-            </div>
-            <div className="mt-3 text-2xl font-black tracking-tight">{headline}</div>
-            <div className="mt-4 text-sm text-zinc-600">
-              Income logged: {formatUSD(totals.income)} · Spending: {formatUSD(totals.spending)} · Payments: {formatUSD(totals.payments)} · Monthly debt minimums: {formatUSD(totals.debtMinimums)}
-            </div>
-          </div>
-
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <StatCard label="Critical next 7 days" value={formatUSD(criticalNext7Total)} />
-            <StatCard label="Room after critical items" value={formatUSD(stabilizationRoom)} />
-            <StatCard label="Tracked obligations" value={String(rankedItems.length)} />
-          </div>
-
-          <div className="mt-8 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-              <h2 className="text-2xl font-black">Top 3 actions now</h2>
-              <div className="mt-5 grid gap-3">
-                {loading ? (
-                  <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                    Loading crisis plan...
-                  </div>
-                ) : (
-                  actions.map((action, i) => (
-                    <div key={i} className="rounded-2xl bg-zinc-50 p-4">
-                      <div className="text-xs font-semibold text-zinc-500">Action {i + 1}</div>
-                      <div className="mt-1 font-semibold">{action}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="mt-6">
-                <h3 className="text-lg font-bold">72-hour stabilization plan</h3>
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-xs font-semibold text-zinc-500">Today</div>
-                    <div className="mt-1 font-semibold">
-                      Fund the highest-risk essential item first.
-                    </div>
-                  </div>
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-xs font-semibold text-zinc-500">Next 24 hours</div>
-                    <div className="mt-1 font-semibold">
-                      Protect utilities, transportation, or monthly minimum obligations.
-                    </div>
-                  </div>
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-xs font-semibold text-zinc-500">This week</div>
-                    <div className="mt-1 font-semibold">
-                      Pause non-essential spending and reduce leak categories.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-6">
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-xl font-black">Priority funding</h2>
-                <div className="mt-4 grid gap-3">
-                  {loading ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                      Loading priorities...
-                    </div>
-                  ) : top3.length === 0 ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                      No priority items yet.
-                    </div>
-                  ) : (
-                    top3.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
-                      >
-                        <div>
-                          <div className="font-semibold">{item.name}</div>
-                          <div className="text-sm text-zinc-500">
-                            {formatDueLabel(item.dueDate)} · {item.category || item.source}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-bold">{formatUSD(item.amount)}</div>
-                          <div className="text-xs text-zinc-500">Score {item.score}</div>
-                        </div>
+                    <div className="flex-1">
+                      <div className="font-black">
+                        {row.item.name ?? "Unnamed"}
                       </div>
-                    ))
+                      <div className="text-sm font-semibold text-zinc-600">
+                        {dueLabel(row.daysUntilDue)}
+                      </div>
+                    </div>
+
+                    <div className="text-right text-xl font-black">
+                      {money(row.amount)}
+                    </div>
+                  </div>
+
+                  {expandedId === `${row.item.type}-${row.item.id}` && (
+                    <div className="mt-4 border-t border-zinc-200 pt-4 text-sm font-semibold text-zinc-700">
+                      <p>Type: {row.item.type}</p>
+                      <p>Score: {row.score}</p>
+                      <p>Reasons: {row.reasons.join(", ")}</p>
+                    </div>
                   )}
                 </div>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-xl font-black">Everything ranked</h2>
-                <div className="mt-4 grid gap-3">
-                  {loading ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                      Loading ranked items...
-                    </div>
-                  ) : rankedItems.length === 0 ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                      No bills or debt minimums to rank yet.
-                    </div>
-                  ) : (
-                    rankedItems.slice(0, 8).map((item, idx) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
-                      >
-                        <div>
-                          <div className="font-semibold">
-                            {idx + 1}. {item.name}
-                          </div>
-                          <div className="text-sm text-zinc-500">
-                            {formatDueLabel(item.dueDate)} · {item.category || item.source}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-bold">{formatUSD(item.amount)}</div>
-                          <div className="text-xs text-zinc-500">Score {item.score}</div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
+              ))
+            ) : (
+              <p className="text-zinc-600">
+                No unpaid crisis items found. That is a blessed calm.
+              </p>
+            )}
           </div>
+        </div>
 
-          {loading ? (
-            <div className="mt-6 text-sm text-zinc-400">Loading crisis mode...</div>
-          ) : null}
+        <div className={cardClass}>
+          <h2 className="mb-6 text-2xl font-black">
+            Everything Ranked by Urgency
+          </h2>
+
+          <div className="space-y-3">
+            {rankedItems.length === 0 ? (
+              <p className="text-zinc-600">No unpaid items found.</p>
+            ) : (
+              rankedItems.map((row, i) => (
+                <div
+                  key={`${row.item.type}-${row.item.id}`}
+                  className="flex cursor-pointer items-center justify-between rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-sm transition hover:bg-white"
+                >
+                  <div className="flex items-center gap-4">
+                    <span className="font-mono text-sm text-zinc-500">
+                      #{i + 1}
+                    </span>
+                    <div>
+                      <div className="font-black">
+                        {row.item.name ?? "Unnamed"}
+                      </div>
+                      <div className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+                        {row.item.type} • {dueLabel(row.daysUntilDue)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right text-xl font-black">
+                    {money(row.amount)}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </main>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className={cardClass}>
+      <div className="text-xs font-black uppercase tracking-widest text-zinc-600">
+        {label}
+      </div>
+      <div className="mt-3 text-4xl font-black text-zinc-950">{value}</div>
+    </div>
   );
 }

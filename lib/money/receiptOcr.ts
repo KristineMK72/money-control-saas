@@ -4,14 +4,17 @@ export async function ocrImageFile(
   file: File
 ): Promise<{ text: string; confidence: number }> {
   const worker = await createWorker("eng");
+
   try {
     const { data } = await worker.recognize(file);
-    const text = (data.text || "").trim();
-    const confidence =
-      typeof data.confidence === "number"
-        ? Math.max(0, Math.min(1, data.confidence / 100))
-        : 0;
-    return { text, confidence };
+
+    return {
+      text: (data.text || "").trim(),
+      confidence:
+        typeof data.confidence === "number"
+          ? Math.max(0, Math.min(1, data.confidence / 100))
+          : 0,
+    };
   } finally {
     await worker.terminate();
   }
@@ -28,105 +31,199 @@ export type ParsedTxn = {
 export function parseTransactionsScreenshot(text: string): ParsedTxn[] {
   const rawLines = text
     .split(/\r?\n/)
-    .map((l) => l.trim())
+    .map((line) => line.trim())
     .filter(Boolean);
 
-  const lines = rawLines.filter((l) => {
-    const lower = l.toLowerCase();
-    if (lower === "recent transactions") return false;
-    if (lower.startsWith("view all")) return false;
-    if (/\bpts\b/i.test(l)) return false;
-    if (lower.includes("activate now")) return false;
-    return true;
-  });
+  const monthMap: Record<string, string> = {
+    jan: "01",
+    january: "01",
+    feb: "02",
+    february: "02",
+    mar: "03",
+    march: "03",
+    apr: "04",
+    april: "04",
+    may: "05",
+    jun: "06",
+    june: "06",
+    jul: "07",
+    july: "07",
+    aug: "08",
+    august: "08",
+    sep: "09",
+    sept: "09",
+    september: "09",
+    oct: "10",
+    october: "10",
+    nov: "11",
+    november: "11",
+    dec: "12",
+    december: "12",
+  };
 
-  const amountRegex = /([+\-])?\s*\$?\s*(\d{1,4}(?:[,\s]\d{3})*(?:\.\d{2}))/;
+  let currentYear = new Date().getFullYear();
 
-  function parseAmount(
-    line: string
-  ): { amount: number; direction: "debit" | "credit" } | null {
-    const m = line.match(amountRegex);
-    if (!m) return null;
+  function parseDateISO(line: string): string | undefined {
+    const yearOnly = line.match(/\b(20\d{2})\b/);
+    if (yearOnly) currentYear = Number(yearOnly[1]);
 
-    const sign = (m[1] || "").trim();
-    const cleaned = (m[2] || "").replace(/\s/g, "").replace(/,/g, "");
-    const n = Number(cleaned);
-    if (!Number.isFinite(n) || n <= 0) return null;
+    const monthDate = line.match(
+      /\b(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\s+(\d{1,2})(?:,\s*(20\d{2}))?\b/i
+    );
 
-    const direction: "debit" | "credit" = sign === "+" ? "credit" : "debit";
-    return { amount: n, direction };
+    if (monthDate) {
+      const month = monthMap[monthDate[1].toLowerCase()];
+      const day = String(Number(monthDate[2])).padStart(2, "0");
+      const year = monthDate[3] ? Number(monthDate[3]) : currentYear;
+      return `${year}-${month}-${day}`;
+    }
+
+    const slashDate = line.match(
+      /\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/
+    );
+
+    if (slashDate) {
+      const month = String(Number(slashDate[1])).padStart(2, "0");
+      const day = String(Number(slashDate[2])).padStart(2, "0");
+      const year = slashDate[3]
+        ? slashDate[3].length === 2
+          ? `20${slashDate[3]}`
+          : slashDate[3]
+        : String(currentYear);
+
+      return `${year}-${month}-${day}`;
+    }
+
+    return undefined;
   }
 
-  function looksLikeDateLine(line: string): boolean {
+  function isNoise(line: string): boolean {
+    const lower = line.toLowerCase();
+
     return (
-      /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/i.test(line) ||
-      /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/.test(line) ||
-      /\b20\d{2}\b/.test(line)
+      lower === "all" ||
+      lower === "money in" ||
+      lower === "money out" ||
+      lower.includes("bank account") ||
+      lower.includes("recent transactions") ||
+      lower.includes("view all") ||
+      lower.includes("available balance") ||
+      lower.includes("current balance") ||
+      lower.includes("activate now") ||
+      lower.includes("settings") ||
+      /\bpts\b/i.test(line)
     );
   }
 
-  function looksLikeMerchantLine(line: string): boolean {
-    if (!/[A-Za-z]/.test(line)) return false;
-    if (looksLikeDateLine(line)) return false;
+  function parseAmount(line: string): {
+    amount: number;
+    direction: "debit" | "credit";
+  } | null {
+    const match = line.match(
+      /([+\-])?\s*\$?\s*(\d{1,3}(?:[,\s]\d{3})*|\d+)\.(\d{2})/
+    );
+
+    if (!match) return null;
+
+    const sign = match[1] || "";
+    const dollars = match[2].replace(/[,\s]/g, "");
+    const cents = match[3];
+    const amount = Number(`${dollars}.${cents}`);
+
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+
+    let direction: "debit" | "credit" = sign === "+" ? "credit" : "debit";
+
     const lower = line.toLowerCase();
-    if (lower === "pending") return false;
-    if (lower === "posted") return false;
+    if (
+      lower.includes("deposit") ||
+      lower.includes("credit") ||
+      lower.includes("money in") ||
+      lower.includes("refund") ||
+      lower.includes("payroll")
+    ) {
+      direction = "credit";
+    }
+
+    return { amount, direction };
+  }
+
+  function cleanMerchant(line: string): string {
+    return line
+      .replace(/([+\-])?\s*\$?\s*(\d{1,3}(?:[,\s]\d{3})*|\d+)\.\d{2}/g, "")
+      .replace(/\b(pending|posted|completed|deposit|transfer|payment)\b/gi, "")
+      .trim();
+  }
+
+  function looksLikeMerchant(line: string): boolean {
+    if (!/[A-Za-z]/.test(line)) return false;
+    if (isNoise(line)) return false;
+    if (parseDateISO(line)) return false;
+    if (parseAmount(line)) return false;
     return true;
   }
 
   const results: ParsedTxn[] = [];
+  let currentDate: string | undefined;
 
-  for (let i = 0; i < lines.length; i++) {
-    const amt = parseAmount(lines[i]);
-    if (!amt) continue;
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
 
-    let merchant = "";
-    let merchantIdx = -1;
-
-    for (let j = i; j >= 0 && j >= i - 3; j--) {
-      if (looksLikeMerchantLine(lines[j])) {
-        merchant = lines[j];
-        merchantIdx = j;
-        break;
-      }
-    }
-    if (!merchant) continue;
-
-    let dateText: string | undefined = undefined;
-    let pending = false;
-
-    for (let j = merchantIdx + 1; j < lines.length && j <= merchantIdx + 3; j++) {
-      if (looksLikeDateLine(lines[j])) {
-        dateText = lines[j];
-        break;
-      }
-      if (lines[j].toLowerCase().includes("pending")) pending = true;
+    const dateFound = parseDateISO(line);
+    if (dateFound) {
+      currentDate = dateFound;
+      continue;
     }
 
-    if (lines[i].toLowerCase().includes("pending")) pending = true;
+    const amountInfo = parseAmount(line);
+    if (!amountInfo) continue;
 
-    const already = results.some(
-      (r) =>
-        r.merchant === merchant &&
-        r.direction === amt.direction &&
-        Math.abs(r.amount - amt.amount) < 0.0001 &&
-        (r.dateText || "") === (dateText || "")
+    let merchant = cleanMerchant(line);
+    let pending = line.toLowerCase().includes("pending");
+
+    if (!merchant || merchant.length < 3) {
+      for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
+        const candidate = rawLines[j];
+
+        if (candidate.toLowerCase().includes("pending")) {
+          pending = true;
+          continue;
+        }
+
+        if (looksLikeMerchant(candidate)) {
+          merchant = cleanMerchant(candidate);
+          break;
+        }
+      }
+    }
+
+    if (!merchant) merchant = "Transaction";
+
+    const duplicate = results.some(
+      (row) =>
+        row.merchant === merchant &&
+        row.amount === amountInfo.amount &&
+        row.direction === amountInfo.direction &&
+        row.dateText === currentDate
     );
-    if (already) continue;
 
-    results.push({
-      merchant,
-      amount: amt.amount,
-      direction: amt.direction,
-      dateText,
-      pending,
-    });
+    if (!duplicate) {
+      results.push({
+        merchant,
+        amount: amountInfo.amount,
+        direction: amountInfo.direction,
+        dateText: currentDate,
+        pending,
+      });
+    }
   }
 
   return results;
 }
 
-export function guessCategoryFromMerchant(merchant: string):
+export function guessCategoryFromMerchant(
+  merchant: string
+):
   | "groceries"
   | "gas"
   | "eating_out"
@@ -177,11 +274,7 @@ export function guessCategoryFromMerchant(merchant: string):
     return "subscriptions";
   }
 
-  if (
-    m.includes("ulta") ||
-    m.includes("sephora") ||
-    m.includes("salon")
-  ) {
+  if (m.includes("ulta") || m.includes("sephora") || m.includes("salon")) {
     return "self_care";
   }
 
@@ -200,85 +293,84 @@ export type ParsedDebt = {
 export function parseDebtScreenshot(text: string): ParsedDebt {
   const lines = text
     .split(/\r?\n/)
-    .map((l) => l.trim())
+    .map((line) => line.trim())
     .filter(Boolean);
 
   function findMoneyAfterKeywords(keywords: string[]): number | undefined {
     for (const line of lines) {
       const lower = line.toLowerCase();
-      const matched = keywords.some((k) => lower.includes(k));
-      if (!matched) continue;
 
-      const m = line.match(/\$?\s*(\d{1,4}(?:[,\s]\d{3})*(?:\.\d{2}))/);
-      if (m) {
-        const n = Number(m[1].replace(/\s/g, "").replace(/,/g, ""));
-        if (Number.isFinite(n)) return n;
+      if (!keywords.some((keyword) => lower.includes(keyword))) continue;
+
+      const match = line.match(/\$?\s*(\d{1,4}(?:[,\s]\d{3})*(?:\.\d{2}))/);
+
+      if (match) {
+        const value = Number(match[1].replace(/\s/g, "").replace(/,/g, ""));
+        if (Number.isFinite(value)) return value;
       }
     }
+
     return undefined;
   }
 
   function findPercent(): number | undefined {
     for (const line of lines) {
-      const m = line.match(/(\d{1,2}(?:\.\d{1,2})?)\s*%/);
-      if (m) {
-        const n = Number(m[1]);
-        if (Number.isFinite(n)) return n;
+      const match = line.match(/(\d{1,2}(?:\.\d{1,2})?)\s*%/);
+
+      if (match) {
+        const value = Number(match[1]);
+        if (Number.isFinite(value)) return value;
       }
     }
+
     return undefined;
   }
 
   function findDateISO(): string | undefined {
     for (const line of lines) {
       const iso = line.match(/\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b/);
+
       if (iso) {
-        return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+        return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(
+          2,
+          "0"
+        )}`;
       }
 
       const us = line.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2}|\d{4})\b/);
+
       if (us) {
-        const mm = us[1].padStart(2, "0");
-        const dd = us[2].padStart(2, "0");
-        const yy = us[3].length === 2 ? `20${us[3]}` : us[3];
-        return `${yy}-${mm}-${dd}`;
+        const month = us[1].padStart(2, "0");
+        const day = us[2].padStart(2, "0");
+        const year = us[3].length === 2 ? `20${us[3]}` : us[3];
+
+        return `${year}-${month}-${day}`;
       }
     }
+
     return undefined;
   }
 
   const name =
-    lines.find((l) => /[A-Za-z]/.test(l) && l.length >= 3 && l.length <= 40) ||
+    lines.find((line) => /[A-Za-z]/.test(line) && line.length >= 3 && line.length <= 40) ||
     undefined;
-
-  const balance = findMoneyAfterKeywords([
-    "balance",
-    "current balance",
-    "statement balance",
-    "outstanding balance",
-  ]);
-
-  const minPayment = findMoneyAfterKeywords([
-    "minimum payment",
-    "min payment",
-    "payment due",
-    "minimum due",
-  ]);
-
-  const creditLimit = findMoneyAfterKeywords([
-    "credit limit",
-    "limit",
-  ]);
-
-  const apr = findPercent();
-  const dueDate = findDateISO();
 
   return {
     name,
-    balance,
-    minPayment,
-    dueDate,
-    apr,
-    creditLimit,
+    balance: findMoneyAfterKeywords([
+      "balance",
+      "current balance",
+      "statement balance",
+      "outstanding balance",
+    ]),
+    minPayment: findMoneyAfterKeywords([
+      "minimum payment",
+      "min payment",
+      "payment due",
+      "minimum due",
+    ]),
+    creditLimit: findMoneyAfterKeywords(["credit limit", "limit"]),
+    apr: findPercent(),
+    dueDate: findDateISO(),
   };
 }

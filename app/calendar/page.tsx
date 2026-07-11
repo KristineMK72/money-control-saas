@@ -2,509 +2,570 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import BenBubble from "@/components/BenBubble";
+import { BenEngine } from "@/lib/ben/engine";
+import { clampMoney, money } from "@/lib/money/math";
+import { currentMonthStartISO } from "@/lib/money/dates";
+
+/* ─── Types (unchanged) ─────────────────────────────────────────── */
 
 type BillRow = {
-  id: string;
-  user_id: string;
-  name: string;
-  category:
-    | "housing"
-    | "utilities"
-    | "transportation"
-    | "debt"
-    | "food"
-    | "other"
-    | null;
-  target: number;
-  due_date: string | null;
-  is_monthly: boolean | null;
-  monthly_target: number | null;
-  due_day: number | null;
+  id: string; name: string;
+  target: number | string | null; monthly_target: number | string | null;
+  due_date: string | null; due?: string | null;
+  due_day: number | string | null; is_monthly: boolean | null;
+  category?: string | null;
 };
 
 type DebtRow = {
-  id: string;
-  user_id: string;
-  name: string;
-  kind: "credit" | "loan";
-  balance: number;
-  min_payment: number | null;
-  due_date: string | null;
+  id: string; name: string;
+  balance: number | string | null;
+  min_payment: number | string | null; monthly_min_payment: number | string | null;
+  due_date: string | null; due_day: number | string | null;
   is_monthly: boolean | null;
-  due_day: number | null;
-  monthly_min_payment: number | null;
+};
+
+type PaymentRow = {
+  id: string; amount: number | string | null;
+  bill_id: string | null; debt_id: string | null;
+  date_iso: string | null; created_at?: string | null;
 };
 
 type CalendarItem = {
-  id: string;
-  source: "bill" | "debt";
-  name: string;
-  category: string | null;
-  amount: number;
-  dueDate: string;
+  id: string; sourceId: string; name: string;
+  amount: number; originalAmount: number; paidThisMonth: number;
+  date: Date; type: "bill" | "debt"; isPaidThisMonth: boolean;
 };
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+type WeekSummary = {
+  weekNumber: number; label: string;
+  start: Date; end: Date; total: number; items: CalendarItem[];
+};
 
-function formatUSD(n: number) {
-  return `$${Number(n || 0).toFixed(2)}`;
+/* ─── Helpers (unchanged) ───────────────────────────────────────── */
+
+function iso(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function isoFromYMD(year: number, monthIndex: number, day: number) {
-  const d = new Date(year, monthIndex, day, 12, 0, 0, 0);
-  return d.toISOString().slice(0, 10);
+function safeDate(year: number, month: number, day: number) {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  return new Date(year, month, Math.min(Math.max(day, 1), lastDay));
 }
 
-function clampDay(year: number, monthIndex: number, day: number) {
-  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
-  return Math.min(Math.max(day, 1), lastDay);
+function obligationDate(
+  dueDate: string | null | undefined, dueDay: number | string | null | undefined,
+  isMonthly: boolean | null | undefined, year: number, month: number
+) {
+  const parsed = dueDate ? new Date(`${dueDate}T00:00:00`) : null;
+  const day = Number(dueDay);
+  if (Number.isFinite(day) && day >= 1 && day <= 31) return safeDate(year, month, day);
+  if (parsed && isMonthly) return safeDate(year, month, parsed.getDate());
+  if (parsed && parsed.getFullYear() === year && parsed.getMonth() === month) return parsed;
+  return null;
 }
 
-function getMonthName(year: number, monthIndex: number) {
-  return new Date(year, monthIndex, 1).toLocaleString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
+function sameOrBefore(a: Date, b: Date) { return a.getTime() <= b.getTime(); }
+function sameOrAfter(a: Date, b: Date)  { return a.getTime() >= b.getTime(); }
+function dayName(date: Date) { return date.toLocaleDateString("en-US", { weekday: "short" }); }
+function startOfToday() { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), t.getDate()); }
+function billAmount(bill: BillRow)  { return clampMoney(bill.monthly_target ?? bill.target); }
+function debtMinimum(debt: DebtRow) { return clampMoney(debt.monthly_min_payment ?? debt.min_payment); }
+
+/* ─── UI primitives ─────────────────────────────────────────────── */
+
+const CARD: React.CSSProperties = {
+  background: "rgba(15,8,4,0.88)", border: "1px solid rgba(107,68,35,0.5)",
+  backdropFilter: "blur(4px)", borderRadius: "0.75rem", padding: "1.25rem",
+};
+
+function Section({ title, subtitle, children }: {
+  title: string; subtitle?: string; children: React.ReactNode;
+}) {
+  return (
+    <div style={CARD}>
+      <div className="mb-4 pb-3" style={{ borderBottom: "1px solid rgba(107,68,35,0.3)" }}>
+        <h2 className="font-cinzel text-lg font-bold" style={{ color: "#c9a84c" }}>{title}</h2>
+        {subtitle && <p className="text-sm mt-0.5 italic" style={{ color: "#9a7d5a" }}>{subtitle}</p>}
+      </div>
+      {children}
+    </div>
+  );
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+function MetricTile({ label, value, helper, accent = false }: {
+  label: string; value: string; helper?: string; accent?: boolean;
+}) {
+  return (
+    <div className="rounded-xl p-4 text-center"
+         style={{ background: "rgba(107,68,35,0.15)", border: "1px solid rgba(107,68,35,0.3)" }}>
+      <p className="text-[10px] uppercase tracking-widest font-cinzel mb-1" style={{ color: "#9a7d5a" }}>{label}</p>
+      <p className="text-xl font-bold font-cinzel" style={{ color: accent ? "#f87171" : "#c9a84c" }}>{value}</p>
+      {helper && <p className="text-[11px] mt-1 italic" style={{ color: "#6b4423" }}>{helper}</p>}
+    </div>
+  );
 }
 
-function categoryTone(category?: string | null) {
-  switch (category) {
-    case "housing":
-      return "bg-red-50 text-red-700";
-    case "utilities":
-      return "bg-amber-50 text-amber-700";
-    case "transportation":
-      return "bg-blue-50 text-blue-700";
-    case "credit":
-      return "bg-purple-50 text-purple-700";
-    case "loan":
-      return "bg-indigo-50 text-indigo-700";
-    default:
-      return "bg-zinc-100 text-zinc-700";
-  }
+function NavBtn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick}
+            className="rounded-lg px-4 py-2 text-xs font-cinzel font-bold uppercase tracking-wide transition"
+            style={{ background: "rgba(107,68,35,0.3)", border: "1px solid rgba(201,168,76,0.4)",
+                     color: "#c9a84c" }}>
+      {children}
+    </button>
+  );
 }
+
+/* ─── Page ──────────────────────────────────────────────────────── */
 
 export default function CalendarPage() {
-  const supabase = createSupabaseBrowserClient();
-  const now = new Date();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-  const [debugUser, setDebugUser] = useState("");
-  const [userId, setUserId] = useState<string | null>(null);
+  const [bills,    setBills]    = useState<BillRow[]>([]);
+  const [debts,    setDebts]    = useState<DebtRow[]>([]);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [message,  setMessage]  = useState("");
 
-  const [bills, setBills] = useState<BillRow[]>([]);
-  const [debts, setDebts] = useState<DebtRow[]>([]);
+  const [viewDate, setViewDate] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
 
-  const [viewYear, setViewYear] = useState(now.getFullYear());
-  const [viewMonth, setViewMonth] = useState(now.getMonth());
+  const [expandedWeeks, setExpandedWeeks] = useState<Record<number, boolean>>({});
 
+  const now        = new Date();
+  const viewYear   = viewDate.getFullYear();
+  const viewMonth  = viewDate.getMonth();
+
+  /* ── Data fetch (unchanged) ── */
   useEffect(() => {
-    let mounted = true;
+    async function loadData() {
+      setLoading(true); setMessage("");
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error) { setMessage(error.message); setLoading(false); return; }
+      if (!user)  { setMessage("Sign in to build your weekly money map."); setLoading(false); return; }
 
-    async function loadCalendarData() {
-      setLoading(true);
-      setMessage("");
-
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser();
-
-      if (!mounted) return;
-
-      if (error) {
-        setMessage(error.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!user) {
-        window.location.href = "/signup?mode=login";
-        return;
-      }
-
-      setDebugUser(`${user.email || "unknown"} · ${user.id}`);
-      setUserId(user.id);
-
-      const [billsRes, debtsRes] = await Promise.all([
-        supabase
-          .from("bills")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("debts")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false }),
+      const [billsRes, debtsRes, paymentsRes] = await Promise.all([
+        supabase.from("bills").select("*").eq("user_id", user.id),
+        supabase.from("debts").select("*").eq("user_id", user.id),
+        supabase.from("payments").select("id, amount, bill_id, debt_id, date_iso, created_at").eq("user_id", user.id),
       ]);
 
-      if (!mounted) return;
+      if (billsRes.error)    setMessage(billsRes.error.message);
+      if (debtsRes.error)    setMessage(debtsRes.error.message);
+      if (paymentsRes.error) setMessage(paymentsRes.error.message);
 
-      if (billsRes.error) {
-        setMessage(billsRes.error.message);
-      } else {
-        setBills((billsRes.data || []) as BillRow[]);
-      }
-
-      if (debtsRes.error) {
-        setMessage((prev) => prev || debtsRes.error.message);
-      } else {
-        setDebts((debtsRes.data || []) as DebtRow[]);
-      }
-
+      setBills((billsRes.data    || []) as BillRow[]);
+      setDebts((debtsRes.data    || []) as DebtRow[]);
+      setPayments((paymentsRes.data || []) as PaymentRow[]);
       setLoading(false);
     }
-
-    loadCalendarData();
-
-    return () => {
-      mounted = false;
-    };
+    void loadData();
   }, [supabase]);
 
-  const calendarItems = useMemo(() => {
-    const items: CalendarItem[] = [];
+  /* ── Derived (all unchanged) ── */
+  const paidThisMonth = useMemo(() => {
+    const monthStart = currentMonthStartISO();
+    const byBill: Record<string, number> = {};
+    const byDebt: Record<string, number> = {};
+    payments.forEach(p => {
+      const date = (p.date_iso || p.created_at || "").slice(0, 10);
+      if (!date || date < monthStart) return;
+      const amt = clampMoney(p.amount);
+      if (p.bill_id) byBill[p.bill_id] = (byBill[p.bill_id] || 0) + amt;
+      if (p.debt_id) byDebt[p.debt_id] = (byDebt[p.debt_id] || 0) + amt;
+    });
+    return { byBill, byDebt };
+  }, [payments]);
 
-    for (const bill of bills) {
-      let dueDate: string | null = null;
+  const items = useMemo(() => {
+    const billItems: CalendarItem[] = bills.map(bill => {
+      const date = obligationDate(bill.due_date ?? bill.due, bill.due_day, bill.is_monthly, viewYear, viewMonth);
+      if (!date) return null;
+      const orig = billAmount(bill);
+      const paid = paidThisMonth.byBill[bill.id] || 0;
+      return { id: `bill-${bill.id}`, sourceId: bill.id, name: bill.name,
+               amount: Math.max(0, orig - paid), originalAmount: orig, paidThisMonth: paid,
+               date, type: "bill" as const, isPaidThisMonth: paid >= orig && orig > 0 };
+    }).filter(Boolean) as CalendarItem[];
 
-      if (bill.due_date) {
-        const parsed = new Date(`${bill.due_date}T12:00:00`);
-        if (
-          parsed.getFullYear() === viewYear &&
-          parsed.getMonth() === viewMonth
-        ) {
-          dueDate = bill.due_date;
-        }
-      } else if (bill.is_monthly && bill.due_day) {
-        const safeDay = clampDay(viewYear, viewMonth, bill.due_day);
-        dueDate = isoFromYMD(viewYear, viewMonth, safeDay);
-      }
+    const debtItems: CalendarItem[] = debts.map(debt => {
+      const date = obligationDate(debt.due_date, debt.due_day, debt.is_monthly, viewYear, viewMonth);
+      if (!date) return null;
+      const orig = debtMinimum(debt);
+      const paid = paidThisMonth.byDebt[debt.id] || 0;
+      return { id: `debt-${debt.id}`, sourceId: debt.id, name: debt.name,
+               amount: Math.max(0, orig - paid), originalAmount: orig, paidThisMonth: paid,
+               date, type: "debt" as const, isPaidThisMonth: paid >= orig && orig > 0 };
+    }).filter(Boolean) as CalendarItem[];
 
-      if (!dueDate) continue;
+    return [...billItems, ...debtItems]
+      .filter(i => i.originalAmount > 0)
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [bills, debts, paidThisMonth, viewMonth, viewYear]);
 
-      items.push({
-        id: `bill-${bill.id}`,
-        source: "bill",
-        name: bill.name,
-        category: bill.category,
-        amount: Number(bill.monthly_target || bill.target || 0),
-        dueDate,
-      });
+  const unpaidItems = useMemo(() => items.filter(i => !i.isPaidThisMonth && i.amount > 0), [items]);
+
+  const next7Items = useMemo(() => {
+    const start = startOfToday();
+    const end   = new Date(start); end.setDate(start.getDate() + 7);
+    return unpaidItems.filter(i => sameOrAfter(i.date, start) && sameOrBefore(i.date, end));
+  }, [unpaidItems]);
+
+  const next7Total = next7Items.reduce((s, i) => s + i.amount, 0);
+
+  const calendarCells = useMemo(() => {
+    const firstDay    = new Date(viewYear, viewMonth, 1);
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const startOffset = firstDay.getDay();
+    return Array.from({ length: startOffset + daysInMonth }, (_, idx) => {
+      const dayNumber = idx - startOffset + 1;
+      if (dayNumber <= 0) return null;
+      const date     = new Date(viewYear, viewMonth, dayNumber);
+      const dayItems = items.filter(i => iso(i.date) === iso(date));
+      return { dayNumber, date, items: dayItems, total: dayItems.reduce((s, i) => s + i.amount, 0) };
+    });
+  }, [items, viewMonth, viewYear]);
+
+  const weekSummaries = useMemo<WeekSummary[]>(() => {
+    const first = new Date(viewYear, viewMonth, 1);
+    const last  = new Date(viewYear, viewMonth + 1, 0);
+    const weeks: WeekSummary[] = [];
+    let start = new Date(first); let weekNumber = 1;
+    while (sameOrBefore(start, last)) {
+      const end = new Date(start); end.setDate(start.getDate() + 6);
+      if (end > last) end.setTime(last.getTime());
+      const weekItems = unpaidItems.filter(i => sameOrAfter(i.date, start) && sameOrBefore(i.date, end));
+      weeks.push({ weekNumber, label: `Week ${weekNumber}`, start: new Date(start), end: new Date(end),
+                   total: weekItems.reduce((s, i) => s + i.amount, 0), items: weekItems });
+      start.setDate(start.getDate() + 7); weekNumber++;
     }
+    return weeks;
+  }, [unpaidItems, viewMonth, viewYear]);
 
-    for (const debt of debts) {
-      let dueDate: string | null = null;
+  const monthTotal    = unpaidItems.reduce((s, i) => s + i.amount, 0);
+  const heaviestWeek  = [...weekSummaries].sort((a, b) => b.total - a.total)[0];
+  const monthLabel    = viewDate.toLocaleString("en-US", { month: "long", year: "numeric" });
+  const yearChoices   = Array.from({ length: 7 }, (_, i) => now.getFullYear() - 3 + i);
 
-      if (debt.due_date) {
-        const parsed = new Date(`${debt.due_date}T12:00:00`);
-        if (
-          parsed.getFullYear() === viewYear &&
-          parsed.getMonth() === viewMonth
-        ) {
-          dueDate = debt.due_date;
-        }
-      } else if (debt.is_monthly && debt.due_day) {
-        const safeDay = clampDay(viewYear, viewMonth, debt.due_day);
-        dueDate = isoFromYMD(viewYear, viewMonth, safeDay);
-      }
+  const benInsight = BenEngine.getForecastMessage({
+    name: null, timeframeLabel: monthLabel, totalNeeded: monthTotal,
+    incomeSoFar: 0, incomeGap: monthTotal, dailyIncomeNeeded: Math.ceil(monthTotal / 30),
+  });
 
-      if (!dueDate) continue;
-
-      items.push({
-        id: `debt-${debt.id}`,
-        source: "debt",
-        name: debt.name,
-        category: debt.kind,
-        amount: Number(debt.monthly_min_payment || debt.min_payment || 0),
-        dueDate,
-      });
-    }
-
-    return items.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  }, [bills, debts, viewYear, viewMonth]);
-
-  const itemsByDate = useMemo(() => {
-    const grouped: Record<string, CalendarItem[]> = {};
-    for (const item of calendarItems) {
-      if (!grouped[item.dueDate]) grouped[item.dueDate] = [];
-      grouped[item.dueDate].push(item);
-    }
-    return grouped;
-  }, [calendarItems]);
-
-  const monthSummary = useMemo(() => {
-    return calendarItems.reduce(
-      (acc, item) => {
-        acc.total += item.amount;
-        if (item.source === "bill") acc.bills += item.amount;
-        if (item.source === "debt") acc.debts += item.amount;
-        return acc;
-      },
-      { total: 0, bills: 0, debts: 0 }
-    );
-  }, [calendarItems]);
-
-  const daysGrid = useMemo(() => {
-    const firstOfMonth = new Date(viewYear, viewMonth, 1);
-    const lastOfMonth = new Date(viewYear, viewMonth + 1, 0);
-
-    const firstWeekday = firstOfMonth.getDay();
-    const daysInMonth = lastOfMonth.getDate();
-
-    const cells: Array<{
-      iso: string | null;
-      dayNumber: number | null;
-      isCurrentMonth: boolean;
-    }> = [];
-
-    for (let i = 0; i < firstWeekday; i++) {
-      cells.push({
-        iso: null,
-        dayNumber: null,
-        isCurrentMonth: false,
-      });
-    }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      cells.push({
-        iso: isoFromYMD(viewYear, viewMonth, day),
-        dayNumber: day,
-        isCurrentMonth: true,
-      });
-    }
-
-    while (cells.length % 7 !== 0) {
-      cells.push({
-        iso: null,
-        dayNumber: null,
-        isCurrentMonth: false,
-      });
-    }
-
-    return cells;
-  }, [viewYear, viewMonth]);
-
-  function goPrevMonth() {
-    if (viewMonth === 0) {
-      setViewMonth(11);
-      setViewYear((y) => y - 1);
-    } else {
-      setViewMonth((m) => m - 1);
-    }
+  function shiftMonth(delta: number) {
+    setViewDate(c => new Date(c.getFullYear(), c.getMonth() + delta, 1));
+    setExpandedWeeks({});
+  }
+  function goToCurrentMonth() {
+    const t = new Date();
+    setViewDate(new Date(t.getFullYear(), t.getMonth(), 1));
+    setExpandedWeeks({});
+  }
+  function changeMonth(month: number) {
+    setViewDate(c => new Date(c.getFullYear(), month, 1)); setExpandedWeeks({});
+  }
+  function changeYear(year: number) {
+    setViewDate(c => new Date(year, c.getMonth(), 1)); setExpandedWeeks({});
   }
 
-  function goNextMonth() {
-    if (viewMonth === 11) {
-      setViewMonth(0);
-      setViewYear((y) => y + 1);
-    } else {
-      setViewMonth((m) => m + 1);
-    }
+  /* ── Loading ── */
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ben-postoffice bg-cover bg-center">
+        <div style={{ ...CARD, padding: "2rem 3rem", textAlign: "center" }}>
+          <p className="font-cinzel text-lg animate-pulse" style={{ color: "#c9a84c" }}>
+            Consulting the almanac&hellip;
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
+<<<<<<< HEAD
     <main className="min-h-screen bg-zinc-950/82 -md text-white">
       <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-10">
         <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-5 shadow-2xl md:p-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+=======
+    <div className="min-h-screen bg-ben-postoffice bg-cover bg-center bg-fixed"
+         style={{ fontFamily: "EB Garamond, serif" }}>
+      <div className="min-h-screen pb-28" style={{ background: "rgba(10,5,2,0.72)" }}>
+        <div className="mx-auto max-w-5xl px-4 py-6 space-y-5">
+
+          {/* ── Header ── */}
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pt-2">
+>>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
             <div>
-              <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
-                Due dates
-              </div>
-
-              <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
-                Calendar
+              <p className="text-xs uppercase tracking-[0.2em] font-cinzel font-semibold"
+                 style={{ color: "#6b4423" }}>AskBen Calendar</p>
+              <h1 className="font-cinzel text-4xl font-bold mt-1" style={{ color: "#c9a84c" }}>
+                The Money Map
               </h1>
-
-              <p className="mt-3 max-w-2xl text-lg text-zinc-300">
-                See bills and debt due dates in one monthly calendar view.
+              <p className="mt-1 text-sm italic" style={{ color: "#9a7d5a" }}>
+                A weekly ledger of unpaid bills and minimums &mdash; because surprise due dates are rude.
               </p>
-
-              {debugUser ? (
-                <p className="mt-2 text-xs text-zinc-400">
-                  Logged in as: {debugUser}
-                </p>
-              ) : null}
             </div>
-
-            <div className="flex flex-wrap gap-3">
-              <a
-                href="/dashboard"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Dashboard
-              </a>
-              <a
-                href="/bills"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Bills
-              </a>
-              <a
-                href="/debt"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Credit & Loans
-              </a>
-              <a
-                href="/forecast"
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Forecast
-              </a>
+            <div className="flex gap-2 shrink-0">
+              <NavBtn onClick={() => shiftMonth(-1)}>← Prev</NavBtn>
+              <NavBtn onClick={goToCurrentMonth}>This Month</NavBtn>
+              <NavBtn onClick={() => shiftMonth(1)}>Next →</NavBtn>
             </div>
           </div>
 
-          {message ? (
-            <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
-              {message}
+          {/* ── Notice ── */}
+          {message && (
+            <div className="rounded-xl px-4 py-3 text-sm"
+                 style={{ background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.3)",
+                          color: "#c9a84c" }}>
+              ✦ {message}
             </div>
-          ) : null}
+          )}
 
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
-              <div className="text-sm text-zinc-500">Total due this month</div>
-              <div className="mt-2 text-3xl font-black text-zinc-950">
-                {formatUSD(monthSummary.total)}
-              </div>
+          {/* ── Calendar Briefing ── */}
+          <Section title="Calendar Briefing" subtitle={`${monthLabel} unpaid obligations and weekly pressure`}>
+            <BenBubble message={benInsight.text} mood={benInsight.mood} />
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <MetricTile label="Month"         value={monthLabel} />
+              <MetricTile label="Unpaid Due"    value={money(monthTotal)} accent={monthTotal > 0} />
+              <MetricTile label="Heaviest Week"
+                          value={heaviestWeek ? money(heaviestWeek.total) : "$0.00"}
+                          helper={heaviestWeek?.label || "No obligations"}
+                          accent={!!heaviestWeek?.total} />
             </div>
+          </Section>
 
-            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
-              <div className="text-sm text-zinc-500">Bills this month</div>
-              <div className="mt-2 text-3xl font-black text-zinc-950">
-                {formatUSD(monthSummary.bills)}
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-white/10 bg-white p-5 shadow-sm">
-              <div className="text-sm text-zinc-500">Debt minimums this month</div>
-              <div className="mt-2 text-3xl font-black text-zinc-950">
-                {formatUSD(monthSummary.debts)}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 rounded-3xl border border-white/10 bg-white p-4 text-zinc-950 shadow-sm md:p-6">
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <button
-                onClick={goPrevMonth}
-                className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-              >
-                ← Prev
-              </button>
-
-              <h2 className="text-xl font-black text-center">
-                {getMonthName(viewYear, viewMonth)}
-              </h2>
-
-              <button
-                onClick={goNextMonth}
-                className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-zinc-100"
-              >
-                Next →
-              </button>
+          {/* ── Next 7 Days ── */}
+          <Section title="Next 7 Days" subtitle="Unpaid obligations coming due soon">
+            <div className="grid gap-3 md:grid-cols-3 mb-4">
+              <MetricTile label="Next 7 Days Total"
+                          value={money(next7Total)}
+                          helper={`${next7Items.length} unpaid item(s)`}
+                          accent={next7Total > 0} />
+              <MetricTile label="First Due"
+                          value={next7Items[0]?.name || "Nothing due"}
+                          helper={next7Items[0] ? iso(next7Items[0].date) : "Enjoy the quiet"} />
+              <MetricTile label="Largest Due"
+                          value={next7Items.length > 0
+                            ? money([...next7Items].sort((a, b) => b.amount - a.amount)[0].amount)
+                            : "$0.00"}
+                          helper={next7Items.length > 0
+                            ? [...next7Items].sort((a, b) => b.amount - a.amount)[0].name
+                            : "No unpaid items"}
+                          accent={next7Items.length > 0} />
             </div>
 
-            <div className="grid grid-cols-7 gap-2">
-              {WEEKDAYS.map((day) => (
-                <div
-                  key={day}
-                  className="rounded-xl bg-zinc-100 px-2 py-3 text-center text-xs font-bold uppercase tracking-wide text-zinc-600 md:text-sm"
-                >
-                  {day}
-                </div>
-              ))}
-
-              {daysGrid.map((cell, idx) => {
-                const isToday = cell.iso === todayISO();
-                const items = cell.iso ? itemsByDate[cell.iso] || [] : [];
-
-                return (
-                  <div
-                    key={`${cell.iso || "empty"}-${idx}`}
-                    className={`min-h-[120px] rounded-2xl border p-2 md:min-h-[150px] md:p-3 ${
-                      cell.isCurrentMonth
-                        ? isToday
-                          ? "border-emerald-300 bg-emerald-50"
-                          : "border-zinc-200 bg-white"
-                        : "border-transparent bg-zinc-50"
-                    }`}
-                  >
-                    {cell.dayNumber ? (
-                      <>
-                        <div className="mb-2 text-sm font-bold text-zinc-700">
-                          {cell.dayNumber}
-                        </div>
-
-                        <div className="space-y-2">
-                          {items.slice(0, 3).map((item) => (
-                            <div
-                              key={item.id}
-                              className={`rounded-xl px-2 py-2 text-[11px] leading-4 md:text-xs ${categoryTone(
-                                item.category
-                              )}`}
-                            >
-                              <div className="font-bold">{item.name}</div>
-                              <div>{formatUSD(item.amount)}</div>
-                            </div>
-                          ))}
-
-                          {items.length > 3 ? (
-                            <div className="text-[11px] font-semibold text-zinc-500 md:text-xs">
-                              +{items.length - 3} more
-                            </div>
-                          ) : null}
-                        </div>
-                      </>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="mt-8 rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-            <h2 className="text-2xl font-black">This month’s due list</h2>
-            <div className="mt-5 grid gap-3">
-              {loading ? (
-                <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                  Loading calendar...
-                </div>
-              ) : calendarItems.length === 0 ? (
-                <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                  No bills or debt minimums found for this month.
+            <div className="space-y-2">
+              {next7Items.length === 0 ? (
+                <div className="rounded-xl px-4 py-5 text-center"
+                     style={{ background: "rgba(74,138,66,0.1)", border: "1px solid rgba(74,138,66,0.3)" }}>
+                  <p className="font-cinzel text-sm" style={{ color: "#4ade80" }}>
+                    ✦ No unpaid items due in the next 7 days. A rare and glorious calm, Governor.
+                  </p>
                 </div>
               ) : (
-                calendarItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
-                  >
+                next7Items.map(item => (
+                  <div key={item.id} className="rounded-xl p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                       style={{ background: "rgba(248,113,113,0.07)", border: "1px solid rgba(248,113,113,0.3)" }}>
                     <div>
-                      <div className="font-semibold">{item.name}</div>
-                      <div className="text-sm text-zinc-500">
-                        {item.dueDate} · {item.category || item.source}
-                      </div>
+                      <p className="font-cinzel font-bold" style={{ color: "#e8d5b7" }}>{item.name}</p>
+                      <p className="text-xs mt-0.5" style={{ color: "#9a7d5a" }}>
+                        {item.type} &bull; due {iso(item.date)}
+                      </p>
+                      {item.paidThisMonth > 0 && (
+                        <p className="text-xs mt-1 font-semibold" style={{ color: "#4ade80" }}>
+                          Paid this month: {money(item.paidThisMonth)} &bull; remaining: {money(item.amount)}
+                        </p>
+                      )}
                     </div>
-                    <div className="font-bold">{formatUSD(item.amount)}</div>
+                    <p className="font-cinzel text-xl font-bold shrink-0" style={{ color: "#f87171" }}>
+                      {money(item.amount)}
+                    </p>
                   </div>
                 ))
               )}
             </div>
+          </Section>
+
+          {/* ── Monthly Money Map (calendar grid) ── */}
+          <Section title="Monthly Money Map" subtitle="Bills and debts laid out by day">
+            {/* Controls */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <p className="font-cinzel text-xl font-bold" style={{ color: "#c9a84c" }}>{monthLabel}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <select value={viewMonth} onChange={e => changeMonth(Number(e.target.value))}
+                        className="rounded-lg px-3 py-2 text-sm focus:outline-none"
+                        style={{ background: "#f5e6c8", color: "#2d1810", border: "1px solid #c9a84c",
+                                 fontFamily: "Cinzel, serif" }}>
+                  {Array.from({ length: 12 }, (_, m) => (
+                    <option key={m} value={m}>
+                      {new Date(2026, m, 1).toLocaleString("en-US", { month: "long" })}
+                    </option>
+                  ))}
+                </select>
+                <select value={viewYear} onChange={e => changeYear(Number(e.target.value))}
+                        className="rounded-lg px-3 py-2 text-sm focus:outline-none"
+                        style={{ background: "#f5e6c8", color: "#2d1810", border: "1px solid #c9a84c",
+                                 fontFamily: "Cinzel, serif" }}>
+                  {yearChoices.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <NavBtn onClick={goToCurrentMonth}>This Month</NavBtn>
+              </div>
+            </div>
+
+            {/* Day-of-week headers */}
+            <div className="grid grid-cols-7 gap-1 text-center mb-2">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
+                <div key={d} className="text-[10px] font-cinzel font-bold uppercase tracking-widest py-1"
+                     style={{ color: "#6b4423" }}>{d}</div>
+              ))}
+            </div>
+
+            {/* Calendar grid */}
+            <div className="grid grid-cols-7 gap-1">
+              {calendarCells.map((cell, idx) => {
+                if (!cell) return <div key={`blank-${idx}`} className="min-h-[90px]" />;
+
+                const isToday = cell.date.getFullYear() === now.getFullYear()
+                             && cell.date.getMonth()    === now.getMonth()
+                             && cell.date.getDate()     === now.getDate();
+
+                return (
+                  <div key={iso(cell.date)} className="min-h-[90px] rounded-lg p-1.5"
+                       style={{
+                         background: isToday ? "rgba(201,168,76,0.15)" : "rgba(15,8,4,0.6)",
+                         border: `1px solid ${isToday ? "rgba(201,168,76,0.6)" : "rgba(107,68,35,0.3)"}`,
+                       }}>
+                    <div className="flex items-start justify-between gap-1">
+                      <div>
+                        <p className="text-sm font-bold font-cinzel leading-none"
+                           style={{ color: isToday ? "#c9a84c" : "#e8d5b7" }}>{cell.dayNumber}</p>
+                        <p className="text-[9px] uppercase md:hidden" style={{ color: "#6b4423" }}>
+                          {dayName(cell.date)}
+                        </p>
+                      </div>
+                      {cell.total > 0 && (
+                        <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none"
+                              style={{ background: "rgba(201,168,76,0.25)", color: "#c9a84c",
+                                       border: "1px solid rgba(201,168,76,0.4)" }}>
+                          {money(cell.total)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-1 space-y-0.5">
+                      {cell.items.slice(0, 3).map(item => (
+                        <div key={item.id}
+                             className="truncate rounded px-1.5 py-0.5 text-[10px] leading-tight"
+                             title={`${item.name} — ${money(item.amount)}`}
+                             style={item.isPaidThisMonth
+                               ? { background: "rgba(74,222,128,0.15)", color: "#4ade80",
+                                   textDecoration: "line-through", border: "1px solid rgba(74,222,128,0.2)" }
+                               : item.type === "bill"
+                               ? { background: "rgba(96,153,229,0.15)", color: "#93c5fd",
+                                   border: "1px solid rgba(96,153,229,0.25)" }
+                               : { background: "rgba(248,113,113,0.15)", color: "#fca5a5",
+                                   border: "1px solid rgba(248,113,113,0.25)" }
+                             }>
+                          {item.isPaidThisMonth ? "✓ " : ""}{item.name}
+                        </div>
+                      ))}
+                      {cell.items.length > 3 && (
+                        <p className="text-[9px]" style={{ color: "#6b4423" }}>
+                          +{cell.items.length - 3} more
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+
+          {/* ── Weekly Income Targets ── */}
+          <Section title="Weekly Income Targets" subtitle="Each week shows how much unpaid money must be covered">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {weekSummaries.map(week => {
+                const open = expandedWeeks[week.weekNumber] ?? week.total > 0;
+                const isHeaviest = heaviestWeek?.weekNumber === week.weekNumber && week.total > 0;
+
+                return (
+                  <div key={week.weekNumber} className="rounded-xl"
+                       style={{
+                         background: isHeaviest ? "rgba(248,113,113,0.07)" : "rgba(107,68,35,0.12)",
+                         border: `1px solid ${isHeaviest ? "rgba(248,113,113,0.4)" : "rgba(107,68,35,0.4)"}`,
+                       }}>
+                    <button onClick={() => setExpandedWeeks(prev => ({ ...prev, [week.weekNumber]: !open }))}
+                            className="w-full text-left p-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] uppercase tracking-widest font-cinzel font-bold"
+                           style={{ color: isHeaviest ? "#f87171" : "#9a7d5a" }}>
+                          {week.label} {isHeaviest ? "⚠" : ""}
+                        </p>
+                        <span className="text-xs" style={{ color: "#6b4423" }}>{open ? "▲" : "▼"}</span>
+                      </div>
+                      <p className="text-xs mt-0.5" style={{ color: "#6b4423" }}>
+                        {iso(week.start)} &rarr; {iso(week.end)}
+                      </p>
+                      <p className="mt-3 text-2xl font-bold font-cinzel"
+                         style={{ color: isHeaviest ? "#f87171" : "#c9a84c" }}>
+                        {money(week.total)}
+                      </p>
+                    </button>
+
+                    {open && (
+                      <div className="px-4 pb-4 space-y-2">
+                        {week.items.length === 0 ? (
+                          <p className="text-xs italic" style={{ color: "#6b4423" }}>
+                            No unpaid items. Enjoy the quiet.
+                          </p>
+                        ) : (
+                          week.items.map(item => (
+                            <div key={item.id} className="rounded-lg p-3"
+                                 style={{ background: "rgba(15,8,4,0.5)", border: "1px solid rgba(107,68,35,0.3)" }}>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="font-cinzel text-sm font-bold truncate" style={{ color: "#e8d5b7" }}>
+                                    {item.name}
+                                  </p>
+                                  <p className="text-[10px] uppercase tracking-wide mt-0.5" style={{ color: "#6b4423" }}>
+                                    {item.type} &bull; {iso(item.date)}
+                                  </p>
+                                  {item.paidThisMonth > 0 && (
+                                    <p className="text-[11px] mt-1" style={{ color: "#4ade80" }}>
+                                      Paid {money(item.paidThisMonth)}
+                                    </p>
+                                  )}
+                                </div>
+                                <p className="font-cinzel font-bold shrink-0" style={{ color: "#c9a84c" }}>
+                                  {money(item.amount)}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+
+          {/* ── Quote ── */}
+          <div className="rounded-xl px-6 py-4 flex items-center gap-3"
+               style={{ background: "rgba(245,230,200,0.06)", border: "1px solid rgba(201,168,76,0.2)" }}>
+            <span className="text-xl shrink-0">🪶</span>
+            <p className="text-sm italic" style={{ color: "#c9a84c" }}>
+              &ldquo;Lost time is never found again.&rdquo; &mdash; Benjamin Franklin
+            </p>
           </div>
 
-          {loading ? (
-            <div className="mt-6 text-sm text-zinc-400">Loading calendar...</div>
-          ) : null}
         </div>
       </div>
-    </main>
+    </div>
   );
 }

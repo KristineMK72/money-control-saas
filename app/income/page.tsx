@@ -1,295 +1,1368 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import BankHero from "@/components/income/BankHero";
+import RoomCard from "@/components/income/RoomCard";
+import MiniMetric from "@/components/income/MiniMetric";
+import DrawerButton from "@/components/income/DrawerButton";
+import BenBubble from "@/components/BenBubble";
+import PaperScrollScanner from "@/components/PaperScrollScanner";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import {
+  ocrImageFile,
+  parseTransactionsScreenshot,
+} from "@/lib/money/receiptOcr";
+import { money, addMoney, clampMoney } from "@/lib/money/math";
+import { todayLocalISO, currentMonthStartISO } from "@/lib/money/dates";
+import { BenEngine } from "@/lib/ben/engine";
+import { playCoins, playError } from "@/lib/sounds";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
 
-type IncomeSourceRow = {
+type IncomeEntry = {
   id: string;
-  name: string;
-};
-
-type IncomeEntryRow = {
-  id: string;
+  user_id: string;
   source_name: string;
-  amount: number;
+  amount: number | string | null;
   date_iso: string;
   note: string | null;
+  created_at: string;
 };
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+type IncomeSource = {
+  id: string;
+  user_id: string;
+  name: string;
+  income_type:
+    | "hourly"
+    | "salary"
+    | "weekly"
+    | "monthly"
+    | "project"
+    | "commission"
+    | "gig";
+  hourly_rate: number | string | null;
+  hours_per_week: number | string | null;
+  weekly_amount: number | string | null;
+  annual_salary: number | string | null;
+  monthly_amount: number | string | null;
+  active: boolean | null;
+  note: string | null;
+  created_at: string;
+};
+
+type BillRow = {
+  id: string;
+  target: number | string | null;
+  monthly_target: number | string | null;
+};
+
+type DebtRow = {
+  id: string;
+  min_payment: number | string | null;
+  monthly_min_payment: number | string | null;
+};
+
+type SpendRow = {
+  id: string;
+  amount: number | string | null;
+  date_iso: string | null;
+  created_at: string;
+};
+
+type Drawer = "record" | "scan" | "sources" | "hourly" | null;
+
+const WEEKS_PER_MONTH = 4.333;
+const HOURLY_TARGETS = [40, 30, 20, 10, 5];
+
+const CATEGORIES = [
+  { value: "employment", label: "Employment", icon: "🏛" },
+  { value: "entrepreneurship", label: "Entrepreneurship", icon: "⚙️" },
+  { value: "services", label: "Services", icon: "📋" },
+  { value: "investments", label: "Investments", icon: "📈" },
+  { value: "gifts", label: "Gifts", icon: "🎁" },
+  { value: "other", label: "Other", icon: "💰" },
+];
+
+function safeNum(value: unknown) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function entryDate(entry: IncomeEntry) {
+  return (entry.date_iso || entry.created_at || "").slice(0, 10);
+}
+
+function spendDate(entry: SpendRow) {
+  return (entry.date_iso || entry.created_at || "").slice(0, 10);
+}
+
+function monthPrefix(date: string) {
+  return date.slice(0, 7);
+}
+
+function readHoursFromNote(note?: string | null) {
+  if (!note) return 0;
+  const match = note.match(/Hours:\s*([\d.]+)/i);
+  return match ? safeNum(match[1]) : 0;
+}
+
+function projectedMonthlyIncome(source: IncomeSource) {
+  const hourlyRate = clampMoney(source.hourly_rate);
+  const hoursPerWeek = safeNum(source.hours_per_week);
+  const weeklyAmount = clampMoney(source.weekly_amount);
+  const annualSalary = clampMoney(source.annual_salary);
+  const monthlyAmount = clampMoney(source.monthly_amount);
+
+  if (source.income_type === "salary") return annualSalary / 12;
+  if (source.income_type === "weekly") return weeklyAmount * WEEKS_PER_MONTH;
+  if (source.income_type === "monthly") return monthlyAmount;
+
+  return hourlyRate * hoursPerWeek * WEEKS_PER_MONTH;
+}
+
+function projectedWeeklyIncome(source: IncomeSource) {
+  return projectedMonthlyIncome(source) / WEEKS_PER_MONTH;
+}
+
+function getSourceHourlyRate(source: IncomeSource) {
+  const hourlyRate = clampMoney(source.hourly_rate);
+  const annualSalary = clampMoney(source.annual_salary);
+  const hoursPerWeek = safeNum(source.hours_per_week);
+
+  if (hourlyRate > 0) return hourlyRate;
+
+  if (source.income_type === "salary" && annualSalary > 0 && hoursPerWeek > 0) {
+    return annualSalary / 52 / hoursPerWeek;
+  }
+
+  return 0;
 }
 
 export default function IncomePage() {
-  const supabase = createSupabaseBrowserClient();
+  const [supabase] = useState(() => createSupabaseBrowserClient());
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
 
-  const [sources, setSources] = useState<IncomeSourceRow[]>([]);
-  const [entries, setEntries] = useState<IncomeEntryRow[]>([]);
+  const [entries, setEntries] = useState<IncomeEntry[]>([]);
+  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
+  const [bills, setBills] = useState<BillRow[]>([]);
+  const [debts, setDebts] = useState<DebtRow[]>([]);
+  const [spendEntries, setSpendEntries] = useState<SpendRow[]>([]);
 
-  const [dateISO, setDateISO] = useState(todayISO());
-  const [sourceName, setSourceName] = useState("");
+  const [drawer, setDrawer] = useState<Drawer>("record");
+
   const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
+  const [source, setSource] = useState("");
+  const [category, setCategory] = useState("employment");
+  const [hoursWorked, setHoursWorked] = useState("");
+  const [date, setDate] = useState(todayLocalISO());
 
-  async function loadData(uid: string) {
-    const [sourcesRes, entriesRes] = await Promise.all([
-      supabase
-        .from("income_sources")
-        .select("*")
-        .eq("user_id", uid)
-        .order("name", { ascending: true }),
+  const [sourceName, setSourceName] = useState("");
+  const [sourceType, setSourceType] =
+    useState<IncomeSource["income_type"]>("hourly");
+  const [sourceHourlyRateInput, setSourceHourlyRateInput] = useState("");
+  const [sourceHoursPerWeek, setSourceHoursPerWeek] = useState("");
+  const [sourceWeeklyAmount, setSourceWeeklyAmount] = useState("");
+  const [sourceAnnualSalary, setSourceAnnualSalary] = useState("");
+  const [sourceMonthlyAmount, setSourceMonthlyAmount] = useState("");
+  const [sourceNote, setSourceNote] = useState("");
 
-      supabase
-        .from("income_entries")
-        .select("*")
-        .eq("user_id", uid)
-        .order("date_iso", { ascending: false }),
-    ]);
-
-    if (sourcesRes.error) setMessage(sourcesRes.error.message);
-    if (entriesRes.error) setMessage(entriesRes.error.message);
-
-    setSources((sourcesRes.data || []) as IncomeSourceRow[]);
-    setEntries((entriesRes.data || []) as IncomeEntryRow[]);
-  }
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanRows, setScanRows] = useState<
+    {
+      source_name: string;
+      amount: number;
+      date_iso: string;
+      selected: boolean;
+    }[]
+  >([]);
 
   useEffect(() => {
-    async function init() {
-      setLoading(true);
-
-      const { data, error } = await supabase.auth.getUser();
-
-      if (error) {
-        setMessage(error.message);
-        setLoading(false);
-        return;
-      }
-
-      const user = data?.user;
-      if (!user) {
-        setMessage("Please log in first.");
-        setLoading(false);
-        return;
-      }
-
-      setUserId(user.id);
-      await loadData(user.id);
-
-      setLoading(false);
-    }
-
-    init();
+    void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function ensureSourceExists(uid: string, name: string) {
-    const clean = name.trim();
-    if (!clean) return;
+  async function loadData() {
+    setLoading(true);
+    setMessage("");
 
-    const exists = sources.some(
-      (s) => s.name.toLowerCase() === clean.toLowerCase()
-    );
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (exists) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    setUserId(user.id);
+
+    const [incomeRes, sourcesRes, billsRes, debtsRes, spendRes] =
+      await Promise.all([
+        supabase
+          .from("income_entries")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+
+        supabase
+          .from("income_sources")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+
+        supabase
+          .from("bills")
+          .select("id, target, monthly_target")
+          .eq("user_id", user.id),
+
+        supabase
+          .from("debts")
+          .select("id, min_payment, monthly_min_payment")
+          .eq("user_id", user.id),
+
+        supabase
+          .from("spend_entries")
+          .select("id, amount, date_iso, created_at")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+      ]);
+
+    if (incomeRes.error) setMessage(incomeRes.error.message);
+    if (sourcesRes.error) setMessage(sourcesRes.error.message);
+    if (billsRes.error) setMessage(billsRes.error.message);
+    if (debtsRes.error) setMessage(debtsRes.error.message);
+    if (spendRes.error) setMessage(spendRes.error.message);
+
+    setEntries((incomeRes.data || []) as IncomeEntry[]);
+    setIncomeSources((sourcesRes.data || []) as IncomeSource[]);
+    setBills((billsRes.data || []) as BillRow[]);
+    setDebts((debtsRes.data || []) as DebtRow[]);
+    setSpendEntries((spendRes.data || []) as SpendRow[]);
+
+    setLoading(false);
+  }
+
+  function resetIncomeSourceForm() {
+    setSourceName("");
+    setSourceType("hourly");
+    setSourceHourlyRateInput("");
+    setSourceHoursPerWeek("");
+    setSourceWeeklyAmount("");
+    setSourceAnnualSalary("");
+    setSourceMonthlyAmount("");
+    setSourceNote("");
+  }
+
+  async function handleAddIncomeSource() {
+    setMessage("");
+
+    if (!userId) {
+      playError();
+      setMessage("Not signed in.");
+      return;
+    }
+
+    if (!sourceName.trim()) {
+      playError();
+      setMessage("Enter an income source name.");
+      return;
+    }
+
+    const hourlyRate = clampMoney(sourceHourlyRateInput);
+    const hoursPerWeek = safeNum(sourceHoursPerWeek);
+    const weeklyAmount = clampMoney(sourceWeeklyAmount);
+    const annualSalary = clampMoney(sourceAnnualSalary);
+    const monthlyAmount = clampMoney(sourceMonthlyAmount);
+
+    if (sourceType === "salary" && (annualSalary <= 0 || hoursPerWeek <= 0)) {
+      playError();
+      setMessage("Enter annual salary and average hours per week.");
+      return;
+    }
+
+    if (sourceType === "weekly" && weeklyAmount <= 0) {
+      playError();
+      setMessage("Enter the weekly amount.");
+      return;
+    }
+
+    if (sourceType === "monthly" && monthlyAmount <= 0) {
+      playError();
+      setMessage("Enter the monthly amount.");
+      return;
+    }
+
+    if (
+      sourceType !== "salary" &&
+      sourceType !== "weekly" &&
+      sourceType !== "monthly"
+    ) {
+      if (hourlyRate <= 0 || hoursPerWeek <= 0) {
+        playError();
+        setMessage("Enter rate and average hours per week.");
+        return;
+      }
+    }
+
+    setSaving(true);
 
     const { error } = await supabase.from("income_sources").insert({
-      user_id: uid,
-      name: clean,
+      user_id: userId,
+      name: sourceName.trim(),
+      income_type: sourceType,
+      hourly_rate: hourlyRate || null,
+      hours_per_week: hoursPerWeek || null,
+      weekly_amount: weeklyAmount || null,
+      annual_salary: annualSalary || null,
+      monthly_amount: monthlyAmount || null,
+      active: true,
+      note: sourceNote.trim() || null,
     });
 
-    if (error) throw new Error(error.message);
+    setSaving(false);
+
+    if (error) {
+      playError();
+      setMessage(error.message);
+      return;
+    }
+
+    playCoins();
+    resetIncomeSourceForm();
+    setMessage("Income source added to Franklin’s Employment Ledger.");
+    await loadData();
+  }
+
+  async function handleDeleteIncomeSource(id: string) {
+    if (!userId) return;
+
+    const ok = window.confirm("Delete this income source?");
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from("income_sources")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
+
+    if (error) {
+      playError();
+      setMessage(error.message);
+      return;
+    }
+
+    setIncomeSources((prev) => prev.filter((item) => item.id !== id));
+    setMessage("Income source removed.");
+  }
+
+  async function handleScanIncome() {
+    if (!imageFile) {
+      setMessage("Choose an income screenshot or deposit proof first.");
+      return;
+    }
+
+    setScanning(true);
+    setMessage("Ben is reading every income line…");
+
+    try {
+      const { text } = await ocrImageFile(imageFile);
+      const parsed = parseTransactionsScreenshot(text);
+
+      const incomeRows = parsed
+        .map((row) => ({
+          source_name: row.merchant || "Income",
+          amount: Math.abs(clampMoney(row.amount)),
+          date_iso:
+            row.dateText && /^\d{4}-\d{2}-\d{2}$/.test(row.dateText)
+              ? row.dateText
+              : date,
+          selected: true,
+        }))
+        .filter((row) => row.amount > 0);
+
+      if (incomeRows.length === 0) {
+        setMessage(
+          "No clear income lines found. Open Record Income and enter it manually."
+        );
+        setDrawer("record");
+        return;
+      }
+
+      setScanRows(incomeRows);
+      setDrawer("scan");
+      setMessage(
+        `Ben found ${incomeRows.length} income lines. Review before importing.`
+      );
+    } catch (error) {
+      console.error(error);
+      setMessage("Scanner had trouble reading that image. Manual entry still works.");
+      setDrawer("record");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function importScannedIncome() {
+    if (!userId) {
+      setMessage("Not signed in.");
+      return;
+    }
+
+    const selectedRows = scanRows.filter((row) => row.selected);
+
+    if (selectedRows.length === 0) {
+      setMessage("Select at least one income line.");
+      return;
+    }
+
+    setSaving(true);
+
+    const { error } = await supabase.from("income_entries").insert(
+      selectedRows.map((row) => ({
+        user_id: userId,
+        source_name: row.source_name,
+        amount: row.amount,
+        date_iso: row.date_iso,
+        note: "Imported from scanner",
+      }))
+    );
+
+    setSaving(false);
+
+    if (error) {
+      playError();
+      setMessage(error.message);
+      return;
+    }
+
+    playCoins();
+    setScanRows([]);
+    setImageFile(null);
+    setMessage(`${selectedRows.length} income lines imported.`);
+    await loadData();
   }
 
   async function handleAddIncome() {
     setMessage("");
 
-    if (!userId) return setMessage("You need to be logged in.");
+    const amt = clampMoney(amount);
 
-    const cleanSource = sourceName.trim();
-    const amt = Number(amount);
-
-    if (!cleanSource || !Number.isFinite(amt) || amt <= 0) {
-      return setMessage("Enter a valid source and amount.");
+    if (amt <= 0) {
+      playError();
+      setMessage("Enter a valid income amount.");
+      return;
     }
+
+    if (!source.trim()) {
+      playError();
+      setMessage("Enter who paid you or the income source.");
+      return;
+    }
+
+    if (!userId) {
+      playError();
+      setMessage("Not signed in.");
+      return;
+    }
+
+    const incomeNote = [
+      category ? `Category: ${category}` : "",
+      hoursWorked ? `Hours: ${hoursWorked}` : "",
+    ]
+      .filter(Boolean)
+      .join(" • ");
 
     setSaving(true);
 
-    try {
-      await ensureSourceExists(userId, cleanSource);
-
-      const { error } = await supabase.from("income_entries").insert({
-        user_id: userId,
-        source_name: cleanSource,
-        amount: amt,
-        date_iso: dateISO,
-        note: note.trim() || null,
-      });
-
-      if (error) {
-        setMessage(error.message);
-        setSaving(false);
-        return;
-      }
-
-      setSourceName("");
-      setAmount("");
-      setNote("");
-      setDateISO(todayISO());
-
-      await loadData(userId);
-
-      setMessage("Income added.");
-    } catch (err: any) {
-      setMessage(err.message || "Failed to add income.");
-    }
+    const { error } = await supabase.from("income_entries").insert({
+      user_id: userId,
+      source_name: source.trim(),
+      amount: amt,
+      date_iso: date,
+      note: incomeNote || null,
+    });
 
     setSaving(false);
+
+    if (error) {
+      playError();
+      setMessage(error.message);
+      return;
+    }
+
+    playCoins();
+    setAmount("");
+    setSource("");
+    setHoursWorked("");
+    setImageFile(null);
+    setDrawer(null);
+    setMessage("Income recorded in Franklin’s ledger.");
+    await loadData();
   }
 
-  async function handleDelete(id: string) {
-    const { error } = await supabase
-      .from("income_entries")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", userId!);
+  const thisMonth = monthPrefix(currentMonthStartISO());
 
-    if (error) return setMessage(error.message);
+  const thisMonthEntries = useMemo(
+    () => entries.filter((entry) => monthPrefix(entryDate(entry)) === thisMonth),
+    [entries, thisMonth]
+  );
 
-    setEntries((prev) => prev.filter((e) => e.id !== id));
+  const thisMonthTotal = useMemo(
+    () => addMoney(thisMonthEntries.map((entry) => entry.amount)),
+    [thisMonthEntries]
+  );
+
+  const monthlyBillsTotal = useMemo(
+    () => addMoney(bills.map((bill) => bill.monthly_target ?? bill.target)),
+    [bills]
+  );
+
+  const monthlyDebtMinimums = useMemo(
+    () => addMoney(debts.map((debt) => debt.monthly_min_payment ?? debt.min_payment)),
+    [debts]
+  );
+
+  const thisMonthSpendEntries = useMemo(
+    () =>
+      spendEntries.filter((entry) => monthPrefix(spendDate(entry)) === thisMonth),
+    [spendEntries, thisMonth]
+  );
+
+  const thisMonthSpending = useMemo(
+    () => addMoney(thisMonthSpendEntries.map((entry) => entry.amount)),
+    [thisMonthSpendEntries]
+  );
+
+  const avgMonthlySpending = useMemo(() => {
+    if (!spendEntries.length) return 0;
+
+    const monthMap = new Map<string, number>();
+
+    spendEntries.forEach((entry) => {
+      const key = monthPrefix(spendDate(entry));
+      const current = monthMap.get(key) || 0;
+      monthMap.set(key, current + clampMoney(entry.amount));
+    });
+
+    const totals = Array.from(monthMap.values());
+    return totals.length ? addMoney(totals) / totals.length : 0;
+  }, [spendEntries]);
+
+  const spendingNeed = Math.max(avgMonthlySpending, thisMonthSpending);
+
+  const monthlyNeed = Math.max(
+    0,
+    monthlyBillsTotal + monthlyDebtMinimums + spendingNeed
+  );
+
+  const remainingIncomeNeeded = Math.max(0, monthlyNeed - thisMonthTotal);
+  const leftAfterNeed = Math.max(0, thisMonthTotal - monthlyNeed);
+
+  const activeSources = useMemo(
+    () => incomeSources.filter((item) => item.active !== false),
+    [incomeSources]
+  );
+
+  const projectedMonthly = useMemo(
+    () => addMoney(activeSources.map(projectedMonthlyIncome)),
+    [activeSources]
+  );
+
+  const projectedWeekly = useMemo(
+    () => addMoney(activeSources.map(projectedWeeklyIncome)),
+    [activeSources]
+  );
+
+  const projectedGap = Math.max(0, monthlyNeed - projectedMonthly);
+  const projectedSurplus = Math.max(0, projectedMonthly - monthlyNeed);
+
+  const hourlyNeeded = useMemo(
+    () =>
+      HOURLY_TARGETS.map((weeklyHours) => ({
+        hours: weeklyHours,
+        hourly:
+          weeklyHours > 0
+            ? monthlyNeed / (weeklyHours * WEEKS_PER_MONTH)
+            : 0,
+      })),
+    [monthlyNeed]
+  );
+
+  const catchUpHourlyNeeded = useMemo(
+    () =>
+      HOURLY_TARGETS.map((weeklyHours) => ({
+        hours: weeklyHours,
+        hourly:
+          weeklyHours > 0
+            ? remainingIncomeNeeded / (weeklyHours * WEEKS_PER_MONTH)
+            : 0,
+      })),
+    [remainingIncomeNeeded]
+  );
+
+  const avgHourly = useMemo(() => {
+    const fromEntries = thisMonthEntries
+      .map((entry) => ({
+        amount: clampMoney(entry.amount),
+        hours: readHoursFromNote(entry.note),
+      }))
+      .filter((entry) => entry.amount > 0 && entry.hours > 0);
+
+    const entryIncome = addMoney(fromEntries.map((entry) => entry.amount));
+    const entryHours = fromEntries.reduce((sum, entry) => sum + entry.hours, 0);
+
+    if (entryHours > 0) return entryIncome / entryHours;
+
+    const rates = activeSources.map(getSourceHourlyRate).filter((rate) => rate > 0);
+    if (rates.length === 0) return 0;
+
+    return addMoney(rates) / rates.length;
+  }, [thisMonthEntries, activeSources]);
+
+  const todayGoal = Math.ceil(remainingIncomeNeeded / 7);
+  const weeklyGoal = Math.ceil(remainingIncomeNeeded / WEEKS_PER_MONTH);
+
+  const allTimeTotal = useMemo(
+    () => addMoney(entries.map((entry) => entry.amount)),
+    [entries]
+  );
+
+  const avgMonthly = useMemo(() => {
+    if (!entries.length) return 0;
+    const months = new Set(entries.map((entry) => monthPrefix(entryDate(entry))));
+    return clampMoney(allTimeTotal / Math.max(months.size, 1));
+  }, [entries, allTimeTotal]);
+
+  const sourcesCount = useMemo(
+    () => new Set(entries.map((entry) => entry.source_name || "other")).size,
+    [entries]
+  );
+
+  const chartData = useMemo(() => {
+    return Array.from({ length: 6 }, (_, index) => {
+      const [year, month] = thisMonth.split("-").map(Number);
+      const rawMonth = month - (5 - index);
+      const adjustedMonth = ((rawMonth - 1 + 12) % 12) + 1;
+      const adjustedYear = year + Math.floor((rawMonth - 1) / 12);
+      const key = `${adjustedYear}-${String(adjustedMonth).padStart(2, "0")}`;
+
+      return {
+        month: new Date(adjustedYear, adjustedMonth - 1, 1).toLocaleDateString(
+          "en-US",
+          { month: "short" }
+        ),
+        total: addMoney(
+          entries
+            .filter((entry) => monthPrefix(entryDate(entry)) === key)
+            .map((entry) => entry.amount)
+        ),
+        current: index === 5,
+      };
+    });
+  }, [entries, thisMonth]);
+
+  const benInsight = BenEngine.getForecastMessage({
+    name: null,
+    timeframeLabel: "Income Room",
+    totalNeeded: monthlyNeed,
+    incomeSoFar: thisMonthTotal,
+    incomeGap: remainingIncomeNeeded,
+    dailyIncomeNeeded: todayGoal,
+  });
+
+  if (loading) {
+    return (
+      <main className="bank-page loading-room">
+        <p>Opening Franklin&apos;s Bank…</p>
+      </main>
+    );
   }
-
-  const totalIncome = useMemo(() => {
-    return entries.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-  }, [entries]);
 
   return (
+<<<<<<< HEAD
     <main className="min-h-screen bg-zinc-50/78 -sm text-zinc-900">
       <div className="mx-auto max-w-4xl px-6 py-10">
+=======
+    <main className="bank-page">
+      <BankHero />
+>>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
 
-        <div>
-          <h1 className="text-3xl font-black">Income</h1>
-          <p className="mt-2 text-zinc-600">
-            Track all money coming in.
+      <section className="desk-wrap">
+        {message && <div className="notice">{message}</div>}
+
+        <div className="stats-grid">
+          <MiniMetric icon="🪙" label="Earned This Month" value={money(thisMonthTotal)} good />
+          <MiniMetric icon="🎯" label="Still Need" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
+          <MiniMetric icon="🏦" label="Monthly Need" value={money(monthlyNeed)} danger={monthlyNeed > thisMonthTotal} />
+          <MiniMetric icon="📈" label="Planned Income" value={money(projectedMonthly)} good={projectedMonthly >= monthlyNeed && monthlyNeed > 0} />
+        </div>
+
+        <RoomCard>
+          <h2>Ben&apos;s Bank Briefing</h2>
+          <p className="card-sub">
+            Need is based on outgoing money. Planned income is based on saved income sources. Earned income is what you actually recorded.
           </p>
-        </div>
+          <BenBubble message={benInsight.text} mood={benInsight.mood} />
+        </RoomCard>
 
-        {message ? (
-          <div className="mt-4 rounded-xl border bg-white p-4 text-sm text-zinc-600">
-            {message}
+        <RoomCard>
+          <h2>Monthly Need</h2>
+          <p className="card-sub">
+            This is what the household needs based on bills, debt minimums, and live/historical spending.
+          </p>
+
+          <div className="plan-grid">
+            <MiniMetric icon="📋" label="Bills" value={money(monthlyBillsTotal)} />
+            <MiniMetric icon="💳" label="Debt Minimums" value={money(monthlyDebtMinimums)} />
+            <MiniMetric icon="🛒" label="Spending Need" value={money(spendingNeed)} />
+            <MiniMetric icon="🏦" label="Monthly Need" value={money(monthlyNeed)} />
           </div>
-        ) : null}
+        </RoomCard>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          <Stat label="Total Income" value={totalIncome} />
-          <Stat label="Sources" value={sources.length} />
-          <Stat label="Entries" value={entries.length} />
-        </div>
+        <RoomCard>
+          <h2>Can My Income Plan Cover It?</h2>
+          <p className="card-sub">
+            Income sources are planning numbers. They show whether your expected work and average income can cover the outgoing need.
+          </p>
 
-        {/* ADD INCOME */}
-        <div className="mt-8 rounded-3xl border bg-white p-6">
-          <h2 className="text-lg font-bold">Add Income</h2>
-
-          <div className="mt-4 grid gap-3">
-            <input
-              type="date"
-              value={dateISO}
-              onChange={(e) => setDateISO(e.target.value)}
-              className="rounded-xl border px-4 py-3"
-            />
-
-            <input
-              list="sources"
-              placeholder="Source (Job, Tips, Side hustle)"
-              value={sourceName}
-              onChange={(e) => setSourceName(e.target.value)}
-              className="rounded-xl border px-4 py-3"
-            />
-
-            <datalist id="sources">
-              {sources.map((s) => (
-                <option key={s.id} value={s.name} />
-              ))}
-            </datalist>
-
-            <input
-              type="number"
-              placeholder="Amount"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="rounded-xl border px-4 py-3"
-            />
-
-            <input
-              placeholder="Note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="rounded-xl border px-4 py-3"
-            />
-
-            <button
-              onClick={handleAddIncome}
-              disabled={saving || !userId}
-              className="rounded-xl bg-zinc-900 px-4 py-3 font-semibold text-white"
-            >
-              {saving ? "Saving..." : "Add Income"}
-            </button>
+          <div className="plan-grid">
+            <MiniMetric icon="📈" label="Projected Weekly" value={money(projectedWeekly)} />
+            <MiniMetric icon="💼" label="Projected Monthly" value={money(projectedMonthly)} good={projectedMonthly >= monthlyNeed && monthlyNeed > 0} />
+            <MiniMetric icon="🚨" label="Plan Gap" value={money(projectedGap)} danger={projectedGap > 0} />
+            <MiniMetric icon="🌿" label="Plan Surplus" value={money(projectedSurplus)} good={projectedSurplus > 0} />
           </div>
-        </div>
 
-        {/* ENTRIES */}
-        <div className="mt-8 rounded-3xl border bg-white p-6">
-          <h2 className="text-lg font-bold">Income Entries</h2>
-
-          <div className="mt-4 grid gap-3">
-            {loading ? (
-              <p className="text-sm text-zinc-500">Loading...</p>
-            ) : entries.length === 0 ? (
-              <p className="text-sm text-zinc-500">No income yet.</p>
+          <div className="gap-box">
+            {projectedGap > 0 ? (
+              <>
+                <p className="gap-eyebrow">Income Plan Short</p>
+                <p className="gap-money danger">{money(projectedGap)}</p>
+                <p className="gap-note">Ben says: add another source, raise hours, or lower outgoing money.</p>
+              </>
             ) : (
-              entries.map((e) => (
-                <div
-                  key={e.id}
-                  className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
-                >
-                  <div>
-                    <div className="font-semibold">{e.source_name}</div>
-                    <div className="text-sm text-zinc-500">
-                      {e.date_iso}{e.note ? ` · ${e.note}` : ""}
-                    </div>
-                  </div>
+              <>
+                <p className="gap-eyebrow">Income Plan Covers Need</p>
+                <p className="gap-money good">{money(projectedSurplus)}</p>
+                <p className="gap-note">Your saved income sources are projected to cover the monthly need.</p>
+              </>
+            )}
+          </div>
+        </RoomCard>
 
-                  <div className="flex items-center gap-3">
-                    <div className="font-semibold">
-                      ${Number(e.amount).toFixed(2)}
+        <RoomCard>
+          <h2>How Much Per Hour?</h2>
+          <p className="card-sub">
+            Required hourly rate based on weekly work hours. This does not go down when income is recorded.
+          </p>
+
+          <div className="hourly-grid">
+            {hourlyNeeded.map((item) => (
+              <div
+                key={item.hours}
+                className={`hour-card ${
+                  item.hourly <= 20 ? "good" : item.hourly <= 35 ? "warn" : "danger"
+                }`}
+              >
+                <p>{item.hours} hrs/week</p>
+                <strong>{money(item.hourly)}/hr</strong>
+              </div>
+            ))}
+          </div>
+        </RoomCard>
+
+        <div className="drawer-buttons">
+          <DrawerButton active={drawer === "record"} onClick={() => setDrawer(drawer === "record" ? null : "record")}>
+            + Record Income
+          </DrawerButton>
+
+          <DrawerButton active={drawer === "sources"} onClick={() => setDrawer(drawer === "sources" ? null : "sources")}>
+            💼 Income Sources
+          </DrawerButton>
+
+          <DrawerButton active={drawer === "scan"} onClick={() => setDrawer(drawer === "scan" ? null : "scan")}>
+            📸 Scan Deposit
+          </DrawerButton>
+
+          <DrawerButton danger active={drawer === "hourly"} onClick={() => setDrawer(drawer === "hourly" ? null : "hourly")}>
+            🚨 Need Money Fast
+          </DrawerButton>
+        </div>
+
+        {drawer === "record" && (
+          <RoomCard className="drawer-panel">
+            <h2>Record Income</h2>
+            <p className="card-sub">This is actual money received this month.</p>
+
+            <div className="form-grid">
+              <label>
+                <span>Amount</span>
+                <input type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+              </label>
+
+              <label>
+                <span>Paid By / Source</span>
+                <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="DoorDash, employer, client..." />
+              </label>
+
+              <label>
+                <span>Category</span>
+                <select value={category} onChange={(e) => setCategory(e.target.value)}>
+                  {CATEGORIES.map((cat) => (
+                    <option key={cat.value} value={cat.value}>{cat.icon} {cat.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>Hours Worked</span>
+                <input type="number" inputMode="decimal" value={hoursWorked} onChange={(e) => setHoursWorked(e.target.value)} placeholder="Optional" />
+              </label>
+
+              <label>
+                <span>Date</span>
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              </label>
+
+              <button onClick={handleAddIncome} disabled={saving} className="save-btn">
+                {saving ? "Recording…" : "💰 Save Income"}
+              </button>
+            </div>
+          </RoomCard>
+        )}
+
+        {drawer === "sources" && (
+          <RoomCard className="drawer-panel">
+            <h2>Income Sources</h2>
+            <p className="card-sub">
+              These are planning sources. Use hourly, weekly, monthly, or salary.
+            </p>
+
+            <div className="form-grid">
+              <label>
+                <span>Source Name</span>
+                <input value={sourceName} onChange={(e) => setSourceName(e.target.value)} placeholder="DoorDash, WDI, Salon..." />
+              </label>
+
+              <label>
+                <span>Income Type</span>
+                <select value={sourceType} onChange={(e) => setSourceType(e.target.value as IncomeSource["income_type"])}>
+                  <option value="hourly">Hourly / Gig Hourly</option>
+                  <option value="weekly">Weekly Fixed</option>
+                  <option value="monthly">Monthly Fixed</option>
+                  <option value="salary">Salary</option>
+                  <option value="project">Project / Average Rate</option>
+                  <option value="commission">Commission / Average Rate</option>
+                  <option value="gig">Gig / Average Rate</option>
+                </select>
+              </label>
+
+              {sourceType === "salary" ? (
+                <>
+                  <label>
+                    <span>Annual Salary</span>
+                    <input type="number" inputMode="decimal" value={sourceAnnualSalary} onChange={(e) => setSourceAnnualSalary(e.target.value)} placeholder="50000" />
+                  </label>
+                  <label>
+                    <span>Average Hours / Week</span>
+                    <input type="number" inputMode="decimal" value={sourceHoursPerWeek} onChange={(e) => setSourceHoursPerWeek(e.target.value)} placeholder="40" />
+                  </label>
+                </>
+              ) : sourceType === "weekly" ? (
+                <label>
+                  <span>Weekly Amount</span>
+                  <input type="number" inputMode="decimal" value={sourceWeeklyAmount} onChange={(e) => setSourceWeeklyAmount(e.target.value)} placeholder="700" />
+                </label>
+              ) : sourceType === "monthly" ? (
+                <label>
+                  <span>Monthly Amount</span>
+                  <input type="number" inputMode="decimal" value={sourceMonthlyAmount} onChange={(e) => setSourceMonthlyAmount(e.target.value)} placeholder="3000" />
+                </label>
+              ) : (
+                <>
+                  <label>
+                    <span>Hourly / Average Rate</span>
+                    <input type="number" inputMode="decimal" value={sourceHourlyRateInput} onChange={(e) => setSourceHourlyRateInput(e.target.value)} placeholder="18" />
+                  </label>
+                  <label>
+                    <span>Average Hours / Week</span>
+                    <input type="number" inputMode="decimal" value={sourceHoursPerWeek} onChange={(e) => setSourceHoursPerWeek(e.target.value)} placeholder="20" />
+                  </label>
+                </>
+              )}
+
+              <label>
+                <span>Note</span>
+                <input value={sourceNote} onChange={(e) => setSourceNote(e.target.value)} placeholder="Optional" />
+              </label>
+
+              <button onClick={handleAddIncomeSource} disabled={saving} className="save-btn">
+                {saving ? "Saving…" : "Save Income Source"}
+              </button>
+            </div>
+
+            <div className="source-list">
+              {incomeSources.length === 0 ? (
+                <p className="empty">No income sources added yet.</p>
+              ) : (
+                incomeSources.map((item) => (
+                  <div key={item.id} className="source-row">
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p>
+                        {item.income_type} · {money(projectedWeeklyIncome(item))}/week · {money(projectedMonthlyIncome(item))}/month
+                      </p>
                     </div>
-                    <button
-                      onClick={() => handleDelete(e.id)}
-                      className="rounded-lg border px-3 py-2 text-xs"
-                    >
+
+                    <button onClick={() => void handleDeleteIncomeSource(item.id)}>
                       Delete
                     </button>
                   </div>
+                ))
+              )}
+            </div>
+          </RoomCard>
+        )}
+
+        {drawer === "scan" && (
+          <RoomCard className="drawer-panel">
+            <h2>Scan Income Proof</h2>
+            <p className="card-sub">Upload a DoorDash screenshot, paycheck, deposit, or income proof.</p>
+
+            <PaperScrollScanner
+              title="Scan Income Proof"
+              description="Ben will fill what he can. Review it before saving."
+              file={imageFile}
+              busy={scanning}
+              onFileChange={setImageFile}
+              onScan={() => void handleScanIncome()}
+            />
+
+            {scanRows.length > 0 && (
+              <div className="recent-list">
+                {scanRows.map((row, index) => (
+                  <label key={index} className="recent-row">
+                    <span>
+                      <input
+                        type="checkbox"
+                        checked={row.selected}
+                        onChange={(e) => {
+                          setScanRows((prev) =>
+                            prev.map((item, i) =>
+                              i === index ? { ...item, selected: e.target.checked } : item
+                            )
+                          );
+                        }}
+                      />{" "}
+                      {row.source_name}
+                    </span>
+                    <strong className="amount">{money(row.amount)}</strong>
+                  </label>
+                ))}
+
+                <button onClick={importScannedIncome} disabled={saving} className="save-btn">
+                  {saving ? "Importing…" : "Import Selected Income"}
+                </button>
+              </div>
+            )}
+          </RoomCard>
+        )}
+
+        {drawer === "hourly" && (
+          <RoomCard className="drawer-panel">
+            <h2>Need Money Fast</h2>
+            <p className="card-sub">This shows what is still left to earn this month.</p>
+
+            <div className="plan-grid">
+              <MiniMetric icon="☀️" label="Today Goal" value={money(todayGoal)} />
+              <MiniMetric icon="🗓️" label="Weekly Goal" value={money(weeklyGoal)} />
+              <MiniMetric icon="📈" label="Projected Weekly" value={money(projectedWeekly)} />
+              <MiniMetric icon="🎯" label="Still Need" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
+            </div>
+
+            <div className="hourly-grid mini-hourly">
+              {catchUpHourlyNeeded.map((item) => (
+                <div key={item.hours} className="hour-card">
+                  <p>{item.hours} hrs/week</p>
+                  <strong>{money(item.hourly)}/hr</strong>
                 </div>
-              ))
+              ))}
+            </div>
+          </RoomCard>
+        )}
+
+        <RoomCard>
+          <div className="chart-grid">
+            <div>
+              <h2>Income This Month</h2>
+              <p className="big-money">{money(thisMonthTotal)}</p>
+
+              <div className="chart-box">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                    <XAxis dataKey="month" tick={{ fill: "#d6c09a", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: "#d6c09a", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#130c06",
+                        border: "1px solid #6b4423",
+                        borderRadius: 8,
+                        color: "#e8d5b7",
+                      }}
+                      formatter={(value: number) => [money(value), "Income"]}
+                    />
+                    <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                      {chartData.map((entry, index) => (
+                        <Cell key={index} fill={entry.current ? "#c9a84c" : "#4a5568"} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="mini-grid">
+              <MiniMetric icon="📈" label="Average Month" value={money(avgMonthly)} />
+              <MiniMetric icon="📜" label="Entries" value={String(entries.length)} />
+              <MiniMetric icon="👥" label="Recorded Sources" value={String(sourcesCount)} />
+              <MiniMetric icon="💼" label="Saved Sources" value={String(incomeSources.length)} />
+            </div>
+          </div>
+        </RoomCard>
+
+        <RoomCard>
+          <h2>Recent Income</h2>
+
+          <div className="recent-list">
+            {entries.slice(0, 8).length === 0 ? (
+              <p className="empty">No income entries yet.</p>
+            ) : (
+              entries.slice(0, 8).map((entry) => {
+                const cat =
+                  CATEGORIES.find((item) => entry.note?.includes(`Category: ${item.value}`)) ||
+                  CATEGORIES[5];
+
+                return (
+                  <div key={entry.id} className="recent-row">
+                    <div className="recent-left">
+                      <span>{cat.icon}</span>
+                      <div>
+                        <strong>{entry.source_name || cat.label}</strong>
+                        <p>{entryDate(entry)}</p>
+                      </div>
+                    </div>
+                    <strong className="amount">{money(entry.amount)}</strong>
+                  </div>
+                );
+              })
             )}
           </div>
-        </div>
-      </div>
-    </main>
-  );
-}
+        </RoomCard>
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border bg-white p-5">
-      <div className="text-sm text-zinc-500">{label}</div>
-      <div className="mt-2 text-3xl font-black">
-        {typeof value === "number" ? value.toFixed(0) : value}
-      </div>
-    </div>
+        <p className="quote">“Diligence is the mother of good luck.” — Benjamin Franklin</p>
+      </section>
+      <style jsx global>{`
+  .bank-page {
+    min-height: 100vh;
+    padding-top: 0;
+    padding-bottom: 100px;
+    background:
+      radial-gradient(circle at top, rgba(245, 196, 88, 0.12), transparent 32rem),
+      linear-gradient(180deg, #050302, #140a04 45%, #050302);
+    color: #fff7ed;
+    font-family: var(--font-cormorant), Georgia, serif;
+  }
+
+  .loading-room {
+    display: grid;
+    place-items: center;
+    color: #c9a84c;
+    font-size: 22px;
+  }
+
+  .desk-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 18px 18px;
+    display: grid;
+    gap: 18px;
+  }
+
+  .notice {
+    border-radius: 20px;
+    padding: 14px 16px;
+    color: #facc15;
+    background: rgba(15, 8, 4, 0.92);
+    border: 1px solid rgba(201, 168, 76, 0.35);
+    text-align: center;
+  }
+
+  .stats-grid,
+  .drawer-buttons,
+  .form-grid,
+  .chart-grid,
+  .plan-grid,
+  .mini-grid {
+    display: grid;
+    gap: 14px;
+  }
+
+  .stats-grid,
+  .drawer-buttons {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .form-grid,
+  .plan-grid,
+  .mini-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chart-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  }
+
+  .card-sub {
+    color: #b99b60;
+    margin: 8px 0 18px;
+  }
+
+  label span {
+    display: block;
+    color: #d6c09a;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 900;
+    margin-bottom: 7px;
+  }
+
+  input,
+  select,
+  textarea {
+    width: 100%;
+    border-radius: 16px;
+    border: 1px solid rgba(201, 168, 76, 0.45);
+    background: rgba(255, 245, 220, 0.95);
+    color: #24130a;
+    padding: 13px 14px;
+    font-size: 16px;
+    outline: none;
+  }
+
+  .save-btn {
+    border: 1px solid rgba(74, 222, 128, 0.65);
+    border-radius: 20px;
+    padding: 16px 18px;
+    background: linear-gradient(180deg, #16a34a, #15803d);
+    color: #f0fdf4;
+    font-size: 18px;
+    font-weight: 900;
+  }
+
+  .gap-box,
+  .covered-box {
+    margin-top: 16px;
+    border-radius: 24px;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.48);
+    border: 1px solid rgba(201, 168, 76, 0.25);
+    text-align: center;
+  }
+
+  .gap-eyebrow {
+    margin: 0;
+    color: #d6c09a;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 900;
+  }
+
+  .gap-money {
+    margin: 8px 0 0;
+    font-size: 44px;
+    font-weight: 900;
+  }
+
+  .gap-money.good {
+    color: #4ade80;
+  }
+
+  .gap-money.danger {
+    color: #f87171;
+  }
+
+  .gap-note,
+  .covered-box p {
+    margin-top: 10px;
+    color: #e8d5b7;
+  }
+
+  .hourly-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .mini-hourly {
+    margin-top: 16px;
+  }
+
+  .hour-card {
+    border-radius: 20px;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(201, 168, 76, 0.25);
+    text-align: center;
+  }
+
+  .hour-card p {
+    margin: 0;
+    color: #d6c09a;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 900;
+  }
+
+  .hour-card strong {
+    display: block;
+    margin-top: 8px;
+    color: #c9a84c;
+    font-size: 24px;
+  }
+
+  .hour-card.good strong {
+    color: #4ade80;
+  }
+
+  .hour-card.warn strong {
+    color: #facc15;
+  }
+
+  .hour-card.danger strong {
+    color: #f87171;
+  }
+
+  .big-money {
+    color: #4ade80;
+    font-size: 46px;
+    font-weight: 900;
+    margin: 10px 0 0;
+  }
+
+  .chart-box {
+    height: 190px;
+    margin-top: 18px;
+  }
+
+  .recent-list,
+  .source-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .recent-row,
+  .source-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    border-radius: 18px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(201, 168, 76, 0.18);
+  }
+
+  .source-row button {
+    border-radius: 12px;
+    border: 1px solid rgba(248, 113, 113, 0.45);
+    background: rgba(127, 29, 29, 0.35);
+    color: #fecaca;
+    padding: 9px 12px;
+    font-weight: 900;
+  }
+
+  .recent-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .recent-left span {
+    font-size: 24px;
+  }
+
+  .recent-left p,
+  .source-row p {
+    margin: 3px 0 0;
+    color: #9a7d5a;
+    font-size: 13px;
+  }
+
+  .recent-row .amount {
+    color: #4ade80;
+    font-size: 22px;
+  }
+
+  .empty {
+    text-align: center;
+    color: #9a7d5a;
+  }
+
+  .quote {
+    text-align: center;
+    color: #c9a84c;
+    font-style: italic;
+    padding: 18px;
+  }
+
+  @media (max-width: 900px) {
+    .stats-grid,
+    .drawer-buttons,
+    .chart-grid,
+    .hourly-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 640px) {
+    .stats-grid,
+    .drawer-buttons,
+    .form-grid,
+    .chart-grid,
+    .mini-grid,
+    .plan-grid,
+    .hourly-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .recent-row,
+    .source-row {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .recent-row .amount {
+      align-self: flex-end;
+    }
+  }
+`}
+  </style>
+    </main>
   );
 }

@@ -1,6 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  AppShell,
+  DarkPanel,
+  MetricCard,
+  Notice,
+  PageHeader,
+  Panel,
+  inputClass,
+  moneyButtonClass,
+} from "@/components/AppFrame";
+import BenBubble from "@/components/BenBubble";
+import ScrollRevealCard from "@/components/ScrollRevealCard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type DebtRow = {
@@ -20,7 +32,11 @@ type DebtRow = {
 };
 
 function formatUSD(n: number) {
-  return `$${Number(n || 0).toFixed(2)}`;
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  });
 }
 
 function pct(n: number) {
@@ -42,31 +58,12 @@ function monthsToTarget(
   return Math.ceil((balance - targetBalance) / monthlyPay);
 }
 
-function StatCard({
-  label,
-  value,
-  subtext,
-}: {
-  label: string;
-  value: string;
-  subtext?: string;
-}) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-white p-5 text-zinc-950 shadow-sm">
-      <div className="text-sm text-zinc-500">{label}</div>
-      <div className="mt-2 text-3xl font-black">{value}</div>
-      {subtext ? <div className="mt-2 text-sm text-zinc-500">{subtext}</div> : null}
-    </div>
-  );
-}
-
 export default function CreditRecoveryPage() {
-  const supabase = createSupabaseBrowserClient();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [name, setName] = useState("");
-  const [userId, setUserId] = useState<string | null>(null);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [extraPayment, setExtraPayment] = useState("100");
 
@@ -96,8 +93,6 @@ export default function CreditRecoveryPage() {
         return;
       }
 
-      setUserId(user.id);
-
       const [profileRes, debtsRes] = await Promise.all([
         supabase
           .from("profiles")
@@ -124,7 +119,7 @@ export default function CreditRecoveryPage() {
       setLoading(false);
     }
 
-    load();
+    void load();
 
     return () => {
       mounted = false;
@@ -141,10 +136,12 @@ export default function CreditRecoveryPage() {
       (sum, d) => sum + Number(d.balance || 0),
       0
     );
+
     const totalCreditLimit = creditCards.reduce(
       (sum, d) => sum + Number(d.credit_limit || 0),
       0
     );
+
     const totalMinimums = creditCards.reduce(
       (sum, d) => sum + Number(d.monthly_min_payment || d.min_payment || 0),
       0
@@ -229,41 +226,55 @@ export default function CreditRecoveryPage() {
 
   const benMessage = useMemo(() => {
     if (totals.totalCreditLimit <= 0) {
-      return "Ben says: Add your credit card limits first so I can build a real recovery plan.";
+      return "Add your credit card limits first so I can build a real recovery plan.";
     }
 
     if (totalMonthlyAttack <= 0) {
-      return "Ben says: Even a small extra monthly payment gives me something to work with.";
+      return "Even a small extra monthly payment gives me something to work with.";
     }
 
     const under50 = milestones.find((m) => m.target === 50)?.months;
-    const under30 = milestones.find((m) => m.target === 30)?.months;
 
     if (under50 === 0) {
-      return `Ben says: ${name || "Friend"}, you are already under 50%. Now let’s chase 30%.`;
+      return `${name || "Friend"}, you are already under 50%. Now let’s chase 30%.`;
     }
 
     if (under50 != null) {
-      return `Ben says: ${name || "Friend"}, if you put ${formatUSD(
+      return `${name || "Friend"}, if you put ${formatUSD(
         totalMonthlyAttack
-      )} toward credit each month, you could get under 50% utilization in ${under50} month${under50 === 1 ? "" : "s"}.`;
+      )} toward credit each month, you could get under 50% utilization in ${under50} month${
+        under50 === 1 ? "" : "s"
+      }.`;
     }
 
-    if (under30 != null) {
-      return `Ben says: ${name || "Friend"}, you have a path. Keep pressing and we’ll work toward 30%.`;
-    }
-
-    return "Ben says: Start with the highest-utilization card first.";
+    return "Start with the highest-utilization card first.";
   }, [totals, totalMonthlyAttack, milestones, name]);
-    if (loading) {
+
+  const recoveryMood =
+    totals.utilization >= 75
+      ? "/ben-overdraft.png"
+      : totals.utilization >= 50
+      ? "/ben-facepalm.png"
+      : totals.utilization >= 30
+      ? "/ben-mastermind.png"
+      : "/ben-winning.png";
+
+  if (loading) {
     return (
+<<<<<<< HEAD
       <main className="min-h-screen bg-zinc-950/82 -md px-6 py-10 text-white">
         Loading credit recovery plan...
       </main>
+=======
+      <AppShell max="max-w-6xl">
+        <Panel>Loading credit recovery plan...</Panel>
+      </AppShell>
+>>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
     );
   }
 
   return (
+<<<<<<< HEAD
     <main className="min-h-screen bg-zinc-950/82 -md text-white">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 shadow-2xl md:p-8">
@@ -306,201 +317,217 @@ export default function CreditRecoveryPage() {
                 Dashboard
               </a>
             </div>
+=======
+    <AppShell max="max-w-6xl">
+      <PageHeader
+        eyebrow="Credit Recovery Planner"
+        title={name ? `${name}'s Recovery Plan` : "Credit Recovery Plan"}
+        subtitle="See how fast you can lower utilization and reduce credit pressure."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <a href="/credit-health" className={moneyButtonClass}>
+              Credit Health
+            </a>
+            <a href="/payments" className={moneyButtonClass}>
+              Add Payment
+            </a>
+>>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
+          </div>
+        }
+      />
+
+      {message ? <Notice>{message}</Notice> : null}
+
+      <ScrollRevealCard
+        title="Credit Recovery Briefing"
+        subtitle="Utilization, credit limits, minimums, and Ben's strategy"
+        image={recoveryMood}
+        defaultOpen
+      >
+        <DarkPanel>
+          <BenBubble
+            message={benMessage}
+            mood={prioritizedCards.some((card) => card.util >= 50) ? "stern" : "celebratory"}
+          />
+        </DarkPanel>
+
+        <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label="Total credit debt"
+            value={formatUSD(totals.totalCreditDebt)}
+            tone="rose"
+          />
+          <MetricCard
+            label="Total credit limit"
+            value={formatUSD(totals.totalCreditLimit)}
+            tone="sky"
+          />
+          <MetricCard
+            label="Current utilization"
+            value={pct(totals.utilization)}
+            tone={totals.utilization >= 50 ? "rose" : "emerald"}
+          />
+          <MetricCard
+            label="Monthly minimums"
+            value={formatUSD(totals.totalMinimums)}
+            helper="Base payment already required"
+            tone="amber"
+          />
+        </section>
+      </ScrollRevealCard>
+
+      <ScrollRevealCard
+        title="Monthly Attack Plan"
+        subtitle="Set your extra payment and see the timeline change"
+        image="/ben-mastermind.png"
+        defaultOpen
+      >
+        <div className="grid gap-5 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm font-black text-zinc-700">
+              Extra monthly payment
+            </label>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={extraPayment}
+              onChange={(e) => setExtraPayment(e.target.value)}
+              className={inputClass}
+            />
           </div>
 
-          {message ? (
-            <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
-              {message}
-            </div>
-          ) : null}
-
-          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              label="Total credit debt"
-              value={formatUSD(totals.totalCreditDebt)}
-            />
-            <StatCard
-              label="Total credit limit"
-              value={formatUSD(totals.totalCreditLimit)}
-            />
-            <StatCard
-              label="Current utilization"
-              value={pct(totals.utilization)}
-            />
-            <StatCard
-              label="Monthly minimums"
-              value={formatUSD(totals.totalMinimums)}
-              subtext="Base payment already required"
-            />
-          </div>
-
-          <div className="mt-8 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <div className="grid gap-6">
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-2xl font-black">Set your extra monthly payment</h2>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Add the extra amount you think you can put toward credit each month.
-                </p>
-
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-600">
-                      Extra monthly payment
-                    </label>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      value={extraPayment}
-                      onChange={(e) => setExtraPayment(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-200 px-4 py-3"
-                    />
-                  </div>
-
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-sm text-zinc-500">Total monthly attack</div>
-                    <div className="mt-2 text-3xl font-black text-zinc-950">
-                      {formatUSD(totalMonthlyAttack)}
-                    </div>
-                    <div className="mt-2 text-sm text-zinc-500">
-                      Minimums + extra payment
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">
-                  {benMessage}
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-2xl font-black">Recovery milestones</h2>
-                <div className="mt-5 grid gap-3">
-                  {milestones.map((m) => (
-                    <div
-                      key={m.label}
-                      className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4"
-                    >
-                      <div>
-                        <div className="font-semibold">{m.label}</div>
-                        <div className="text-sm text-zinc-500">
-                          Target utilization: {m.target}%
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold">
-                          {m.months == null
-                            ? "—"
-                            : m.months === 0
-                            ? "Already there"
-                            : `${m.months} mo`}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-2xl font-black">Best cards to focus on first</h2>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Highest utilization cards rise to the top.
-                </p>
-
-                <div className="mt-5 grid gap-3">
-                  {prioritizedCards.length === 0 ? (
-                    <div className="rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                      No credit cards found yet.
-                    </div>
-                  ) : (
-                    prioritizedCards.map((card) => (
-                      <div
-                        key={card.id}
-                        className="rounded-2xl bg-zinc-50 p-4"
-                      >
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
-                            <div className="font-semibold">{card.name}</div>
-                            <div className="text-sm text-zinc-500">
-                              Balance {formatUSD(card.balance)} · Limit {formatUSD(card.credit_limit || 0)}
-                              {card.apr != null ? ` · APR ${Number(card.apr).toFixed(2)}%` : ""}
-                            </div>
-                          </div>
-
-                          <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-zinc-800">
-                            {pct(card.util)}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-6">
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-xl font-black">AskBen strategy</h2>
-                <div className="mt-4 rounded-2xl bg-zinc-50 p-4 text-sm leading-6 text-zinc-700">
-                  Focus on the cards with the highest utilization first. That can reduce score pressure faster than spreading payments evenly across everything.
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-xl font-black">Quick actions</h2>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <a
-                    href="/debt"
-                    className="rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
-                  >
-                    Update Debt
-                  </a>
-                  <a
-                    href="/payments"
-                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
-                  >
-                    Add Payment
-                  </a>
-                  <a
-                    href="/credit-health"
-                    className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
-                  >
-                    Credit Health
-                  </a>
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-xl font-black">Recovery view</h2>
-                <div className="mt-4 grid gap-3">
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
-                    <span className="text-zinc-500">Cards above 80%</span>
-                    <span className="font-bold">
-                      {prioritizedCards.filter((c) => c.util >= 80).length}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
-                    <span className="text-zinc-500">Cards above 50%</span>
-                    <span className="font-bold">
-                      {prioritizedCards.filter((c) => c.util >= 50).length}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-zinc-50 p-4">
-                    <span className="text-zinc-500">Total cards</span>
-                    <span className="font-bold">{prioritizedCards.length}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-white p-6 text-zinc-950 shadow-sm">
-                <h2 className="text-xl font-black">Ben says</h2>
-                <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">
-                  Credit recovery gets real when there is a timeline. A plan beats vague stress every time.
-                </div>
-              </div>
-            </div>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+              Total monthly attack
+            </p>
+            <p className="mt-2 text-3xl font-black text-emerald-950">
+              {formatUSD(totalMonthlyAttack)}
+            </p>
+            <p className="mt-1 text-sm font-bold text-emerald-800">
+              Minimums + extra payment
+            </p>
           </div>
         </div>
-      </div>
-    </main>
+
+        <div className="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm font-bold leading-6 text-emerald-800">
+          {benMessage}
+        </div>
+      </ScrollRevealCard>
+
+      <ScrollRevealCard
+        title="Recovery Milestones"
+        subtitle="How long until your utilization reaches healthier zones"
+        image="/ben-recovery.png"
+        defaultOpen
+      >
+        <div className="grid gap-3">
+          {milestones.map((m) => (
+            <div
+              key={m.label}
+              className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+            >
+              <div>
+                <p className="font-black text-zinc-950">{m.label}</p>
+                <p className="text-sm font-semibold text-zinc-600">
+                  Target utilization: {m.target}%
+                </p>
+              </div>
+
+              <p className="text-right font-black text-zinc-950">
+                {m.months == null
+                  ? "—"
+                  : m.months === 0
+                  ? "Already there"
+                  : `${m.months} mo`}
+              </p>
+            </div>
+          ))}
+        </div>
+      </ScrollRevealCard>
+
+      <ScrollRevealCard
+        title="Cards To Focus On First"
+        subtitle="Highest utilization cards rise to the top"
+        image="/ben-thinking.png"
+        defaultOpen
+      >
+        <div className="grid gap-3">
+          {prioritizedCards.length === 0 ? (
+            <p className="rounded-2xl border border-zinc-200 bg-white p-4 text-sm font-semibold text-zinc-600">
+              No credit cards found yet.
+            </p>
+          ) : (
+            prioritizedCards.map((card) => (
+              <div
+                key={card.id}
+                className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+              >
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="font-black text-zinc-950">{card.name}</p>
+                    <p className="text-sm font-semibold text-zinc-600">
+                      Balance {formatUSD(card.balance)} · Limit{" "}
+                      {formatUSD(card.credit_limit || 0)}
+                      {card.apr != null
+                        ? ` · APR ${Number(card.apr).toFixed(2)}%`
+                        : ""}
+                    </p>
+                  </div>
+
+                  <span className="w-fit rounded-full bg-zinc-950 px-3 py-1 text-xs font-black text-white">
+                    {pct(card.util)}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </ScrollRevealCard>
+
+      <ScrollRevealCard
+        title="AskBen Strategy"
+        subtitle="Quick actions and recovery warnings"
+        image="/ben-winning.png"
+      >
+        <section className="grid gap-4 md:grid-cols-3">
+          <MetricCard
+            label="Cards above 80%"
+            value={String(prioritizedCards.filter((c) => c.util >= 80).length)}
+            tone="rose"
+          />
+          <MetricCard
+            label="Cards above 50%"
+            value={String(prioritizedCards.filter((c) => c.util >= 50).length)}
+            tone="amber"
+          />
+          <MetricCard
+            label="Total cards"
+            value={String(prioritizedCards.length)}
+            tone="sky"
+          />
+        </section>
+
+        <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-5">
+          <h2 className="text-xl font-black text-zinc-950">Ben says</h2>
+          <p className="mt-3 text-sm font-bold leading-6 text-zinc-700">
+            Focus on the cards with the highest utilization first. That can
+            reduce score pressure faster than spreading payments evenly across
+            everything. Credit recovery gets real when there is a timeline.
+          </p>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <a href="/debt" className={moneyButtonClass}>
+              Update Debt
+            </a>
+            <a href="/payments" className={moneyButtonClass}>
+              Add Payment
+            </a>
+            <a href="/credit-health" className={moneyButtonClass}>
+              Credit Health
+            </a>
+          </div>
+        </div>
+      </ScrollRevealCard>
+    </AppShell>
   );
 }
