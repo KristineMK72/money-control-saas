@@ -42,7 +42,6 @@ export default function Scene({
       />
 
       <ambientLight intensity={0.45} />
-
       <directionalLight
         position={[32, 52, -34]}
         intensity={2.1}
@@ -51,11 +50,12 @@ export default function Scene({
 
       <CoordinateGrid />
 
-      {/* Temporary building markers so we can test the new map */}
+      {/* Buildings - visible in both modes */}
       {BUILDINGS.map((b) => (
         <BuildingMarker key={b.id} building={b} />
       ))}
 
+      {/* Pointer lock only active in street view */}
       {!isMobile && viewMode === "street" && (
         <PointerLockControls ref={controlsRef} />
       )}
