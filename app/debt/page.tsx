@@ -645,10 +645,7 @@ export default function DebtPage() {
   }
 
   return (
-<<<<<<< HEAD
-    <main className="min-h-screen bg-zinc-50/78 -sm p-6">
-      <h1 className="text-3xl font-black">Debt</h1>
-=======
+
     <main className="min-h-screen bg-transparent p-4 text-white md:p-6">
       <div className={`${shellClass} mx-auto max-w-6xl space-y-8`}>
         <header>
@@ -661,7 +658,6 @@ export default function DebtPage() {
             tax ledger.
           </p>
         </header>
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
 
         {message ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950 shadow-xl">

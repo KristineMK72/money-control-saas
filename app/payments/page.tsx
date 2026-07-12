@@ -318,10 +318,7 @@ export default function PaymentsPage() {
   }
 
   return (
-<<<<<<< HEAD
-    <main className="min-h-screen bg-zinc-950/82 -md text-white">
-      <div className="mx-auto max-w-5xl px-6 py-10">
-=======
+
     <main className="payments-page">
       {ceremony && (
         <DebtZeroCeremony
@@ -333,7 +330,6 @@ export default function PaymentsPage() {
           }}
         />
       )}
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
 
       <section className="hero">
         <div className="hero-frame">

@@ -245,23 +245,7 @@ export default function CrisisPage() {
   }
 
   return (
-<<<<<<< HEAD
-    <main className="min-h-screen bg-zinc-950/82 -md text-white">
-      <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 md:p-8 shadow-2xl">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
-                72-hour triage
-              </div>
-              <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
-                Crisis Mode
-              </h1>
-              <p className="mt-3 max-w-2xl text-lg text-zinc-300">
-                Calm triage for what matters most right now, powered by your real data.
-              </p>
-            </div>
-=======
+
     <main className="min-h-screen bg-transparent p-4 md:p-6">
       <div className={`${shellClass} mx-auto max-w-6xl space-y-10`}>
         <header>
@@ -270,7 +254,6 @@ export default function CrisisPage() {
             72-hour triage — focus only on unpaid obligations that matter most.
           </p>
         </header>
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
 
         {message ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950">

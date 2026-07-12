@@ -99,112 +99,7 @@ export default function CreditHealthPage() {
     dailyIncomeNeeded: 0,
   });
 
-<<<<<<< HEAD
-  const maxedCards = useMemo(
-    () => riskyCards.filter((c) => c.utilization >= 100),
-    [riskyCards]
-  );
 
-  const benAdvice = useMemo(() => {
-    const items: string[] = [];
-
-    if (totals.utilization >= 75) {
-      items.push(
-        `${name || "Friend"}, your credit utilization is ${pct(
-          totals.utilization
-        )}. That is likely putting heavy pressure on your score.`
-      );
-    } else if (totals.utilization >= 50) {
-      items.push(
-        `${name || "Friend"}, your utilization is ${pct(
-          totals.utilization
-        )}. Getting under 30% would be a strong next move.`
-      );
-    } else if (totals.utilization >= 30) {
-      items.push(
-        `${name || "Friend"}, your utilization is ${pct(
-          totals.utilization
-        )}. You are in a watch zone, but not in disaster territory.`
-      );
-    } else if (creditCards.length > 0) {
-      items.push(
-        `${name || "Friend"}, your utilization is ${pct(
-          totals.utilization
-        )}. That is a healthier zone for score pressure.`
-      );
-    }
-
-    if (maxedCards.length > 0) {
-      items.push(
-        `${maxedCards.length} card${maxedCards.length === 1 ? " is" : "s are"} maxed or over limit. Those are your highest-priority credit targets.`
-      );
-    } else if (over80Cards.length > 0) {
-      items.push(
-        `${over80Cards.length} card${over80Cards.length === 1 ? " is" : "s are"} above 80% utilization. Paying those down first can help the fastest.`
-      );
-    }
-
-    if (totals.totalMinimums > 0) {
-      items.push(
-        `Your monthly debt minimums are ${formatUSD(
-          totals.totalMinimums
-        )}. Protect payment history first, then attack utilization.`
-      );
-    }
-
-    if (creditCards.length === 0) {
-      items.push(
-        "No credit-card accounts found yet. Add your cards to unlock utilization coaching."
-      );
-    }
-
-    return items.slice(0, 4);
-  }, [totals, maxedCards, over80Cards, creditCards.length, name]);
-
-  const targetPlan = useMemo(() => {
-    return {
-      to50: paymentNeededForTarget(
-        totals.totalCreditDebt,
-        totals.totalCreditLimit,
-        50
-      ),
-      to30: paymentNeededForTarget(
-        totals.totalCreditDebt,
-        totals.totalCreditLimit,
-        30
-      ),
-      to10: paymentNeededForTarget(
-        totals.totalCreditDebt,
-        totals.totalCreditLimit,
-        10
-      ),
-    };
-  }, [totals]);
-    if (loading) {
-    return (
-      <main className="min-h-screen bg-zinc-950/82 -md px-6 py-10 text-white">
-        Loading credit health...
-      </main>
-    );
-  }
-
-  return (
-    <main className="min-h-screen bg-zinc-950/82 -md text-white">
-      <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 shadow-2xl md:p-8">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
-                Credit Health
-              </div>
-              <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
-                {name ? `${name}'s Credit Health` : "Credit Health"}
-              </h1>
-              <p className="mt-3 max-w-2xl text-lg text-zinc-300">
-                Track utilization, risk cards, score pressure, and the fastest next moves.
-              </p>
-            </div>
-=======
   if (loading) {
     return <div className="p-8 text-center">Loading credit health...</div>;
   }
@@ -216,7 +111,6 @@ export default function CreditHealthPage() {
           <h1 className="text-5xl font-black text-white">Credit Health</h1>
           <p className="mt-2 text-lg font-semibold text-white/90">Understand your score pressure and fastest improvement moves.</p>
         </header>
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
 
         {/* Ben's Insight */}
         <div className="rounded-2xl border border-white/20 bg-slate-950/80 p-6 shadow-xl backdrop-blur-xl">

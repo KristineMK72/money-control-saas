@@ -141,73 +141,12 @@ export default function SignupPage() {
   }
 
   return (
-<<<<<<< HEAD
-    <main className="min-h-screen bg-zinc-950/88 -md text-white">
-      <div className="mx-auto flex min-h-screen max-w-6xl items-center px-6 py-16">
-        <div className="grid w-full gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-8 shadow-2xl">
-            <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
-              Get started
-            </div>
 
-            <h1 className="mt-5 text-4xl font-black tracking-tight">
-              {mode === "signup" ? "Create your account" : "Welcome back"}
-            </h1>
-
-            <p className="mt-4 max-w-xl text-white/70">
-              {mode === "signup"
-                ? "Start with a clean financial plan and build calm around what to pay first."
-                : "Log in to continue with your bills, forecast, payments, and crisis planning."}
-            </p>
-
-            <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
-              <div className="text-sm text-white/50">Selected plan</div>
-              <div className="mt-2 text-2xl font-black">{planLabel}</div>
-              <div className="mt-2 text-sm text-white/60">
-                {plan === "free"
-                  ? "You can start free now and upgrade later."
-                  : "You selected a paid plan. Billing can be connected next with Stripe."}
-              </div>
-            </div>
-
-            <div className="mt-8 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode("signup");
-                  setMessage("");
-                }}
-                className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                  mode === "signup"
-                    ? "bg-cyan-400 text-black"
-                    : "border border-white/15 bg-white/5 text-white hover:bg-white/10"
-                }`}
-              >
-                Create account
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMode("login");
-                  setMessage("");
-                }}
-                className={`rounded-xl px-4 py-3 text-sm font-semibold ${
-                  mode === "login"
-                    ? "bg-cyan-400 text-black"
-                    : "border border-white/15 bg-white/5 text-white hover:bg-white/10"
-                }`}
-              >
-                Login
-              </button>
-            </div>
-=======
     <main className="min-h-screen bg-zinc-950/90 px-4 py-10 text-white backdrop-blur-md">
       <div className="mx-auto grid min-h-screen max-w-6xl items-center gap-8 lg:grid-cols-[1.05fr_0.95fr]">
         <section className="rounded-3xl border border-white/30 bg-slate-950/75 p-8 shadow-2xl backdrop-blur-xl">
           <div className="inline-flex rounded-full border border-yellow-300/30 bg-yellow-300/10 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-yellow-200">
             Welcome to Franklin&apos;s Landing
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
           </div>
 
           <h1 className="mt-5 text-4xl font-black tracking-tight sm:text-5xl">

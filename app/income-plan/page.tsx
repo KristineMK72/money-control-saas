@@ -591,23 +591,7 @@ export default function BillsPage() {
   }
 
   return (
-<<<<<<< HEAD
-    <main className="min-h-screen bg-zinc-950/82 -md text-white">
-      <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#07131a] via-black to-[#0b2217] p-6 md:p-8 shadow-2xl">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
-                Income strategy
-              </div>
-              <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
-                Close the Gap
-              </h1>
-              <p className="mt-3 max-w-2xl text-lg text-zinc-300">
-                Add side hustle options and see whether your plan covers this week’s shortfall.
-              </p>
-            </div>
-=======
+
     <main
       className="min-h-screen bg-black text-[#f5e6c8]"
       style={{ fontFamily: "EB Garamond, serif" }}
@@ -624,7 +608,6 @@ export default function BillsPage() {
           <p className="font-cinzel text-xs uppercase tracking-[0.35em] text-[#c9a84c]">
             Franklin&apos;s Landing
           </p>
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
 
           <h1 className="font-cinzel text-2xl font-bold tracking-wide text-[#f5e6c8] sm:text-4xl">
             Post Office of Debts & Bills

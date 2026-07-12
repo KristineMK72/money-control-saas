@@ -366,32 +366,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-<<<<<<< HEAD
-        <section className="mt-8 rounded-xl border border-white/40 bg-white/94 shadow-xl p-6 ">
-          <h2 className="font-bold text-zinc-900">Top spending category</h2>
-          <p className="mt-2 text-2xl font-black text-zinc-950">{topCategory}</p>
-          <p className="mt-2 text-sm text-zinc-600">
-            This is where the largest share of your tracked spending is going
-            right now.
-          </p>
-        </section>
 
-        <section className="mt-8 rounded-xl border border-white/40 bg-white/94 shadow-xl p-6 text-sm text-zinc-600  space-y-1">
-          <div>Spend lines: {spend.length}</div>
-          <div>Debt minimums (monthly): {formatUSD(totalDebtMinimums)}</div>
-          <div>Obligations (spend + minimums): {formatUSD(totalObligations)}</div>
-        </section>
-      </div>
-    </main>
-  );
-}
-
-function Card({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-white/40 bg-white/94 shadow-xl p-4 ">
-      <div className="text-sm text-zinc-500">{label}</div>
-      <div className="text-2xl font-black text-zinc-950">{formatUSD(value)}</div>
-=======
           {/* ── Ben&rsquo;s Desk ── */}
           <Section title="Ben's Desk" subtitle="Guidance, XP, and today's command briefing">
             <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
@@ -567,7 +542,6 @@ function Card({ label, value }: { label: string; value: number }) {
 
         </div>
       </div>
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
     </div>
   );
 }

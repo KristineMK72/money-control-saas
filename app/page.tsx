@@ -3,11 +3,7 @@ import StripeCheckoutButton from "@/components/StripeCheckoutButton";
 
 export default function HomePage() {
   return (
-<<<<<<< HEAD
-    <main className="min-h-screen bg-zinc-950/88 -md text-white">
-      <section className="mx-auto max-w-6xl px-6 py-20">
-        <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr]">
-=======
+
     <main className="public-landing-page min-h-screen bg-transparent text-white">
       <style
         dangerouslySetInnerHTML={{
@@ -62,7 +58,6 @@ export default function HomePage() {
         </div>
 
         <div className="grid items-center gap-10 lg:min-h-[calc(100vh-210px)] lg:grid-cols-[1.02fr_0.98fr]">
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
           <div className="max-w-3xl">
             <div className="mb-4 inline-flex rounded-full border border-yellow-300/35 bg-black/45 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-yellow-200 shadow-xl backdrop-blur-xl">
               AskBen financial triage
@@ -108,48 +103,9 @@ export default function HomePage() {
             </p>
           </div>
 
-<<<<<<< HEAD
-          <div className="flex justify-center lg:justify-end">
-            <div className="w-full max-w-md rounded-3xl border border-cyan-300/20 bg-white/5 p-6 shadow-2xl shadow-cyan-500/10 ">
-              <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-                <Image
-                  src="/ben.png"
-                  alt="Ben, your AI financial guide"
-                  width={1200}
-                  height={1200}
-                  className="h-auto w-full object-cover"
-                  priority
-                />
-              </div>
 
-              <div className="mt-5">
-                <div className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200">
-                  Meet Ben
-                </div>
-
-                <p className="mt-3 text-lg font-semibold leading-7 text-white">
-                  “America trusted me with the $100 bill.
-                  <br />
-                  I can probably help you with your electric bill too.”
-                </p>
-
-                <p className="mt-3 text-sm text-white/65">
-                  Ben is your built-in money guide for bill priorities, weekly
-                  planning, and calmer next steps.
-                </p>
-
-                <a
-                  href="/chat"
-                  className="mt-5 inline-flex rounded-xl bg-white px-5 py-3 font-semibold text-black transition hover:bg-zinc-100"
-                >
-                  Ask Ben 💰
-                </a>
-              </div>
-            </div>
-=======
           <div id="product-preview" className="scroll-mt-28">
             <ProductMock />
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
           </div>
         </div>
 

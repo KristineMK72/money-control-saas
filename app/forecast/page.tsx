@@ -248,29 +248,7 @@ export default function ForecastPage() {
 
   if (loading) {
     return (
-<<<<<<< HEAD
-      <main className="min-h-screen p-6 bg-zinc-50/78 -sm">
-        <BenBubble message="Crunching the numbers…" mood="witty" />
-        <p className="mt-4 text-sm text-zinc-600">Loading your forecast…</p>
-      </main>
-    );
-  }
 
-  if (!forecast) {
-    return (
-      <main className="min-h-screen p-6 bg-zinc-50/78 -sm">
-        <BenBubble
-          message="I could not gather enough data to forecast your month. Log in and add a few entries, then come back."
-          mood="stern"
-        />
-      </main>
-    );
-  }
-
-  return (
-    <main className="min-h-screen space-y-6 bg-zinc-50/78 -sm p-6 pb-24">
-      <BenBubble message={forecast.ben.text} mood={forecast.ben.mood} />
-=======
       <div className="flex min-h-screen items-center justify-center bg-black">
         <p className="font-cinzel text-[#c9a84c]">Ben is consulting the stars…</p>
       </div>
@@ -288,7 +266,6 @@ export default function ForecastPage() {
     <main className="min-h-screen bg-black text-[#f5e6c8]" style={{ fontFamily: "EB Garamond, serif" }}>
       <section className="relative mx-auto max-w-5xl">
         <img src={OBSERVATORY_BG} alt="Observatory Forecast" className="block h-auto w-full" />
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
 
         <button
           onClick={() => router.push("/world")}

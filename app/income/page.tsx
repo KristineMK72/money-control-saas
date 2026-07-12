@@ -692,13 +692,9 @@ export default function IncomePage() {
   }
 
   return (
-<<<<<<< HEAD
-    <main className="min-h-screen bg-zinc-50/78 -sm text-zinc-900">
-      <div className="mx-auto max-w-4xl px-6 py-10">
-=======
+
     <main className="bank-page">
       <BankHero />
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
 
       <section className="desk-wrap">
         {message && <div className="notice">{message}</div>}

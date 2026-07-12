@@ -56,11 +56,8 @@ ${name}`;
     await navigator.clipboard.writeText(letter);
   }
   return (
-<<<<<<< HEAD
-    <main className="min-h-screen bg-zinc-950/82 -md text-white">
-=======
+
     <main className="min-h-screen bg-zinc-950/80 backdrop-blur-md text-white">
->>>>>>> ed0e3caecb0f44437c318e467ad26eae9d5ac2c6
       <div className="mx-auto max-w-4xl px-6 py-10">
         <div className="rounded-2xl border border-white/40 bg-zinc-950/70 p-8 shadow-2xl backdrop-blur-xl">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
