@@ -35,14 +35,14 @@ export default function CameraController({
       const targetPos = new THREE.Vector3(...MAP_POS);
       const lookAt = new THREE.Vector3(...MAP_LOOK_AT);
 
-      cam.position.lerp(targetPos, 0.055);
+      cam.position.lerp(targetPos, 0.06);
       cam.lookAt(lookAt);
       return;
     }
 
-    if (cam.position.y > EYE_HEIGHT + 4) {
+    // Transition from map to street
+    if (cam.position.y > EYE_HEIGHT + 3) {
       const target = new THREE.Vector3(...FIRST_PERSON_POS);
-
       cam.position.lerp(target, 0.055);
       cam.lookAt(0, 1.4, 0);
       return;
@@ -57,18 +57,8 @@ export default function CameraController({
 
     if (f !== 0 || r !== 0) {
       const yaw = cam.rotation.y;
-
-      const fwd = new THREE.Vector3(
-        -Math.sin(yaw),
-        0,
-        -Math.cos(yaw)
-      );
-
-      const rgt = new THREE.Vector3(
-        Math.cos(yaw),
-        0,
-        -Math.sin(yaw)
-      );
+      const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+      const rgt = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
 
       const dir = new THREE.Vector3()
         .addScaledVector(fwd, f)
