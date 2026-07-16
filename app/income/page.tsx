@@ -707,7 +707,9 @@ export default function IncomePage() {
         </div>
 
         <RoomCard>
-          <h2>Ben&apos;s Bank Briefing</h2>
+          <h2 className="font-cinzel text-xl font-bold text-[#c9a84c]">
+  Ben&apos;s Bank Briefing
+</h2>
           <p className="card-sub">
             Need is based on outgoing money. Planned income is based on saved income sources. Earned income is what you actually recorded.
           </p>
@@ -1078,8 +1080,8 @@ export default function IncomePage() {
       radial-gradient(circle at top, rgba(245, 196, 88, 0.12), transparent 32rem),
       linear-gradient(180deg, #050302, #140a04 45%, #050302);
     color: #fff7ed;
-    font-family: var(--font-cormorant), Georgia, serif;
-  }
+  font-family: "EB Garamond", Georgia, serif;
+}
 
   .loading-room {
     display: grid;
