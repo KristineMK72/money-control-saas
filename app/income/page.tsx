@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import BankHero from "@/components/income/BankHero";
-import RoomCard from "@/components/income/RoomCard";
-import MiniMetric from "@/components/income/MiniMetric";
-import DrawerButton from "@/components/income/DrawerButton";
+import { useRouter } from "next/navigation";
 import BenBubble from "@/components/BenBubble";
 import PaperScrollScanner from "@/components/PaperScrollScanner";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -25,6 +22,8 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+
+const BANK_BG = "/A6548019-9D0C-4955-B334-4AB5F77E4345.png";
 
 type IncomeEntry = {
   id: string;
@@ -147,12 +146,14 @@ function getSourceHourlyRate(source: IncomeSource) {
 }
 
 export default function IncomePage() {
+  const router = useRouter();
   const [supabase] = useState(() => createSupabaseBrowserClient());
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [showBenNotice, setShowBenNotice] = useState(false);
 
   const [entries, setEntries] = useState<IncomeEntry[]>([]);
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
@@ -255,6 +256,11 @@ export default function IncomePage() {
     setLoading(false);
   }
 
+  function showMsg(text: string) {
+    setMessage(text);
+    setTimeout(() => setMessage(""), 3500);
+  }
+
   function resetIncomeSourceForm() {
     setSourceName("");
     setSourceType("hourly");
@@ -267,17 +273,15 @@ export default function IncomePage() {
   }
 
   async function handleAddIncomeSource() {
-    setMessage("");
-
     if (!userId) {
       playError();
-      setMessage("Not signed in.");
+      showMsg("Not signed in.");
       return;
     }
 
     if (!sourceName.trim()) {
       playError();
-      setMessage("Enter an income source name.");
+      showMsg("Enter an income source name.");
       return;
     }
 
@@ -289,19 +293,19 @@ export default function IncomePage() {
 
     if (sourceType === "salary" && (annualSalary <= 0 || hoursPerWeek <= 0)) {
       playError();
-      setMessage("Enter annual salary and average hours per week.");
+      showMsg("Enter annual salary and average hours per week.");
       return;
     }
 
     if (sourceType === "weekly" && weeklyAmount <= 0) {
       playError();
-      setMessage("Enter the weekly amount.");
+      showMsg("Enter the weekly amount.");
       return;
     }
 
     if (sourceType === "monthly" && monthlyAmount <= 0) {
       playError();
-      setMessage("Enter the monthly amount.");
+      showMsg("Enter the monthly amount.");
       return;
     }
 
@@ -312,7 +316,7 @@ export default function IncomePage() {
     ) {
       if (hourlyRate <= 0 || hoursPerWeek <= 0) {
         playError();
-        setMessage("Enter rate and average hours per week.");
+        showMsg("Enter rate and average hours per week.");
         return;
       }
     }
@@ -336,13 +340,13 @@ export default function IncomePage() {
 
     if (error) {
       playError();
-      setMessage(error.message);
+      showMsg(error.message);
       return;
     }
 
     playCoins();
     resetIncomeSourceForm();
-    setMessage("Income source added to Franklin’s Employment Ledger.");
+    showMsg("Income source added to Franklin's Employment Ledger.");
     await loadData();
   }
 
@@ -360,22 +364,22 @@ export default function IncomePage() {
 
     if (error) {
       playError();
-      setMessage(error.message);
+      showMsg(error.message);
       return;
     }
 
     setIncomeSources((prev) => prev.filter((item) => item.id !== id));
-    setMessage("Income source removed.");
+    showMsg("Income source removed.");
   }
 
   async function handleScanIncome() {
     if (!imageFile) {
-      setMessage("Choose an income screenshot or deposit proof first.");
+      showMsg("Choose an income screenshot or deposit proof first.");
       return;
     }
 
     setScanning(true);
-    setMessage("Ben is reading every income line…");
+    showMsg("Ben is reading every income line…");
 
     try {
       const { text } = await ocrImageFile(imageFile);
@@ -394,21 +398,17 @@ export default function IncomePage() {
         .filter((row) => row.amount > 0);
 
       if (incomeRows.length === 0) {
-        setMessage(
-          "No clear income lines found. Open Record Income and enter it manually."
-        );
+        showMsg("No clear income lines found. Open Record Income and enter it manually.");
         setDrawer("record");
         return;
       }
 
       setScanRows(incomeRows);
       setDrawer("scan");
-      setMessage(
-        `Ben found ${incomeRows.length} income lines. Review before importing.`
-      );
+      showMsg(`Ben found ${incomeRows.length} income lines. Review before importing.`);
     } catch (error) {
       console.error(error);
-      setMessage("Scanner had trouble reading that image. Manual entry still works.");
+      showMsg("Scanner had trouble reading that image. Manual entry still works.");
       setDrawer("record");
     } finally {
       setScanning(false);
@@ -417,14 +417,14 @@ export default function IncomePage() {
 
   async function importScannedIncome() {
     if (!userId) {
-      setMessage("Not signed in.");
+      showMsg("Not signed in.");
       return;
     }
 
     const selectedRows = scanRows.filter((row) => row.selected);
 
     if (selectedRows.length === 0) {
-      setMessage("Select at least one income line.");
+      showMsg("Select at least one income line.");
       return;
     }
 
@@ -444,37 +444,35 @@ export default function IncomePage() {
 
     if (error) {
       playError();
-      setMessage(error.message);
+      showMsg(error.message);
       return;
     }
 
     playCoins();
     setScanRows([]);
     setImageFile(null);
-    setMessage(`${selectedRows.length} income lines imported.`);
+    showMsg(`${selectedRows.length} income lines imported.`);
     await loadData();
   }
 
   async function handleAddIncome() {
-    setMessage("");
-
     const amt = clampMoney(amount);
 
     if (amt <= 0) {
       playError();
-      setMessage("Enter a valid income amount.");
+      showMsg("Enter a valid income amount.");
       return;
     }
 
     if (!source.trim()) {
       playError();
-      setMessage("Enter who paid you or the income source.");
+      showMsg("Enter who paid you or the income source.");
       return;
     }
 
     if (!userId) {
       playError();
-      setMessage("Not signed in.");
+      showMsg("Not signed in.");
       return;
     }
 
@@ -499,7 +497,7 @@ export default function IncomePage() {
 
     if (error) {
       playError();
-      setMessage(error.message);
+      showMsg(error.message);
       return;
     }
 
@@ -509,7 +507,7 @@ export default function IncomePage() {
     setHoursWorked("");
     setImageFile(null);
     setDrawer(null);
-    setMessage("Income recorded in Franklin’s ledger.");
+    showMsg("Income recorded in Franklin's ledger.");
     await loadData();
   }
 
@@ -685,682 +683,693 @@ export default function IncomePage() {
 
   if (loading) {
     return (
-      <main className="bank-page loading-room">
-        <p>Opening Franklin&apos;s Bank…</p>
-      </main>
+      <div className="flex min-h-screen items-center justify-center bg-black">
+        <p className="font-cinzel text-[#c9a84c]">
+          Opening Franklin&apos;s Bank…
+        </p>
+      </div>
     );
   }
 
   return (
-
-    <main className="bank-page">
-      <BankHero />
-
-      <section className="desk-wrap">
-        {message && <div className="notice">{message}</div>}
-
-        <div className="stats-grid">
-          <MiniMetric icon="🪙" label="Earned This Month" value={money(thisMonthTotal)} good />
-          <MiniMetric icon="🎯" label="Still Need" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
-          <MiniMetric icon="🏦" label="Monthly Need" value={money(monthlyNeed)} danger={monthlyNeed > thisMonthTotal} />
-          <MiniMetric icon="📈" label="Planned Income" value={money(projectedMonthly)} good={projectedMonthly >= monthlyNeed && monthlyNeed > 0} />
+    <main
+      className="min-h-screen bg-black text-[#f5e6c8]"
+      style={{ fontFamily: "EB Garamond, serif" }}
+    >
+      {/* ── Hero ── */}
+      <section className="relative mx-auto max-w-5xl">
+        <div
+          className="px-4 py-3 text-center"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(0,0,0,.98), rgba(15,8,4,.92))",
+            borderBottom: "1px solid rgba(201,168,76,.25)",
+          }}
+        >
+          <p className="font-cinzel text-xs uppercase tracking-[0.35em] text-[#c9a84c]">
+            Franklin&apos;s Landing
+          </p>
+          <h1 className="font-cinzel text-2xl font-bold tracking-wide text-[#f5e6c8] sm:text-4xl">
+            Franklin&apos;s Bank of Income
+          </h1>
         </div>
 
-        <RoomCard>
-          <h2 className="font-cinzel text-xl font-bold text-[#c9a84c]">
-  Ben&apos;s Bank Briefing
-</h2>
-          <p className="card-sub">
-            Need is based on outgoing money. Planned income is based on saved income sources. Earned income is what you actually recorded.
-          </p>
-          <BenBubble message={benInsight.text} mood={benInsight.mood} />
-        </RoomCard>
+        <img
+          src={BANK_BG}
+          alt="Franklin's Bank of Income"
+          className="block h-auto w-full"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = "none";
+          }}
+        />
 
-        <RoomCard>
-          <h2>Monthly Need</h2>
-          <p className="card-sub">
-            This is what the household needs based on bills, debt minimums, and live/historical spending.
-          </p>
+        <button
+          onClick={() => router.push("/world")}
+          className="absolute left-4 top-20 rounded-full px-4 py-2 text-sm sm:top-24"
+          style={{
+            background: "rgba(0,0,0,.72)",
+            border: "1px solid rgba(201,168,76,.45)",
+            color: "#f5e6c8",
+          }}
+        >
+          ← Back to Town
+        </button>
 
-          <div className="plan-grid">
-            <MiniMetric icon="📋" label="Bills" value={money(monthlyBillsTotal)} />
-            <MiniMetric icon="💳" label="Debt Minimums" value={money(monthlyDebtMinimums)} />
-            <MiniMetric icon="🛒" label="Spending Need" value={money(spendingNeed)} />
-            <MiniMetric icon="🏦" label="Monthly Need" value={money(monthlyNeed)} />
-          </div>
-        </RoomCard>
+        <button
+          onClick={() => setShowBenNotice(true)}
+          className="absolute right-4 top-20 rounded-full px-4 py-2 text-sm sm:top-24"
+          style={{
+            background: "rgba(0,0,0,.72)",
+            border: "1px solid rgba(201,168,76,.45)",
+            color: "#f5e6c8",
+          }}
+        >
+          Ben&apos;s Notice
+        </button>
+      </section>
 
-        <RoomCard>
-          <h2>Can My Income Plan Cover It?</h2>
-          <p className="card-sub">
-            Income sources are planning numbers. They show whether your expected work and average income can cover the outgoing need.
-          </p>
-
-          <div className="plan-grid">
-            <MiniMetric icon="📈" label="Projected Weekly" value={money(projectedWeekly)} />
-            <MiniMetric icon="💼" label="Projected Monthly" value={money(projectedMonthly)} good={projectedMonthly >= monthlyNeed && monthlyNeed > 0} />
-            <MiniMetric icon="🚨" label="Plan Gap" value={money(projectedGap)} danger={projectedGap > 0} />
-            <MiniMetric icon="🌿" label="Plan Surplus" value={money(projectedSurplus)} good={projectedSurplus > 0} />
-          </div>
-
-          <div className="gap-box">
-            {projectedGap > 0 ? (
-              <>
-                <p className="gap-eyebrow">Income Plan Short</p>
-                <p className="gap-money danger">{money(projectedGap)}</p>
-                <p className="gap-note">Ben says: add another source, raise hours, or lower outgoing money.</p>
-              </>
-            ) : (
-              <>
-                <p className="gap-eyebrow">Income Plan Covers Need</p>
-                <p className="gap-money good">{money(projectedSurplus)}</p>
-                <p className="gap-note">Your saved income sources are projected to cover the monthly need.</p>
-              </>
-            )}
-          </div>
-        </RoomCard>
-
-        <RoomCard>
-          <h2>How Much Per Hour?</h2>
-          <p className="card-sub">
-            Required hourly rate based on weekly work hours. This does not go down when income is recorded.
-          </p>
-
-          <div className="hourly-grid">
-            {hourlyNeeded.map((item) => (
-              <div
-                key={item.hours}
-                className={`hour-card ${
-                  item.hourly <= 20 ? "good" : item.hourly <= 35 ? "warn" : "danger"
-                }`}
-              >
-                <p>{item.hours} hrs/week</p>
-                <strong>{money(item.hourly)}/hr</strong>
-              </div>
-            ))}
-          </div>
-        </RoomCard>
-
-        <div className="drawer-buttons">
-          <DrawerButton active={drawer === "record"} onClick={() => setDrawer(drawer === "record" ? null : "record")}>
-            + Record Income
-          </DrawerButton>
-
-          <DrawerButton active={drawer === "sources"} onClick={() => setDrawer(drawer === "sources" ? null : "sources")}>
-            💼 Income Sources
-          </DrawerButton>
-
-          <DrawerButton active={drawer === "scan"} onClick={() => setDrawer(drawer === "scan" ? null : "scan")}>
-            📸 Scan Deposit
-          </DrawerButton>
-
-          <DrawerButton danger active={drawer === "hourly"} onClick={() => setDrawer(drawer === "hourly" ? null : "hourly")}>
-            🚨 Need Money Fast
-          </DrawerButton>
-        </div>
-
-        {drawer === "record" && (
-          <RoomCard className="drawer-panel">
-            <h2>Record Income</h2>
-            <p className="card-sub">This is actual money received this month.</p>
-
-            <div className="form-grid">
-              <label>
-                <span>Amount</span>
-                <input type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
-              </label>
-
-              <label>
-                <span>Paid By / Source</span>
-                <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="DoorDash, employer, client..." />
-              </label>
-
-              <label>
-                <span>Category</span>
-                <select value={category} onChange={(e) => setCategory(e.target.value)}>
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat.value} value={cat.value}>{cat.icon} {cat.label}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                <span>Hours Worked</span>
-                <input type="number" inputMode="decimal" value={hoursWorked} onChange={(e) => setHoursWorked(e.target.value)} placeholder="Optional" />
-              </label>
-
-              <label>
-                <span>Date</span>
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-              </label>
-
-              <button onClick={handleAddIncome} disabled={saving} className="save-btn">
-                {saving ? "Recording…" : "💰 Save Income"}
-              </button>
-            </div>
-          </RoomCard>
-        )}
-
-        {drawer === "sources" && (
-          <RoomCard className="drawer-panel">
-            <h2>Income Sources</h2>
-            <p className="card-sub">
-              These are planning sources. Use hourly, weekly, monthly, or salary.
+      {/* ── Main content ── */}
+      <section className="relative z-10 mx-auto -mt-2 max-w-5xl px-4 pb-24 sm:-mt-8">
+        <div
+          className="rounded-3xl p-4 sm:p-5"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(8,5,3,.94), rgba(0,0,0,.99))",
+            border: "1px solid rgba(201,168,76,.35)",
+            boxShadow: "0 -30px 80px rgba(0,0,0,.9)",
+          }}
+        >
+          {/* ── Notice banner ── */}
+          {message && (
+            <p className="mb-4 rounded-xl bg-[#c9a84c]/20 px-4 py-3 text-center text-[#f5e6c8]">
+              {message}
             </p>
+          )}
 
-            <div className="form-grid">
-              <label>
-                <span>Source Name</span>
-                <input value={sourceName} onChange={(e) => setSourceName(e.target.value)} placeholder="DoorDash, WDI, Salon..." />
-              </label>
+          {/* ── Top stats ── */}
+          <div
+            className="mb-5 grid grid-cols-2 overflow-hidden rounded-2xl sm:grid-cols-4"
+            style={{
+              border: "1px solid rgba(201,168,76,.4)",
+              background: "rgba(0,0,0,.58)",
+            }}
+          >
+            <Metric icon="🪙" label="Earned This Month" value={money(thisMonthTotal)} color="#4ade80" />
+            <Metric icon="🎯" label="Still Need" value={money(remainingIncomeNeeded)} color={remainingIncomeNeeded > 0 ? "#ef4444" : "#c9a84c"} />
+            <Metric icon="🏦" label="Monthly Need" value={money(monthlyNeed)} color={monthlyNeed > thisMonthTotal ? "#ef4444" : "#c9a84c"} />
+            <Metric icon="📈" label="Planned Income" value={money(projectedMonthly)} color={projectedMonthly >= monthlyNeed && monthlyNeed > 0 ? "#4ade80" : "#c9a84c"} />
+          </div>
 
-              <label>
-                <span>Income Type</span>
-                <select value={sourceType} onChange={(e) => setSourceType(e.target.value as IncomeSource["income_type"])}>
-                  <option value="hourly">Hourly / Gig Hourly</option>
-                  <option value="weekly">Weekly Fixed</option>
-                  <option value="monthly">Monthly Fixed</option>
-                  <option value="salary">Salary</option>
-                  <option value="project">Project / Average Rate</option>
-                  <option value="commission">Commission / Average Rate</option>
-                  <option value="gig">Gig / Average Rate</option>
-                </select>
-              </label>
+          {/* ── Ben's briefing ── */}
+          <Card title="Ben's Bank Briefing" sub="Need is based on outgoing money. Planned income is based on saved income sources. Earned income is what you actually recorded.">
+            <BenBubble message={benInsight.text} mood={benInsight.mood} />
+          </Card>
 
-              {sourceType === "salary" ? (
+          {/* ── Monthly need breakdown ── */}
+          <Card title="Monthly Need" sub="This is what the household needs based on bills, debt minimums, and live/historical spending.">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatTile icon="📋" label="Bills" value={money(monthlyBillsTotal)} />
+              <StatTile icon="💳" label="Debt Minimums" value={money(monthlyDebtMinimums)} />
+              <StatTile icon="🛒" label="Spending Need" value={money(spendingNeed)} />
+              <StatTile icon="🏦" label="Monthly Need" value={money(monthlyNeed)} />
+            </div>
+          </Card>
+
+          {/* ── Income plan ── */}
+          <Card title="Can My Income Plan Cover It?" sub="Income sources are planning numbers. They show whether your expected work and average income can cover the outgoing need.">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatTile icon="📈" label="Projected Weekly" value={money(projectedWeekly)} />
+              <StatTile icon="💼" label="Projected Monthly" value={money(projectedMonthly)} color={projectedMonthly >= monthlyNeed && monthlyNeed > 0 ? "#4ade80" : undefined} />
+              <StatTile icon="🚨" label="Plan Gap" value={money(projectedGap)} color={projectedGap > 0 ? "#ef4444" : undefined} />
+              <StatTile icon="🌿" label="Plan Surplus" value={money(projectedSurplus)} color={projectedSurplus > 0 ? "#4ade80" : undefined} />
+            </div>
+
+            <div
+              className="mt-4 rounded-2xl p-5 text-center"
+              style={{
+                background: "rgba(0,0,0,.48)",
+                border: "1px solid rgba(201,168,76,.25)",
+              }}
+            >
+              {projectedGap > 0 ? (
                 <>
-                  <label>
-                    <span>Annual Salary</span>
-                    <input type="number" inputMode="decimal" value={sourceAnnualSalary} onChange={(e) => setSourceAnnualSalary(e.target.value)} placeholder="50000" />
-                  </label>
-                  <label>
-                    <span>Average Hours / Week</span>
-                    <input type="number" inputMode="decimal" value={sourceHoursPerWeek} onChange={(e) => setSourceHoursPerWeek(e.target.value)} placeholder="40" />
-                  </label>
+                  <p className="text-xs uppercase tracking-[0.18em] font-bold text-[#d6c09a]">Income Plan Short</p>
+                  <p className="mt-2 text-5xl font-bold text-[#ef4444]">{money(projectedGap)}</p>
+                  <p className="mt-3 text-[#e8d5b7]">Ben says: add another source, raise hours, or lower outgoing money.</p>
                 </>
-              ) : sourceType === "weekly" ? (
-                <label>
-                  <span>Weekly Amount</span>
-                  <input type="number" inputMode="decimal" value={sourceWeeklyAmount} onChange={(e) => setSourceWeeklyAmount(e.target.value)} placeholder="700" />
-                </label>
-              ) : sourceType === "monthly" ? (
-                <label>
-                  <span>Monthly Amount</span>
-                  <input type="number" inputMode="decimal" value={sourceMonthlyAmount} onChange={(e) => setSourceMonthlyAmount(e.target.value)} placeholder="3000" />
-                </label>
               ) : (
                 <>
-                  <label>
-                    <span>Hourly / Average Rate</span>
-                    <input type="number" inputMode="decimal" value={sourceHourlyRateInput} onChange={(e) => setSourceHourlyRateInput(e.target.value)} placeholder="18" />
-                  </label>
-                  <label>
-                    <span>Average Hours / Week</span>
-                    <input type="number" inputMode="decimal" value={sourceHoursPerWeek} onChange={(e) => setSourceHoursPerWeek(e.target.value)} placeholder="20" />
-                  </label>
+                  <p className="text-xs uppercase tracking-[0.18em] font-bold text-[#d6c09a]">Income Plan Covers Need</p>
+                  <p className="mt-2 text-5xl font-bold text-[#4ade80]">{money(projectedSurplus)}</p>
+                  <p className="mt-3 text-[#e8d5b7]">Your saved income sources are projected to cover the monthly need.</p>
                 </>
               )}
-
-              <label>
-                <span>Note</span>
-                <input value={sourceNote} onChange={(e) => setSourceNote(e.target.value)} placeholder="Optional" />
-              </label>
-
-              <button onClick={handleAddIncomeSource} disabled={saving} className="save-btn">
-                {saving ? "Saving…" : "Save Income Source"}
-              </button>
             </div>
+          </Card>
 
-            <div className="source-list">
-              {incomeSources.length === 0 ? (
-                <p className="empty">No income sources added yet.</p>
-              ) : (
-                incomeSources.map((item) => (
-                  <div key={item.id} className="source-row">
-                    <div>
-                      <strong>{item.name}</strong>
-                      <p>
-                        {item.income_type} · {money(projectedWeeklyIncome(item))}/week · {money(projectedMonthlyIncome(item))}/month
-                      </p>
-                    </div>
-
-                    <button onClick={() => void handleDeleteIncomeSource(item.id)}>
-                      Delete
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </RoomCard>
-        )}
-
-        {drawer === "scan" && (
-          <RoomCard className="drawer-panel">
-            <h2>Scan Income Proof</h2>
-            <p className="card-sub">Upload a DoorDash screenshot, paycheck, deposit, or income proof.</p>
-
-            <PaperScrollScanner
-              title="Scan Income Proof"
-              description="Ben will fill what he can. Review it before saving."
-              file={imageFile}
-              busy={scanning}
-              onFileChange={setImageFile}
-              onScan={() => void handleScanIncome()}
-            />
-
-            {scanRows.length > 0 && (
-              <div className="recent-list">
-                {scanRows.map((row, index) => (
-                  <label key={index} className="recent-row">
-                    <span>
-                      <input
-                        type="checkbox"
-                        checked={row.selected}
-                        onChange={(e) => {
-                          setScanRows((prev) =>
-                            prev.map((item, i) =>
-                              i === index ? { ...item, selected: e.target.checked } : item
-                            )
-                          );
-                        }}
-                      />{" "}
-                      {row.source_name}
-                    </span>
-                    <strong className="amount">{money(row.amount)}</strong>
-                  </label>
-                ))}
-
-                <button onClick={importScannedIncome} disabled={saving} className="save-btn">
-                  {saving ? "Importing…" : "Import Selected Income"}
-                </button>
-              </div>
-            )}
-          </RoomCard>
-        )}
-
-        {drawer === "hourly" && (
-          <RoomCard className="drawer-panel">
-            <h2>Need Money Fast</h2>
-            <p className="card-sub">This shows what is still left to earn this month.</p>
-
-            <div className="plan-grid">
-              <MiniMetric icon="☀️" label="Today Goal" value={money(todayGoal)} />
-              <MiniMetric icon="🗓️" label="Weekly Goal" value={money(weeklyGoal)} />
-              <MiniMetric icon="📈" label="Projected Weekly" value={money(projectedWeekly)} />
-              <MiniMetric icon="🎯" label="Still Need" value={money(remainingIncomeNeeded)} danger={remainingIncomeNeeded > 0} />
-            </div>
-
-            <div className="hourly-grid mini-hourly">
-              {catchUpHourlyNeeded.map((item) => (
-                <div key={item.hours} className="hour-card">
-                  <p>{item.hours} hrs/week</p>
-                  <strong>{money(item.hourly)}/hr</strong>
+          {/* ── Hourly rate calculator ── */}
+          <Card title="How Much Per Hour?" sub="Required hourly rate based on weekly work hours. This does not go down when income is recorded.">
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+              {hourlyNeeded.map((item) => (
+                <div
+                  key={item.hours}
+                  className="rounded-2xl p-4 text-center"
+                  style={{
+                    background: "rgba(0,0,0,.55)",
+                    border: `1px solid ${item.hourly <= 20 ? "rgba(74,222,128,.4)" : item.hourly <= 35 ? "rgba(250,204,21,.4)" : "rgba(248,113,113,.4)"}`,
+                  }}
+                >
+                  <p className="text-xs uppercase tracking-wider text-[#d6c09a]">{item.hours} hrs/wk</p>
+                  <p
+                    className="mt-2 text-lg font-bold"
+                    style={{
+                      color: item.hourly <= 20 ? "#4ade80" : item.hourly <= 35 ? "#facc15" : "#f87171",
+                    }}
+                  >
+                    {money(item.hourly)}/hr
+                  </p>
                 </div>
               ))}
             </div>
-          </RoomCard>
-        )}
+          </Card>
 
-        <RoomCard>
-          <div className="chart-grid">
-            <div>
-              <h2>Income This Month</h2>
-              <p className="big-money">{money(thisMonthTotal)}</p>
+          {/* ── Drawer action buttons ── */}
+          <div className="my-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(
+              [
+                { key: "record", label: "+ Record Income", danger: false },
+                { key: "sources", label: "💼 Income Sources", danger: false },
+                { key: "scan", label: "📸 Scan Deposit", danger: false },
+                { key: "hourly", label: "🚨 Need Money Fast", danger: true },
+              ] as const
+            ).map(({ key, label, danger }) => (
+              <button
+                key={key}
+                onClick={() => setDrawer(drawer === key ? null : key)}
+                className="rounded-xl py-4 font-cinzel text-base"
+                style={{
+                  background:
+                    drawer === key
+                      ? danger
+                        ? "rgba(185,28,28,.55)"
+                        : "linear-gradient(180deg, rgba(201,168,76,.42), rgba(70,40,10,.45))"
+                      : danger
+                      ? "rgba(127,29,29,.35)"
+                      : "rgba(0,0,0,.45)",
+                  border:
+                    drawer === key
+                      ? danger
+                        ? "1px solid rgba(248,113,113,.85)"
+                        : "1px solid rgba(251,191,36,.85)"
+                      : danger
+                      ? "1px solid rgba(248,113,113,.45)"
+                      : "1px solid rgba(201,168,76,.35)",
+                  color: drawer === key ? "#f5e6c8" : danger ? "#fca5a5" : "#c9a84c",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-              <div className="chart-box">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                    <XAxis dataKey="month" tick={{ fill: "#d6c09a", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: "#d6c09a", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "#130c06",
-                        border: "1px solid #6b4423",
-                        borderRadius: 8,
-                        color: "#e8d5b7",
+          {/* ── Record Income drawer ── */}
+          {drawer === "record" && (
+            <DrawerPanel title="Record Income" sub="This is actual money received this month.">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input label="Amount" value={amount} onChange={setAmount} type="number" />
+                <Input label="Paid By / Source" value={source} onChange={setSource} placeholder="DoorDash, employer, client..." />
+                <SelectInput
+                  label="Category"
+                  value={category}
+                  onChange={setCategory}
+                  options={CATEGORIES.map((cat) => ({ value: cat.value, label: `${cat.icon} ${cat.label}` }))}
+                />
+                <Input label="Hours Worked" value={hoursWorked} onChange={setHoursWorked} type="number" placeholder="Optional" />
+                <Input label="Date" value={date} onChange={setDate} type="date" />
+                <button
+                  onClick={() => void handleAddIncome()}
+                  disabled={saving}
+                  className="rounded-xl bg-green-800 py-3 font-bold disabled:opacity-50 sm:col-span-2"
+                >
+                  {saving ? "Recording…" : "💰 Save Income"}
+                </button>
+              </div>
+            </DrawerPanel>
+          )}
+
+          {/* ── Income Sources drawer ── */}
+          {drawer === "sources" && (
+            <DrawerPanel title="Income Sources" sub="These are planning sources. Use hourly, weekly, monthly, or salary.">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input label="Source Name" value={sourceName} onChange={setSourceName} placeholder="DoorDash, WDI, Salon..." />
+                <SelectInput
+                  label="Income Type"
+                  value={sourceType}
+                  onChange={(v) => setSourceType(v as IncomeSource["income_type"])}
+                  options={[
+                    { value: "hourly", label: "Hourly / Gig Hourly" },
+                    { value: "weekly", label: "Weekly Fixed" },
+                    { value: "monthly", label: "Monthly Fixed" },
+                    { value: "salary", label: "Salary" },
+                    { value: "project", label: "Project / Average Rate" },
+                    { value: "commission", label: "Commission / Average Rate" },
+                    { value: "gig", label: "Gig / Average Rate" },
+                  ]}
+                />
+
+                {sourceType === "salary" ? (
+                  <>
+                    <Input label="Annual Salary" value={sourceAnnualSalary} onChange={setSourceAnnualSalary} type="number" placeholder="50000" />
+                    <Input label="Average Hours / Week" value={sourceHoursPerWeek} onChange={setSourceHoursPerWeek} type="number" placeholder="40" />
+                  </>
+                ) : sourceType === "weekly" ? (
+                  <Input label="Weekly Amount" value={sourceWeeklyAmount} onChange={setSourceWeeklyAmount} type="number" placeholder="700" />
+                ) : sourceType === "monthly" ? (
+                  <Input label="Monthly Amount" value={sourceMonthlyAmount} onChange={setSourceMonthlyAmount} type="number" placeholder="3000" />
+                ) : (
+                  <>
+                    <Input label="Hourly / Average Rate" value={sourceHourlyRateInput} onChange={setSourceHourlyRateInput} type="number" placeholder="18" />
+                    <Input label="Average Hours / Week" value={sourceHoursPerWeek} onChange={setSourceHoursPerWeek} type="number" placeholder="20" />
+                  </>
+                )}
+
+                <Input label="Note" value={sourceNote} onChange={setSourceNote} placeholder="Optional" />
+
+                <button
+                  onClick={() => void handleAddIncomeSource()}
+                  disabled={saving}
+                  className="rounded-xl bg-green-800 py-3 font-bold disabled:opacity-50 sm:col-span-2"
+                >
+                  {saving ? "Saving…" : "Save Income Source"}
+                </button>
+              </div>
+
+              {/* Existing sources list */}
+              <div className="mt-4 grid gap-2">
+                {incomeSources.length === 0 ? (
+                  <p className="text-center text-[#9a7d5a]">No income sources added yet.</p>
+                ) : (
+                  incomeSources.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-3 rounded-xl px-4 py-3"
+                      style={{
+                        background: "rgba(255,255,255,.04)",
+                        border: "1px solid rgba(201,168,76,.18)",
                       }}
-                      formatter={(value: number) => [money(value), "Income"]}
-                    />
-                    <Bar dataKey="total" radius={[4, 4, 0, 0]}>
-                      {chartData.map((entry, index) => (
-                        <Cell key={index} fill={entry.current ? "#c9a84c" : "#4a5568"} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                    >
+                      <div>
+                        <p className="font-bold">{item.name}</p>
+                        <p className="text-sm text-[#9a7d5a]">
+                          {item.income_type} · {money(projectedWeeklyIncome(item))}/week · {money(projectedMonthlyIncome(item))}/month
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => void handleDeleteIncomeSource(item.id)}
+                        className="rounded-xl px-3 py-2 text-sm font-bold"
+                        style={{
+                          background: "rgba(127,29,29,.35)",
+                          border: "1px solid rgba(248,113,113,.45)",
+                          color: "#fecaca",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </DrawerPanel>
+          )}
+
+          {/* ── Scan drawer ── */}
+          {drawer === "scan" && (
+            <DrawerPanel title="Scan Income Proof" sub="Upload a DoorDash screenshot, paycheck, deposit, or income proof.">
+              <PaperScrollScanner
+                title="Scan Income Proof"
+                description="Ben will fill what he can. Review it before saving."
+                file={imageFile}
+                busy={scanning}
+                onFileChange={setImageFile}
+                onScan={() => void handleScanIncome()}
+              />
+
+              {scanRows.length > 0 && (
+                <div className="mt-4 grid gap-2">
+                  {scanRows.map((row, index) => (
+                    <label
+                      key={index}
+                      className="flex items-center justify-between rounded-xl px-4 py-3"
+                      style={{
+                        background: "rgba(255,255,255,.04)",
+                        border: "1px solid rgba(201,168,76,.18)",
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={row.selected}
+                          onChange={(e) =>
+                            setScanRows((prev) =>
+                              prev.map((item, i) =>
+                                i === index ? { ...item, selected: e.target.checked } : item
+                              )
+                            )
+                          }
+                        />
+                        {row.source_name}
+                      </span>
+                      <strong className="text-[#4ade80]">{money(row.amount)}</strong>
+                    </label>
+                  ))}
+
+                  <button
+                    onClick={() => void importScannedIncome()}
+                    disabled={saving}
+                    className="mt-2 rounded-xl bg-green-800 py-3 font-bold disabled:opacity-50"
+                  >
+                    {saving ? "Importing…" : "Import Selected Income"}
+                  </button>
+                </div>
+              )}
+            </DrawerPanel>
+          )}
+
+          {/* ── Need Money Fast drawer ── */}
+          {drawer === "hourly" && (
+            <DrawerPanel title="Need Money Fast" sub="This shows what is still left to earn this month.">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatTile icon="☀️" label="Today Goal" value={money(todayGoal)} />
+                <StatTile icon="🗓️" label="Weekly Goal" value={money(weeklyGoal)} />
+                <StatTile icon="📈" label="Projected Weekly" value={money(projectedWeekly)} />
+                <StatTile icon="🎯" label="Still Need" value={money(remainingIncomeNeeded)} color={remainingIncomeNeeded > 0 ? "#ef4444" : undefined} />
+              </div>
+
+              <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">
+                {catchUpHourlyNeeded.map((item) => (
+                  <div
+                    key={item.hours}
+                    className="rounded-2xl p-4 text-center"
+                    style={{
+                      background: "rgba(0,0,0,.55)",
+                      border: "1px solid rgba(201,168,76,.25)",
+                    }}
+                  >
+                    <p className="text-xs uppercase tracking-wider text-[#d6c09a]">{item.hours} hrs/wk</p>
+                    <p className="mt-2 text-lg font-bold text-[#c9a84c]">{money(item.hourly)}/hr</p>
+                  </div>
+                ))}
+              </div>
+            </DrawerPanel>
+          )}
+
+          {/* ── Income chart ── */}
+          <Card title="Income This Month">
+            <p className="text-5xl font-bold text-[#4ade80]">{money(thisMonthTotal)}</p>
+
+            <div className="mt-4 h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                  <XAxis dataKey="month" tick={{ fill: "#d6c09a", fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: "#d6c09a", fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      background: "#130c06",
+                      border: "1px solid #6b4423",
+                      borderRadius: 8,
+                      color: "#e8d5b7",
+                    }}
+                    formatter={(value: number) => [money(value), "Income"]}
+                  />
+                  <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                    {chartData.map((entry, index) => (
+                      <Cell key={index} fill={entry.current ? "#c9a84c" : "#4a5568"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div
+              className="mt-4 grid grid-cols-2 overflow-hidden rounded-2xl sm:grid-cols-4"
+              style={{
+                border: "1px solid rgba(201,168,76,.4)",
+                background: "rgba(0,0,0,.58)",
+              }}
+            >
+              <Metric icon="📈" label="Average Month" value={money(avgMonthly)} />
+              <Metric icon="📜" label="Entries" value={String(entries.length)} />
+              <Metric icon="👥" label="Recorded Sources" value={String(sourcesCount)} />
+              <Metric icon="💼" label="Saved Sources" value={String(incomeSources.length)} />
+            </div>
+          </Card>
+
+          {/* ── Recent income ── */}
+          <Card title="Recent Income">
+            <div className="mt-2 grid gap-2">
+              {entries.slice(0, 8).length === 0 ? (
+                <p className="text-center text-[#9a7d5a]">No income entries yet.</p>
+              ) : (
+                entries.slice(0, 8).map((entry) => {
+                  const cat =
+                    CATEGORIES.find((item) => entry.note?.includes(`Category: ${item.value}`)) ||
+                    CATEGORIES[5];
+
+                  return (
+                    <div
+                      key={entry.id}
+                      className="flex items-center justify-between gap-3 rounded-xl px-4 py-3"
+                      style={{
+                        background: "rgba(255,255,255,.04)",
+                        border: "1px solid rgba(201,168,76,.18)",
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{cat.icon}</span>
+                        <div>
+                          <p className="font-bold">{entry.source_name || cat.label}</p>
+                          <p className="text-sm text-[#9a7d5a]">{entryDate(entry)}</p>
+                        </div>
+                      </div>
+                      <strong className="text-xl text-[#4ade80]">{money(entry.amount)}</strong>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </Card>
+
+          <p className="mt-6 text-center italic text-[#c9a84c]">
+            &ldquo;Diligence is the mother of good luck.&rdquo; — Benjamin Franklin
+          </p>
+        </div>
+      </section>
+
+      {/* ── Ben's Notice modal ── */}
+      {showBenNotice && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 px-4">
+          <div
+            className="max-w-md rounded-3xl p-5"
+            style={{
+              background: "#fff7df",
+              border: "2px solid #c9a84c",
+              color: "#1a0f0a",
+              boxShadow: "0 30px 80px rgba(0,0,0,.7)",
+            }}
+          >
+            <div className="flex gap-3">
+              <img
+                src="/ben.png"
+                alt="Ben"
+                className="h-16 w-16 rounded-xl border border-[#c9a84c] object-cover"
+              />
+              <div>
+                <p className="font-cinzel text-xs uppercase tracking-[0.25em] text-[#8a3a12]">
+                  Ben&apos;s Almanack
+                </p>
+                <p className="mt-2 text-lg font-bold leading-snug">
+                  {benInsight.text}
+                </p>
+                <p className="mt-3 text-sm">
+                  You have recorded {entries.length} income entries across {sourcesCount} sources this session.
+                </p>
               </div>
             </div>
-
-            <div className="mini-grid">
-              <MiniMetric icon="📈" label="Average Month" value={money(avgMonthly)} />
-              <MiniMetric icon="📜" label="Entries" value={String(entries.length)} />
-              <MiniMetric icon="👥" label="Recorded Sources" value={String(sourcesCount)} />
-              <MiniMetric icon="💼" label="Saved Sources" value={String(incomeSources.length)} />
-            </div>
+            <button
+              onClick={() => setShowBenNotice(false)}
+              className="mt-5 w-full rounded-xl py-3 font-bold"
+              style={{ background: "#1a0f0a", color: "#f5e6c8" }}
+            >
+              Close
+            </button>
           </div>
-        </RoomCard>
-
-        <RoomCard>
-          <h2>Recent Income</h2>
-
-          <div className="recent-list">
-            {entries.slice(0, 8).length === 0 ? (
-              <p className="empty">No income entries yet.</p>
-            ) : (
-              entries.slice(0, 8).map((entry) => {
-                const cat =
-                  CATEGORIES.find((item) => entry.note?.includes(`Category: ${item.value}`)) ||
-                  CATEGORIES[5];
-
-                return (
-                  <div key={entry.id} className="recent-row">
-                    <div className="recent-left">
-                      <span>{cat.icon}</span>
-                      <div>
-                        <strong>{entry.source_name || cat.label}</strong>
-                        <p>{entryDate(entry)}</p>
-                      </div>
-                    </div>
-                    <strong className="amount">{money(entry.amount)}</strong>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </RoomCard>
-
-        <p className="quote">“Diligence is the mother of good luck.” — Benjamin Franklin</p>
-      </section>
-      <style jsx global>{`
-  .bank-page {
-    min-height: 100vh;
-    padding-top: 0;
-    padding-bottom: 100px;
-    background:
-      radial-gradient(circle at top, rgba(245, 196, 88, 0.12), transparent 32rem),
-      linear-gradient(180deg, #050302, #140a04 45%, #050302);
-    color: #fff7ed;
-  font-family: "EB Garamond", Georgia, serif;
+        </div>
+      )}
+    </main>
+  );
 }
 
-  .loading-room {
-    display: grid;
-    place-items: center;
-    color: #c9a84c;
-    font-size: 22px;
-  }
+// ── Shared layout helpers ────────────────────────────────────────────
 
-  .desk-wrap {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 0 18px 18px;
-    display: grid;
-    gap: 18px;
-  }
+function Card({
+  title,
+  sub,
+  children,
+}: {
+  title: string;
+  sub?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="mb-4 rounded-2xl p-4"
+      style={{
+        background: "rgba(15,8,4,.9)",
+        border: "1px solid rgba(201,168,76,.35)",
+      }}
+    >
+      <h2 className="font-cinzel text-xl font-bold text-[#c9a84c]">{title}</h2>
+      {sub && <p className="mb-4 mt-1 text-sm text-[#b99b60]">{sub}</p>}
+      <div className={sub ? "" : "mt-3"}>{children}</div>
+    </div>
+  );
+}
 
-  .notice {
-    border-radius: 20px;
-    padding: 14px 16px;
-    color: #facc15;
-    background: rgba(15, 8, 4, 0.92);
-    border: 1px solid rgba(201, 168, 76, 0.35);
-    text-align: center;
-  }
+function DrawerPanel({
+  title,
+  sub,
+  children,
+}: {
+  title: string;
+  sub?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="mb-4 rounded-2xl p-4"
+      style={{
+        background: "rgba(15,8,4,.9)",
+        border: "1px solid rgba(201,168,76,.35)",
+      }}
+    >
+      <h3 className="font-cinzel text-xl font-bold text-[#c9a84c]">{title}</h3>
+      {sub && <p className="mb-4 mt-1 text-sm text-[#b99b60]">{sub}</p>}
+      <div className="mt-3">{children}</div>
+    </div>
+  );
+}
 
-  .stats-grid,
-  .drawer-buttons,
-  .form-grid,
-  .chart-grid,
-  .plan-grid,
-  .mini-grid {
-    display: grid;
-    gap: 14px;
-  }
+function Metric({
+  icon,
+  label,
+  value,
+  color = "#c9a84c",
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  color?: string;
+}) {
+  return (
+    <div className="border-b border-[#c9a84c]/20 p-4 text-center last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+      <div className="text-3xl">{icon}</div>
+      <p className="mt-2 text-xs uppercase tracking-widest text-[#d6c09a]">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-bold" style={{ color }}>
+        {value}
+      </p>
+    </div>
+  );
+}
 
-  .stats-grid,
-  .drawer-buttons {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
+function StatTile({
+  icon,
+  label,
+  value,
+  color,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  color?: string;
+}) {
+  return (
+    <div
+      className="rounded-xl p-3 text-center"
+      style={{
+        background: "rgba(0,0,0,.45)",
+        border: "1px solid rgba(201,168,76,.25)",
+      }}
+    >
+      <p className="text-xl">{icon}</p>
+      <p className="mt-1 text-xs uppercase tracking-wider text-[#d6c09a]">{label}</p>
+      <p className="mt-1 text-lg font-bold" style={{ color: color ?? "#c9a84c" }}>
+        {value}
+      </p>
+    </div>
+  );
+}
 
-  .form-grid,
-  .plan-grid,
-  .mini-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+function Input({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs uppercase tracking-widest text-[#c9a84c]">
+        {label}
+      </span>
+      <input
+        type={type}
+        inputMode={type === "number" ? "decimal" : undefined}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="mt-1 w-full rounded-lg px-3 py-2 text-black"
+        style={{ background: "#f5e6c8" }}
+      />
+    </label>
+  );
+}
 
-  .chart-grid {
-    grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
-  }
-
-  .card-sub {
-    color: #b99b60;
-    margin: 8px 0 18px;
-  }
-
-  label span {
-    display: block;
-    color: #d6c09a;
-    font-size: 11px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    font-weight: 900;
-    margin-bottom: 7px;
-  }
-
-  input,
-  select,
-  textarea {
-    width: 100%;
-    border-radius: 16px;
-    border: 1px solid rgba(201, 168, 76, 0.45);
-    background: rgba(255, 245, 220, 0.95);
-    color: #24130a;
-    padding: 13px 14px;
-    font-size: 16px;
-    outline: none;
-  }
-
-  .save-btn {
-    border: 1px solid rgba(74, 222, 128, 0.65);
-    border-radius: 20px;
-    padding: 16px 18px;
-    background: linear-gradient(180deg, #16a34a, #15803d);
-    color: #f0fdf4;
-    font-size: 18px;
-    font-weight: 900;
-  }
-
-  .gap-box,
-  .covered-box {
-    margin-top: 16px;
-    border-radius: 24px;
-    padding: 20px;
-    background: rgba(0, 0, 0, 0.48);
-    border: 1px solid rgba(201, 168, 76, 0.25);
-    text-align: center;
-  }
-
-  .gap-eyebrow {
-    margin: 0;
-    color: #d6c09a;
-    font-size: 11px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    font-weight: 900;
-  }
-
-  .gap-money {
-    margin: 8px 0 0;
-    font-size: 44px;
-    font-weight: 900;
-  }
-
-  .gap-money.good {
-    color: #4ade80;
-  }
-
-  .gap-money.danger {
-    color: #f87171;
-  }
-
-  .gap-note,
-  .covered-box p {
-    margin-top: 10px;
-    color: #e8d5b7;
-  }
-
-  .hourly-grid {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  .mini-hourly {
-    margin-top: 16px;
-  }
-
-  .hour-card {
-    border-radius: 20px;
-    padding: 16px;
-    background: rgba(0, 0, 0, 0.55);
-    border: 1px solid rgba(201, 168, 76, 0.25);
-    text-align: center;
-  }
-
-  .hour-card p {
-    margin: 0;
-    color: #d6c09a;
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    font-weight: 900;
-  }
-
-  .hour-card strong {
-    display: block;
-    margin-top: 8px;
-    color: #c9a84c;
-    font-size: 24px;
-  }
-
-  .hour-card.good strong {
-    color: #4ade80;
-  }
-
-  .hour-card.warn strong {
-    color: #facc15;
-  }
-
-  .hour-card.danger strong {
-    color: #f87171;
-  }
-
-  .big-money {
-    color: #4ade80;
-    font-size: 46px;
-    font-weight: 900;
-    margin: 10px 0 0;
-  }
-
-  .chart-box {
-    height: 190px;
-    margin-top: 18px;
-  }
-
-  .recent-list,
-  .source-list {
-    display: grid;
-    gap: 10px;
-    margin-top: 14px;
-  }
-
-  .recent-row,
-  .source-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    border-radius: 18px;
-    padding: 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(201, 168, 76, 0.18);
-  }
-
-  .source-row button {
-    border-radius: 12px;
-    border: 1px solid rgba(248, 113, 113, 0.45);
-    background: rgba(127, 29, 29, 0.35);
-    color: #fecaca;
-    padding: 9px 12px;
-    font-weight: 900;
-  }
-
-  .recent-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .recent-left span {
-    font-size: 24px;
-  }
-
-  .recent-left p,
-  .source-row p {
-    margin: 3px 0 0;
-    color: #9a7d5a;
-    font-size: 13px;
-  }
-
-  .recent-row .amount {
-    color: #4ade80;
-    font-size: 22px;
-  }
-
-  .empty {
-    text-align: center;
-    color: #9a7d5a;
-  }
-
-  .quote {
-    text-align: center;
-    color: #c9a84c;
-    font-style: italic;
-    padding: 18px;
-  }
-
-  @media (max-width: 900px) {
-    .stats-grid,
-    .drawer-buttons,
-    .chart-grid,
-    .hourly-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 640px) {
-    .stats-grid,
-    .drawer-buttons,
-    .form-grid,
-    .chart-grid,
-    .mini-grid,
-    .plan-grid,
-    .hourly-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .recent-row,
-    .source-row {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .recent-row .amount {
-      align-self: flex-end;
-    }
-  }
-`}
-  </style>
-    </main>
+function SelectInput({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs uppercase tracking-widest text-[#c9a84c]">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full rounded-lg px-3 py-2 text-black"
+        style={{ background: "#f5e6c8" }}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
