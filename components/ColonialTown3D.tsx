@@ -8,7 +8,6 @@ import {
   Environment,
   Sparkles,
   Text,
-  useGLTF,
 } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette, SMAA } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
@@ -28,28 +27,29 @@ const SPEED = 10;
 const EYE_HEIGHT = 1.75;
 const START_POS: [number, number, number] = [0, 34, 44];
 const FIRST_PERSON_POS: [number, number, number] = [0, EYE_HEIGHT, 27];
-const CHANNEL = "franklins-landing-v3";
+const CHANNEL = "franklins-landing-v4";
 
+// Lighter brick colors + slightly reduced heights so buildings feel approachable
 const BUILDINGS = [
-  { id: "gov", href: "/dashboard", label: "Governor's\nOffice", icon: "🏛", x: -10, z: -16, w: 11, h: 9, d: 9, brick: "#3d2214", roof: "#1a1210", win: "#ffe066", enter: 12, collide: 6.5, pillars: true, large: true },
-  { id: "income", href: "/income", label: "Income\nLedger", icon: "📜", x: -10, z: -5, w: 8, h: 6, d: 7, brick: "#2e1a10", roof: "#16100a", win: "#6ee7b7", enter: 10, collide: 5, pillars: false, large: false },
-  { id: "bills", href: "/bills", label: "Post\nOffice", icon: "📬", x: -10, z: 6, w: 8, h: 6, d: 7, brick: "#2a180e", roof: "#161008", win: "#fdba74", enter: 10, collide: 5, pillars: false, large: false },
-  { id: "pay", href: "/payments", label: "Payment\nHall", icon: "🪙", x: -10, z: 17, w: 9, h: 7, d: 8, brick: "#281a0a", roof: "#12100a", win: "#fcd34d", enter: 10, collide: 5.5, pillars: true, large: false },
-  { id: "trophy", href: "/achievements", label: "Trophy\nRoom", icon: "🏆", x: 10, z: -16, w: 11, h: 9, d: 9, brick: "#2e0f0f", roof: "#160808", win: "#fca5a5", enter: 12, collide: 6.5, pillars: true, large: true },
-  { id: "obs", href: "/forecast", label: "Observatory", icon: "🔭", x: 10, z: -5, w: 8, h: 8, d: 8, brick: "#0e1a2e", roof: "#080e18", win: "#bfdbfe", enter: 10, collide: 5, pillars: false, large: false },
-  { id: "cal", href: "/calendar", label: "Town\nSquare", icon: "🗓️", x: 10, z: 6, w: 8, h: 6, d: 7, brick: "#201808", roof: "#100e04", win: "#c4b5fd", enter: 10, collide: 5, pillars: false, large: false },
-  { id: "set", href: "/settings", label: "Smithy", icon: "⚙️", x: 10, z: 17, w: 8, h: 6, d: 7, brick: "#181818", roof: "#0c0c0c", win: "#cbd5e1", enter: 10, collide: 5, pillars: false, large: false },
+  { id: "gov",    href: "/dashboard",    label: "Governor's\nOffice", icon: "🏛",  x: -10, z: -16, w: 10, h: 7,   d: 9, brick: "#7a4a2a", roof: "#3a2418", win: "#ffe066", enter: 12, pillars: true,  large: true  },
+  { id: "income", href: "/income",       label: "Income\nLedger",     icon: "📜",  x: -10, z:  -5, w:  7, h: 5,   d: 7, brick: "#6b3d1e", roof: "#2e1a10", win: "#6ee7b7", enter: 10, pillars: false, large: false },
+  { id: "bills",  href: "/bills",        label: "Post\nOffice",       icon: "📬",  x: -10, z:   6, w:  7, h: 5,   d: 7, brick: "#8a5530", roof: "#3a2218", win: "#fdba74", enter: 10, pillars: false, large: false },
+  { id: "pay",    href: "/payments",     label: "Payment\nHall",      icon: "🪙",  x: -10, z:  17, w:  8, h: 5.5, d: 8, brick: "#7d4a18", roof: "#2e1e0a", win: "#fcd34d", enter: 10, pillars: true,  large: false },
+  { id: "trophy", href: "/achievements", label: "Trophy\nRoom",       icon: "🏆",  x:  10, z: -16, w: 10, h: 7,   d: 9, brick: "#8a3a28", roof: "#3a1810", win: "#fca5a5", enter: 12, pillars: true,  large: true  },
+  { id: "obs",    href: "/forecast",     label: "Observatory",        icon: "🔭",  x:  10, z:  -5, w:  7, h: 6,   d: 7, brick: "#2a5280", roof: "#142840", win: "#bfdbfe", enter: 10, pillars: false, large: false },
+  { id: "cal",    href: "/calendar",     label: "Town\nHall",         icon: "🗓️", x:  10, z:   6, w:  7, h: 5,   d: 7, brick: "#6a5020", roof: "#2e2410", win: "#c4b5fd", enter: 10, pillars: false, large: false },
+  { id: "set",    href: "/settings",     label: "Smithy",             icon: "⚙️", x:  10, z:  17, w:  7, h: 5,   d: 7, brick: "#504848", roof: "#201c1c", win: "#cbd5e1", enter: 10, pillars: false, large: false },
 ] as const;
 
 type BuildingDef = (typeof BUILDINGS)[number];
 
 const AVATARS = [
-  { color: "#8b1a1a", hat: "#1a0a0a" },
-  { color: "#1a3a6b", hat: "#0a0e1a" },
-  { color: "#4a2e0e", hat: "#1a0f04" },
-  { color: "#1a4a1a", hat: "#081408" },
-  { color: "#1a1a1a", hat: "#0a0a0a" },
-  { color: "#4a1a6b", hat: "#1a0824" },
+  { coat: "#8b1a1a", hat: "#1a0a0a", skin: "#d4a876" },
+  { coat: "#1a3a6b", hat: "#0a0e1a", skin: "#c49060" },
+  { coat: "#4a2e0e", hat: "#1a0f04", skin: "#d4a876" },
+  { coat: "#1a4a1a", hat: "#081408", skin: "#a87040" },
+  { coat: "#2a1a4a", hat: "#0a0818", skin: "#d4a876" },
+  { coat: "#4a1a6b", hat: "#1a0824", skin: "#b08050" },
 ];
 
 type PlayerState = {
@@ -67,15 +67,12 @@ function playDoorSound() {
     const ctx = new AudioCtor();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-
     osc.type = "sawtooth";
     osc.frequency.setValueAtTime(220, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(65, ctx.currentTime + 0.65);
-
     gain.gain.setValueAtTime(0, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.08);
     gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.7);
-
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
@@ -91,30 +88,23 @@ function useMultiplayer(userId: string | null, username: string, avatarIdx: numb
 
   useEffect(() => {
     if (!userId) return;
-
     const ch = supabase.channel(CHANNEL);
     channelRef.current = ch;
-
     ch.on("presence", { event: "sync" }, () => {
       const state = ch.presenceState<PlayerState>();
       const out: Record<string, PlayerState> = {};
-
       for (const [key, vals] of Object.entries(state)) {
         if (key !== userId && Array.isArray(vals) && vals[0]) {
           out[key] = vals[0] as PlayerState;
         }
       }
-
       setOthers(out);
     }).subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
         await ch.track({ userId, username, avatarIdx, x: 0, z: 27, yaw: 0 });
       }
     });
-
-    return () => {
-      supabase.removeChannel(ch);
-    };
+    return () => { supabase.removeChannel(ch); };
   }, [userId, supabase, username, avatarIdx]);
 
   const broadcast = useCallback(
@@ -122,7 +112,6 @@ function useMultiplayer(userId: string | null, username: string, avatarIdx: numb
       if (!userId) return;
       const now = Date.now();
       if (now - lastBroadcast.current < 150) return;
-
       lastBroadcast.current = now;
       channelRef.current?.track({ userId, username, avatarIdx, x, z, yaw });
     },
@@ -131,192 +120,25 @@ function useMultiplayer(userId: string | null, username: string, avatarIdx: numb
 
   return { others, broadcast };
 }
-function StoneHouseModel() {
-  const { scene } = useGLTF("/models/stone_house_exterior.glb");
 
-  return (
-    <primitive
-      object={scene}
-      position={[0, 0, -34]}
-      scale={2}
-      rotation={[0, Math.PI, 0]}
-    />
-  );
+// ── AABB collision — much more accurate than circle, lets you walk around buildings ──
+function isBlockedByBuilding(px: number, pz: number): boolean {
+  const margin = 1.0;
+  return BUILDINGS.some((b) => {
+    return (
+      Math.abs(px - b.x) < b.w / 2 + margin &&
+      Math.abs(pz - b.z) < b.d / 2 + margin
+    );
+  });
 }
 
-function TavernModel() {
-  const { scene } = useGLTF("/models/tavern_detailed.glb");
-
-  return (
-    <primitive
-      object={scene.clone()}
-      position={[18, 0, 4]}
-      scale={1.8}
-      rotation={[0, -Math.PI / 2, 0]}
-    />
-  );
-}
-
-function LighthouseModel() {
-  const { scene } = useGLTF("/models/lighthouse.glb");
-
-  return (
-    <primitive
-      object={scene.clone()}
-      position={[34, 0, -48]}
-      scale={2.4}
-      rotation={[0, Math.PI, 0]}
-    />
-  );
-}
-
-function LightningModel() {
-  const { scene } = useGLTF("/models/lighting_pack_2_forked_lightning.glb");
-
-  return (
-    <primitive
-      object={scene.clone()}
-      position={[-28, 10, -42]}
-      scale={2}
-      rotation={[0, 0, 0]}
-    />
-  );
-}
-function Model({ url, position = [0, 0, 0], rotation = [0, 0, 0], scale = 1 }: any) {
-  const gltf = useGLTF(url) as any;
-
-  return (
-    <primitive
-      object={gltf.scene.clone()}
-      position={position}
-      rotation={rotation}
-      scale={scale}
-    />
-  );
-}
-function HarborShipModel(props: any) {
-  return <Model url="/models/harbor-ship.glb" {...props} />;
-}
-
-function DefenseCannonModel(props: any) {
-  return <Model url="/models/defense_cannon.glb" {...props} />;
-}
-
-function ColonialHouseModel(props: any) {
-  return <Model url="/models/colonial_house.glb" {...props} />;
-}
-
-function LakeModel(props: any) {
-  return <Model url="/models/lake.glb" {...props} />;
-}
-
-function TreeModel(props: any) {
-  return <Model url="/models/tree.glb" {...props} />;
-}
-
-function ColonialCitizenModel(props: any) {
-  return <Model url="/models/colonial_citizen.glb" {...props} />;
-}
-
-function ColonialPersonModel(props: any) {
-  return <Model url="/models/colonial-person.glb" {...props} />;
-}
-
-function TownDogModel(props: any) {
-  return <Model url="/models/town-dog.glb" {...props} />;
-}
-
-function TownCatModel(props: any) {
-  return <Model url="/models/town-cat.glb" {...props} />;
-}
-function WorldModels() {
-  return (
-    <>
-      {/* Main Buildings */}
-      <StoneHouseModel />
-      <TavernModel />
-      <LighthouseModel />
-
-      {/* Harbor */}
-      <HarborShipModel
-        position={[-28, 0, -45]}
-        rotation={[0, Math.PI / 2, 0]}
-        scale={2}
-      />
-
-      <DefenseCannonModel
-        position={[-22, 0, -32]}
-        rotation={[0, Math.PI / 4, 0]}
-      />
-
-      {/* Colonial Houses */}
-      <ColonialHouseModel
-        position={[12, 0, -18]}
-        rotation={[0, Math.PI / 2, 0]}
-      />
-
-      <ColonialHouseModel
-        position={[18, 0, -10]}
-      />
-
-      <ColonialHouseModel
-        position={[5, 0, -12]}
-      />
-
-      {/* Lake */}
-      <LakeModel
-        position={[40, -0.1, 35]}
-        scale={5}
-      />
-
-      {/* Trees */}
-      <TreeModel position={[8, 0, 20]} />
-      <TreeModel position={[15, 0, 22]} />
-      <TreeModel position={[20, 0, 18]} />
-      <TreeModel position={[32, 0, 30]} />
-      <TreeModel position={[35, 0, 15]} />
-      <TreeModel position={[-12, 0, 10]} />
-      <TreeModel position={[-25, 0, 18]} />
-      <TreeModel position={[-32, 0, 28]} />
-
-      {/* Citizens */}
-      <ColonialCitizenModel
-        position={[10, 0, 2]}
-      />
-
-      <ColonialCitizenModel
-        position={[6, 0, -5]}
-      />
-
-      <ColonialPersonModel
-        position={[18, 0, 5]}
-      />
-
-      <ColonialPersonModel
-        position={[-8, 0, -12]}
-      />
-
-      {/* Animals */}
-      <TownDogModel
-        position={[14, 0, 12]}
-      />
-
-      <TownCatModel
-        position={[9, 0, -7]}
-      />
-
-      {/* Effects */}
-      <LightningModel />
-    </>
-  );
-}export default function ColonialTown3D() {
+export default function ColonialTown3D() {
   const router = useRouter();
   const moveRef = useRef({ f: 0, r: 0 });
   const mobileYaw = useRef(0);
   const controlsApiRef = useRef<any>(null);
 
   const [locked, setLocked] = useState(false);
-  const [birdPeek, setBirdPeek] = useState(false);
   const [near, setNear] = useState<BuildingDef | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [entering, setEntering] = useState<BuildingDef | null>(null);
@@ -326,7 +148,6 @@ function WorldModels() {
 
   useEffect(() => {
     setIsMobile("ontouchstart" in window || navigator.maxTouchPoints > 0);
-
     const saved = localStorage.getItem("colonial-avatar");
     if (saved !== null) {
       const parsed = Number.parseInt(saved, 10);
@@ -336,21 +157,15 @@ function WorldModels() {
 
   useEffect(() => {
     const sb = createSupabaseBrowserClient();
-
     void (async () => {
-      const {
-        data: { user },
-      } = await sb.auth.getUser();
-
+      const { data: { user } } = await sb.auth.getUser();
       if (!user) return;
       setUserId(user.id);
-
       const { data } = await sb
         .from("profiles")
         .select("full_name, display_name")
         .eq("user_id", user.id)
         .maybeSingle();
-
       const name = data?.full_name || data?.display_name;
       if (name) setUsername(name.split(" ")[0]);
     })();
@@ -365,10 +180,7 @@ function WorldModels() {
   }, [near, entering]);
 
   useEffect(() => {
-    const fn = (e: KeyboardEvent) => {
-      if (e.code === "KeyE") enter();
-    };
-
+    const fn = (e: KeyboardEvent) => { if (e.code === "KeyE") enter(); };
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
   }, [enter]);
@@ -376,10 +188,7 @@ function WorldModels() {
   function startWorld() {
     setLocked(true);
     if (isMobile) return;
-
-    setTimeout(() => {
-      controlsApiRef.current?.lock?.();
-    }, 150);
+    setTimeout(() => { controlsApiRef.current?.lock?.(); }, 150);
   }
 
   return (
@@ -389,31 +198,27 @@ function WorldModels() {
         gl={{
           antialias: false,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.45,
+          toneMappingExposure: 1.35,
         }}
         shadows={{ type: THREE.PCFSoftShadowMap }}
       >
         <Suspense fallback={null}>
           <Scene
             locked={locked}
-            birdPeek={birdPeek}
             moveRef={moveRef}
             mobileYaw={mobileYaw}
             isMobile={isMobile}
             nearId={near?.id ?? null}
             onNear={setNear}
             onLock={setLocked}
-            onControlsReady={(controls: any) => {
-              controlsApiRef.current = controls;
-            }}
+            onControlsReady={(controls: any) => { controlsApiRef.current = controls; }}
             others={others}
             broadcast={broadcast}
           />
-
           <EffectComposer multisampling={0}>
             <SMAA />
-            <Bloom luminanceThreshold={0.35} luminanceSmoothing={0.9} intensity={1.35} mipmapBlur />
-            <Vignette offset={0.25} darkness={0.62} blendFunction={BlendFunction.NORMAL} />
+            <Bloom luminanceThreshold={0.35} luminanceSmoothing={0.9} intensity={1.2} mipmapBlur />
+            <Vignette offset={0.25} darkness={0.58} blendFunction={BlendFunction.NORMAL} />
           </EffectComposer>
         </Suspense>
       </Canvas>
@@ -437,7 +242,6 @@ function WorldModels() {
               <h2 className="mt-1 text-2xl font-bold">Franklin&apos;s Landing</h2>
               <p className="mt-1 text-sm text-[#d6c09a]">Survey the colony, then enter the streets.</p>
             </div>
-
             <button
               type="button"
               onClick={startWorld}
@@ -451,13 +255,6 @@ function WorldModels() {
             >
               Enter Franklin&apos;s Landing
             </button>
-
-            <p
-              className="mt-3 text-xs italic"
-              style={{ color: "rgba(245,230,200,.75)", fontFamily: "EB Garamond, serif" }}
-            >
-              Avatar selection now lives in Settings.
-            </p>
           </div>
         </div>
       )}
@@ -514,7 +311,6 @@ function WorldModels() {
 
 function Scene({
   locked,
-  birdPeek,
   moveRef,
   mobileYaw,
   isMobile,
@@ -526,7 +322,6 @@ function Scene({
   broadcast,
 }: {
   locked: boolean;
-  birdPeek: boolean;
   moveRef: React.MutableRefObject<{ f: number; r: number }>;
   mobileYaw: React.MutableRefObject<number>;
   isMobile: boolean;
@@ -549,16 +344,12 @@ function Scene({
 
   useEffect(() => {
     if (isMobile || !controlsRef.current) return;
-
     const c = controlsRef.current;
     onControlsReady(c);
-
     const lock = () => onLock(true);
     const unlock = () => onLock(false);
-
     c.addEventListener("lock", lock);
     c.addEventListener("unlock", unlock);
-
     return () => {
       c.removeEventListener("lock", lock);
       c.removeEventListener("unlock", unlock);
@@ -567,30 +358,14 @@ function Scene({
 
   useEffect(() => {
     const keys: Record<string, boolean> = {};
-
     function sync() {
-      moveRef.current.f =
-        (keys.KeyW || keys.ArrowUp ? 1 : 0) -
-        (keys.KeyS || keys.ArrowDown ? 1 : 0);
-
-      moveRef.current.r =
-        (keys.KeyD || keys.ArrowRight ? 1 : 0) -
-        (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+      moveRef.current.f = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
+      moveRef.current.r = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
     }
-
-    const down = (e: KeyboardEvent) => {
-      keys[e.code] = true;
-      sync();
-    };
-
-    const up = (e: KeyboardEvent) => {
-      keys[e.code] = false;
-      sync();
-    };
-
+    const down = (e: KeyboardEvent) => { keys[e.code] = true; sync(); };
+    const up = (e: KeyboardEvent) => { keys[e.code] = false; sync(); };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
-
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
@@ -601,27 +376,24 @@ function Scene({
     const cam = state.camera;
     const dt = Math.min(delta, 0.05);
 
-    if (!locked || birdPeek) {
-  cam.position.lerp(new THREE.Vector3(0, 70, 70), 0.04);
-  cam.lookAt(0, 0, 0);
-  return;
-}
+    if (!locked) {
+      cam.position.lerp(new THREE.Vector3(0, 70, 70), 0.04);
+      cam.lookAt(0, 0, 0);
+      return;
+    }
 
     if (!introDone.current && cam.position.y > EYE_HEIGHT + 0.08) {
       const target = new THREE.Vector3(...FIRST_PERSON_POS);
       cam.position.lerp(target, 0.035);
       cam.lookAt(0, 1.4, 0);
-
       if (cam.position.distanceTo(target) < 0.2) {
         introDone.current = true;
         cam.position.set(...FIRST_PERSON_POS);
       }
-
       return;
     }
 
     const { f, r } = moveRef.current;
-
     if (isMobile) {
       cam.rotation.order = "YXZ";
       cam.rotation.y = mobileYaw.current;
@@ -631,7 +403,6 @@ function Scene({
       const yaw = cam.rotation.y;
       const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
       const rgt = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-
       const dir = new THREE.Vector3()
         .addScaledVector(fwd, f)
         .addScaledVector(rgt, r)
@@ -640,20 +411,25 @@ function Scene({
 
       const next = cam.position.clone().add(dir);
 
-      const blocked =
-        BUILDINGS.some((b) => {
-          const dx = next.x - b.x;
-          const dz = next.z - b.z;
-          return Math.sqrt(dx * dx + dz * dz) < b.collide + 1.25;
-        }) ||
-        next.x < -80 ||
-        next.x > 80 ||
-        next.z < -90 ||
-        next.z > 90;
+      // AABB collision — accurate rectangular footprint per building
+      const blockedByBuilding = isBlockedByBuilding(next.x, next.z);
+      const outOfBounds = next.x < -85 || next.x > 85 || next.z < -95 || next.z > 85;
 
-      if (!blocked) {
+      if (!blockedByBuilding && !outOfBounds) {
         cam.position.x = next.x;
         cam.position.z = next.z;
+      } else {
+        // Try sliding along each axis separately so you can slide around corners
+        const slideX = cam.position.clone();
+        slideX.x = next.x;
+        if (!isBlockedByBuilding(slideX.x, slideX.z) && slideX.x > -85 && slideX.x < 85) {
+          cam.position.x = slideX.x;
+        }
+        const slideZ = cam.position.clone();
+        slideZ.z = next.z;
+        if (!isBlockedByBuilding(slideZ.x, slideZ.z) && slideZ.z > -95 && slideZ.z < 85) {
+          cam.position.z = slideZ.z;
+        }
       }
     }
 
@@ -662,18 +438,15 @@ function Scene({
 
     let found: BuildingDef | null = null;
     let best = Infinity;
-
     for (const b of BUILDINGS) {
       const dx = cam.position.x - b.x;
       const dz = cam.position.z - b.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
-
       if (dist < b.enter && dist < best) {
         found = b;
         best = dist;
       }
     }
-
     if (nearestRef.current?.id !== found?.id) {
       nearestRef.current = found;
       onNear(found);
@@ -684,13 +457,12 @@ function Scene({
     <>
       <Sky distance={4500} sunPosition={[80, 60, -100]} inclination={0.45} azimuth={0.9} turbidity={6} rayleigh={0.8} mieCoefficient={0.005} />
       <Environment preset="sunset" background={false} />
-      <fog attach="fog" args={["#1a0f06", 55, 340]} />
+      <fog attach="fog" args={["#1a0f06", 60, 360]} />
 
-      <ambientLight intensity={1.65} color="#ffe0b0" />
-
+      <ambientLight intensity={1.8} color="#ffe0b0" />
       <directionalLight
         position={[50, 80, -60]}
-        intensity={3.9}
+        intensity={4.2}
         color="#ffcc88"
         castShadow
         shadow-mapSize={[4096, 4096]}
@@ -702,10 +474,9 @@ function Scene({
         shadow-camera-bottom={-80}
         shadow-bias={-0.001}
       />
-
       <hemisphereLight args={["#6a4a2a", "#1a1008", 1.8]} />
 
-      <Sparkles count={170} scale={[72, 12, 96]} position={[0, 2, 0]} size={1.5} speed={0.3} color="#fbbf24" opacity={0.42} />
+      <Sparkles count={170} scale={[72, 12, 96]} position={[0, 2, 0]} size={1.5} speed={0.3} color="#fbbf24" opacity={0.38} />
 
       <InfiniteTerrain />
       <HarborWater />
@@ -714,8 +485,7 @@ function Scene({
       {BUILDINGS.map((b) => (
         <Building key={b.id} def={b} active={nearId === b.id} />
       ))}
-        <StoneHouseModel />
-        <WorldModels />
+
       {[-22, -14, -6, 2, 10, 18, 26].map((z) => (
         <group key={`lantern-row-${z}`}>
           <LanternPost position={[-3.8, 0, z]} />
@@ -757,7 +527,6 @@ function MobileTouchControls({
 
   function onTouchStart(e: React.TouchEvent) {
     const mid = window.innerWidth / 2;
-
     for (const t of Array.from(e.changedTouches)) {
       if (t.clientX < mid && lTouch.current === null) {
         lTouch.current = t.identifier;
@@ -776,15 +545,12 @@ function MobileTouchControls({
         const dy = (t.clientY - lOrigin.current.y) / 45;
         const len = Math.sqrt(dx * dx + dy * dy);
         const c = len > 1 ? 1 / len : 1;
-
         moveRef.current.r = Math.max(-1, Math.min(1, dx * c));
         moveRef.current.f = Math.max(-1, Math.min(1, -dy * c));
-
         if (lStick.current) {
           lStick.current.style.transform = `translate(${Math.min(30, Math.max(-30, dx * 30))}px,${Math.min(30, Math.max(-30, dy * 30))}px)`;
         }
       }
-
       if (t.identifier === rTouch.current) {
         yawRef.current -= (t.clientX - rLast.current.x) * 0.006;
         rLast.current = { x: t.clientX, y: t.clientY };
@@ -800,22 +566,33 @@ function MobileTouchControls({
         lTouch.current = null;
         if (lStick.current) lStick.current.style.transform = "translate(0,0)";
       }
-
       if (t.identifier === rTouch.current) rTouch.current = null;
     }
   }
 
   return (
-    <div className="fixed inset-0 z-20 pointer-events-auto" style={{ touchAction: "none" }} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
-      <div className="absolute bottom-24 left-8" style={{ width: 90, height: 90, borderRadius: "50%", background: "rgba(201,168,76,0.08)", border: "2px solid rgba(201,168,76,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div ref={lStick} style={{ width: 38, height: 38, borderRadius: "50%", background: "rgba(201,168,76,0.6)", border: "2px solid rgba(201,168,76,0.9)", transition: "transform 0.04s ease", pointerEvents: "none" }} />
+    <div
+      className="fixed inset-0 z-20 pointer-events-auto"
+      style={{ touchAction: "none" }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
+      <div
+        className="absolute bottom-24 left-8"
+        style={{ width: 90, height: 90, borderRadius: "50%", background: "rgba(201,168,76,0.08)", border: "2px solid rgba(201,168,76,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}
+      >
+        <div
+          ref={lStick}
+          style={{ width: 38, height: 38, borderRadius: "50%", background: "rgba(201,168,76,0.6)", border: "2px solid rgba(201,168,76,0.9)", transition: "transform 0.04s ease", pointerEvents: "none" }}
+        />
       </div>
-
-      <div className="absolute bottom-24 right-8" style={{ width: 80, height: 80, borderRadius: "50%", border: "2px solid rgba(201,168,76,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div
+        className="absolute bottom-24 right-8"
+        style={{ width: 80, height: 80, borderRadius: "50%", border: "2px solid rgba(201,168,76,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }}
+      >
         <p style={{ fontSize: 9, color: "rgba(201,168,76,0.35)", textAlign: "center", fontFamily: "EB Garamond, serif" }}>
-          drag
-          <br />
-          to look
+          drag<br />to look
         </p>
       </div>
     </div>
@@ -834,15 +611,13 @@ function InfiniteTerrain() {
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[280, 280, 24, 24]} />
+        <planeGeometry args={[300, 300, 24, 24]} />
         <meshStandardMaterial color="#100c06" roughness={0.98} />
       </mesh>
-
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, 0]}>
         <ringGeometry args={[86, 140, 128]} />
         <meshStandardMaterial color="#0b0804" transparent opacity={0.82} roughness={1} />
       </mesh>
-
       {stones.map((s, i) => (
         <mesh key={i} position={[s.x, 0.01, s.z]} rotation={[-Math.PI / 2, 0, s.angle]} receiveShadow>
           <planeGeometry args={[2.8, 1.6]} />
@@ -857,19 +632,17 @@ function HarborWater() {
   return (
     <group position={[0, 0, -88]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.18, 0]}>
-        <planeGeometry args={[280, 150]} />
+        <planeGeometry args={[300, 150]} />
         <meshStandardMaterial color="#0f2a4a" roughness={0.16} metalness={0.75} transparent opacity={0.92} />
       </mesh>
-
       {Array.from({ length: 10 }, (_, i) => (
         <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.15 + i * 0.006, -24 + i * 9]}>
-          <planeGeometry args={[250, 7]} />
+          <planeGeometry args={[270, 7]} />
           <meshStandardMaterial color={i % 2 ? "#1e4d73" : "#143858"} transparent opacity={0.22} roughness={0.25} metalness={0.55} />
         </mesh>
       ))}
-
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 54]}>
-        <planeGeometry args={[190, 8]} />
+        <planeGeometry args={[200, 8]} />
         <meshStandardMaterial color="#2a1a0b" roughness={0.96} />
       </mesh>
     </group>
@@ -880,104 +653,195 @@ function Street() {
   return (
     <>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]} receiveShadow>
-        <planeGeometry args={[7.5, 74]} />
+        <planeGeometry args={[7.5, 80]} />
         <meshStandardMaterial color="#1c1408" roughness={0.94} />
       </mesh>
-
       {[-3.8, 3.8].map((sx, si) =>
-        Array.from({ length: 24 }, (_, i) => (
-          <mesh key={`curb-${si}-${i}`} position={[sx, 0.06, -29 + i * 2.6]} castShadow receiveShadow>
+        Array.from({ length: 26 }, (_, i) => (
+          <mesh key={`curb-${si}-${i}`} position={[sx, 0.06, -31 + i * 2.6]} castShadow receiveShadow>
             <boxGeometry args={[0.28, 0.12, 2.3]} />
             <meshStandardMaterial color="#1e1810" roughness={0.95} />
           </mesh>
         ))
       )}
+      {/* Cobblestone paths between buildings and street on each side */}
+      {BUILDINGS.map((b) => (
+        <mesh
+          key={`path-${b.id}`}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[b.x < 0 ? -6.5 : 6.5, 0.008, b.z]}
+          receiveShadow
+        >
+          <planeGeometry args={[5, b.d]} />
+          <meshStandardMaterial color="#181410" roughness={0.97} />
+        </mesh>
+      ))}
     </>
   );
 }
 
+// ── Building ──────────────────────────────────────────────────────────────────
+
 function Building({ def, active }: { def: BuildingDef; active: boolean }) {
   const { x, z, w, h, d, brick, roof, win, label, icon, pillars, large } = def;
   const left = x < 0;
+  // Front face — toward the street (toward x=0)
   const fz = left ? d / 2 : -(d / 2);
   const fDir = left ? 1 : -1;
   const frontZ = fz + fDir * 0.08;
-  const signZ = fz + fDir * 0.62;
   const lowerWindows = large ? [-w * 0.34, 0, w * 0.34] : [-w * 0.3, w * 0.3];
   const upperWindows = large ? [-w * 0.28, w * 0.28] : [0];
+  // Street sign position — just outside the building toward street (between building and curb)
+  const signPostX = left ? x + d / 2 + 1.8 : x - d / 2 - 1.8;
 
   return (
     <group position={[x, 0, z]}>
+      {/* Foundation */}
       <mesh position={[0, 0.22, 0]} receiveShadow castShadow>
         <boxGeometry args={[w + 1, 0.44, d + 1]} />
-        <meshStandardMaterial color="#120d07" roughness={0.98} />
+        <meshStandardMaterial color="#241a0e" roughness={0.98} />
       </mesh>
 
+      {/* Main walls */}
       <mesh position={[0, h / 2 + 0.44, 0]} receiveShadow castShadow>
         <boxGeometry args={[w, h, d]} />
-        <meshStandardMaterial color={brick} roughness={0.88} />
+        <meshStandardMaterial color={brick} roughness={0.82} metalness={0.02} />
       </mesh>
 
-      <mesh position={[0, h + 0.44 + (large ? 2.8 : 2.25), 0]} castShadow>
-        <coneGeometry args={[Math.max(w, d) * 0.82, large ? 5.6 : 4.5, 4]} />
-        <meshStandardMaterial color={roof} roughness={0.96} metalness={0.05} />
-      </mesh>
-
+      {/* Roof overhang */}
       <mesh position={[0, h + 0.44, 0]} castShadow>
-        <boxGeometry args={[w + 1.05, 0.22, d + 1.05]} />
+        <boxGeometry args={[w + 1.1, 0.22, d + 1.1]} />
         <meshStandardMaterial color={roof} roughness={0.95} />
+      </mesh>
+
+      {/* Roof cone */}
+      <mesh position={[0, h + 0.44 + (large ? 2.5 : 2.0), 0]} castShadow>
+        <coneGeometry args={[Math.max(w, d) * 0.8, large ? 5.0 : 4.0, 4]} />
+        <meshStandardMaterial color={roof} roughness={0.96} metalness={0.04} />
       </mesh>
 
       <Chimney position={[-w * 0.28, h + 0.44, -d * 0.18]} large={large} roof={roof} />
       <Chimney position={[w * 0.3, h + 0.44, d * 0.15]} large={large} roof={roof} />
 
       {lowerWindows.map((wx) => (
-        <Window key={`l-${wx}`} position={[wx, h * 0.6 + 0.44, frontZ]} color={win} active={active} />
+        <Window key={`l-${wx}`} position={[wx, h * 0.58 + 0.44, frontZ]} color={win} active={active} />
       ))}
-
       {upperWindows.map((wx) => (
-        <Window key={`u-${wx}`} position={[wx, h * 0.84 + 0.44, frontZ]} color={win} active={active} />
+        <Window key={`u-${wx}`} position={[wx, h * 0.82 + 0.44, frontZ]} color={win} active={active} />
       ))}
 
+      {/* Door — animated swing when active */}
       <group position={[0, h * 0.22 + 0.44, frontZ]}>
-        <Door h={h} win={win} active={active} />
+        <AnimatedDoor h={h} win={win} active={active} />
       </group>
 
+      {/* Pillars for grand buildings */}
       {pillars &&
         [-w * 0.34, -w * 0.13, w * 0.13, w * 0.34].map((px) => (
           <mesh key={px} position={[px, h * 0.3 + 0.44, fz + fDir * 0.55]} castShadow>
             <cylinderGeometry args={[0.18, 0.23, h * 0.6, 12]} />
-            <meshStandardMaterial color="#241706" roughness={0.86} />
+            <meshStandardMaterial color="#3a2510" roughness={0.85} />
           </mesh>
         ))}
-
       {pillars && (
         <mesh position={[0, h * 0.6 + 0.44, fz + fDir * 0.53]}>
           <boxGeometry args={[w * 0.88, 0.32, 0.55]} />
-          <meshStandardMaterial color="#1e1408" roughness={0.9} />
+          <meshStandardMaterial color="#2a1c0c" roughness={0.9} />
         </mesh>
       )}
 
-      <pointLight position={[0, h * 0.58, fz + fDir * 1.8]} intensity={active ? 7.5 : 3.4} distance={active ? 15 : 10} color={win} decay={2} />
+      {/* Window glow */}
+      <pointLight position={[0, h * 0.58, fz + fDir * 1.8]} intensity={active ? 8 : 3.8} distance={active ? 16 : 11} color={win} decay={2} />
 
+      {/* Active entry ring + sparkles */}
       {active && (
         <>
           <mesh position={[0, 0.06, fz + fDir * 1.35]} rotation={[-Math.PI / 2, 0, 0]}>
             <ringGeometry args={[1.65, 2.32, 48]} />
-            <meshBasicMaterial color="#fbbf24" transparent opacity={0.55} />
+            <meshBasicMaterial color="#fbbf24" transparent opacity={0.5} />
           </mesh>
-
           <pointLight position={[0, 2.2, fz + fDir * 1.65]} intensity={9} distance={12} color="#fbbf24" decay={2} />
           <Sparkles count={38} scale={[3.2, 3.1, 2]} position={[0, 2.2, fz + fDir * 1.8]} size={3} speed={0.9} color="#fbbf24" opacity={0.85} />
         </>
       )}
 
-      <ColonialSign label={label} icon={icon} active={active} position={[0, h * 0.72 + 0.44, signZ]} />
+      {/* High sign on building face */}
+      <BuildingSign label={label} icon={icon} active={active} position={[0, h * 0.68 + 0.44, fz + fDir * 0.62]} />
+
+      {/* Street-level sign post — positioned between building and curb */}
+      <StreetSignPost
+        label={label}
+        icon={icon}
+        active={active}
+        position={[signPostX - x, 0, 0]}
+        faceLeft={!left}
+      />
     </group>
   );
 }
 
-function ColonialSign({
+// ── Door with swing-open animation ────────────────────────────────────────────
+
+function AnimatedDoor({ h, win, active }: { h: number; win: string; active: boolean }) {
+  const doorPanelRef = useRef<THREE.Group>(null);
+  const doorW = 1.28;
+  const doorH = h * 0.38;
+
+  useFrame((_, delta) => {
+    if (!doorPanelRef.current) return;
+    // Target: open = -π*0.65 (swing away from player), closed = 0
+    const target = active ? -Math.PI * 0.65 : 0;
+    doorPanelRef.current.rotation.y = THREE.MathUtils.lerp(
+      doorPanelRef.current.rotation.y,
+      target,
+      delta * 5
+    );
+  });
+
+  return (
+    <group>
+      {/* Door frame */}
+      <mesh>
+        <boxGeometry args={[1.65, h * 0.45, 0.13]} />
+        <meshStandardMaterial color="#1c0e06" roughness={0.9} />
+      </mesh>
+
+      {/* Door panel — pivots around its left hinge */}
+      <group ref={doorPanelRef} position={[-doorW / 2, 0, 0.07]}>
+        <mesh position={[doorW / 2, 0, 0]}>
+          <boxGeometry args={[doorW, doorH, 0.065]} />
+          <meshStandardMaterial color="#3d1a08" roughness={0.82} />
+        </mesh>
+
+        {/* Decorative panels on door */}
+        <mesh position={[doorW / 2, doorH * 0.18, 0.038]}>
+          <boxGeometry args={[doorW * 0.7, doorH * 0.35, 0.02]} />
+          <meshStandardMaterial color="#2a1005" roughness={0.88} />
+        </mesh>
+        <mesh position={[doorW / 2, -doorH * 0.2, 0.038]}>
+          <boxGeometry args={[doorW * 0.7, doorH * 0.35, 0.02]} />
+          <meshStandardMaterial color="#2a1005" roughness={0.88} />
+        </mesh>
+
+        {/* Brass door knob */}
+        <mesh position={[doorW - 0.14, -0.08, 0.06]}>
+          <sphereGeometry args={[0.065, 12, 12]} />
+          <meshStandardMaterial color="#d6a23a" emissive="#d6a23a" emissiveIntensity={active ? 1.2 : 0.4} metalness={0.9} roughness={0.2} />
+        </mesh>
+      </group>
+
+      {/* Fanlight window above door */}
+      <mesh position={[0, h * 0.21, 0.1]}>
+        <boxGeometry args={[1.3, 0.44, 0.05]} />
+        <meshStandardMaterial color={win} emissive={win} emissiveIntensity={active ? 2.4 : 1.2} transparent opacity={0.75} />
+      </mesh>
+    </group>
+  );
+}
+
+// ── Building face sign ────────────────────────────────────────────────────────
+
+function BuildingSign({
   label,
   icon,
   position,
@@ -990,20 +854,24 @@ function ColonialSign({
 }) {
   return (
     <group position={position}>
+      {/* Sign bracket bar */}
       <mesh position={[0, 0.68, -0.1]} castShadow>
         <boxGeometry args={[2.6, 0.12, 0.12]} />
         <meshStandardMaterial color="#1c140f" metalness={0.8} roughness={0.28} />
       </mesh>
-
+      {/* Sign board */}
       <mesh position={[0, -0.22, 0]} castShadow receiveShadow>
         <boxGeometry args={[2.12, 0.96, 0.15]} />
-        <meshStandardMaterial color={active ? "#5c2e12" : "#3a210e"} roughness={0.68} emissive={active ? "#3a210e" : "#000000"} emissiveIntensity={active ? 0.4 : 0} />
+        <meshStandardMaterial
+          color={active ? "#6b3818" : "#4a2a12"}
+          roughness={0.68}
+          emissive={active ? "#3a2010" : "#000000"}
+          emissiveIntensity={active ? 0.5 : 0}
+        />
       </mesh>
-
       <Text position={[0, 0.04, 0.18]} fontSize={0.27} anchorX="center" anchorY="middle" color="#ffe8a3" outlineWidth={0.02} outlineColor="#1a1208">
         {icon}
       </Text>
-
       <Text position={[0, -0.28, 0.18]} fontSize={0.145} maxWidth={1.72} textAlign="center" anchorX="center" anchorY="middle" color={active ? "#fff9d8" : "#f0c96a"} outlineWidth={0.022} outlineColor="#0f0a05" lineHeight={1.1}>
         {label.toUpperCase().replace(/ /g, "\n")}
       </Text>
@@ -1011,43 +879,89 @@ function ColonialSign({
   );
 }
 
+// ── Street-level sign post ────────────────────────────────────────────────────
+// Placed between building and curb, sign faces the street
+
+function StreetSignPost({
+  label,
+  icon,
+  position,
+  active,
+  faceLeft,
+}: {
+  label: string;
+  icon: string;
+  position: [number, number, number];
+  active: boolean;
+  faceLeft: boolean;
+}) {
+  // Sign faces toward the street (x=0), so it rotates based on which side it's on
+  const rotY = faceLeft ? Math.PI / 2 : -Math.PI / 2;
+
+  return (
+    <group position={position} rotation={[0, rotY, 0]}>
+      {/* Wooden post */}
+      <mesh position={[0, 1.1, 0]} castShadow>
+        <cylinderGeometry args={[0.065, 0.08, 2.2, 8]} />
+        <meshStandardMaterial color="#3a2010" roughness={0.92} />
+      </mesh>
+      {/* Crossbar */}
+      <mesh position={[0, 2.15, 0]} castShadow>
+        <boxGeometry args={[1.6, 0.08, 0.08]} />
+        <meshStandardMaterial color="#3a2010" roughness={0.92} />
+      </mesh>
+      {/* Sign hanging board */}
+      <mesh position={[0, 1.68, 0.06]} castShadow receiveShadow>
+        <boxGeometry args={[1.5, 0.58, 0.1]} />
+        <meshStandardMaterial
+          color={active ? "#7a4020" : "#5a3018"}
+          roughness={0.75}
+          emissive={active ? "#3a1a08" : "#000"}
+          emissiveIntensity={active ? 0.5 : 0}
+        />
+      </mesh>
+      {/* Chains/strings holding sign */}
+      {[-0.6, 0.6].map((ox) => (
+        <mesh key={ox} position={[ox, 1.95, 0.04]}>
+          <cylinderGeometry args={[0.012, 0.012, 0.52, 6]} />
+          <meshStandardMaterial color="#8a6830" metalness={0.7} roughness={0.4} />
+        </mesh>
+      ))}
+      {/* Icon */}
+      <Text position={[-0.38, 1.68, 0.12]} fontSize={0.22} anchorX="center" anchorY="middle" color="#ffe8a3">
+        {icon}
+      </Text>
+      {/* Name text */}
+      <Text
+        position={[0.12, 1.68, 0.12]}
+        fontSize={0.115}
+        maxWidth={0.9}
+        textAlign="left"
+        anchorX="left"
+        anchorY="middle"
+        color={active ? "#fff9d8" : "#e8c870"}
+        outlineWidth={0.018}
+        outlineColor="#1a0e04"
+        lineHeight={1.15}
+      >
+        {label.replace("\n", " ").toUpperCase()}
+      </Text>
+    </group>
+  );
+}
+
+// ── Misc environment ──────────────────────────────────────────────────────────
+
 function Window({ position, color, active }: { position: [number, number, number]; color: string; active: boolean }) {
   return (
     <group position={position}>
       <mesh>
         <boxGeometry args={[0.9, 1.15, 0.08]} />
-        <meshStandardMaterial color="#120a05" roughness={0.9} />
+        <meshStandardMaterial color="#1c0f08" roughness={0.9} />
       </mesh>
-
       <mesh position={[0, 0, 0.05]}>
         <boxGeometry args={[0.62, 0.86, 0.035]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={active ? 2.6 : 1.4} transparent opacity={0.78} />
-      </mesh>
-    </group>
-  );
-}
-
-function Door({ h, win, active }: { h: number; win: string; active: boolean }) {
-  return (
-    <group>
-      <mesh>
-        <boxGeometry args={[1.65, h * 0.45, 0.13]} />
-        <meshStandardMaterial color="#160904" roughness={0.9} />
-      </mesh>
-
-      <mesh position={[0, 0, 0.07]}>
-        <boxGeometry args={[1.28, h * 0.38, 0.06]} />
-        <meshStandardMaterial color="#2b1207" roughness={0.82} />
-      </mesh>
-
-      <mesh position={[0.48, -0.08, 0.12]}>
-        <sphereGeometry args={[0.06, 10, 10]} />
-        <meshStandardMaterial color="#d6a23a" emissive="#d6a23a" emissiveIntensity={active ? 1 : 0.35} metalness={0.9} roughness={0.25} />
-      </mesh>
-
-      <mesh position={[0, h * 0.21, 0.1]}>
-        <boxGeometry args={[1.25, 0.42, 0.05]} />
-        <meshStandardMaterial color={win} emissive={win} emissiveIntensity={active ? 2.2 : 1.1} transparent opacity={0.72} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={active ? 2.6 : 1.5} transparent opacity={0.78} />
       </mesh>
     </group>
   );
@@ -1057,7 +971,7 @@ function Chimney({ position, large, roof }: { position: [number, number, number]
   return (
     <group position={position}>
       <mesh castShadow>
-        <boxGeometry args={[0.65, large ? 3.4 : 2.4, 0.65]} />
+        <boxGeometry args={[0.65, large ? 3.0 : 2.2, 0.65]} />
         <meshStandardMaterial color={roof} roughness={0.95} />
       </mesh>
     </group>
@@ -1071,7 +985,6 @@ function LanternPost({ position }: { position: [number, number, number] }) {
         <cylinderGeometry args={[0.055, 0.07, 5.3, 8]} />
         <meshStandardMaterial color="#2a1808" roughness={0.88} metalness={0.15} />
       </mesh>
-
       <group position={[0.62, 5.35, 0]}>
         <mesh>
           <boxGeometry args={[0.32, 0.44, 0.32]} />
@@ -1088,14 +1001,12 @@ function Fountain() {
     <group position={[0, 0, 0]}>
       <mesh position={[0, 0.25, 0]} receiveShadow castShadow>
         <cylinderGeometry args={[2.6, 3, 0.5, 16]} />
-        <meshStandardMaterial color="#1a1208" roughness={0.96} />
+        <meshStandardMaterial color="#2a1e12" roughness={0.96} />
       </mesh>
-
       <mesh position={[0, 0.82, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[1.8, 24]} />
         <meshStandardMaterial color="#1a4060" emissive="#1a4060" emissiveIntensity={0.4} transparent opacity={0.8} />
       </mesh>
-
       <Sparkles count={30} scale={[3, 2, 3]} position={[0, 1.2, 0]} size={2} speed={0.8} color="#93c5fd" opacity={0.6} />
     </group>
   );
@@ -1111,8 +1022,12 @@ function Trees() {
     [24, 0, 12, 1.0],
     [-42, 0, 28, 1.4],
     [42, 0, 30, 1.5],
+    [-30, 0, 40, 1.1],
+    [30, 0, 42, 1.2],
+    [0, 0, -45, 1.3],
+    [18, 0, -38, 1.0],
+    [-18, 0, -38, 1.1],
   ];
-
   return (
     <>
       {positions.map(([x, , z, s], i) => (
@@ -1121,11 +1036,10 @@ function Trees() {
             <cylinderGeometry args={[0.18, 0.28, 3, 7]} />
             <meshStandardMaterial color="#1a0e06" roughness={0.97} />
           </mesh>
-
           {[0, 1, 2].map((li) => (
             <mesh key={li} position={[0, 3.5 + li * 1.2, 0]} castShadow>
               <coneGeometry args={[1.6 - li * 0.35, 2.2, 7]} />
-              <meshStandardMaterial color={`hsl(130,${25 + li * 5}%,${8 + li * 2}%)`} roughness={0.96} />
+              <meshStandardMaterial color={`hsl(130,${28 + li * 6}%,${12 + li * 3}%)`} roughness={0.96} />
             </mesh>
           ))}
         </group>
@@ -1134,65 +1048,103 @@ function Trees() {
   );
 }
 
-function BenNPC({ position }: { position: [number, number, number] }) {
+// ── More human-shaped NPC/player figures ──────────────────────────────────────
+
+function HumanFigure({
+  coatColor,
+  skinColor,
+  hatColor,
+  name,
+  nameColor = "#fbbf24",
+  distanceFactor = 7,
+}: {
+  coatColor: string;
+  skinColor: string;
+  hatColor: string;
+  name: string;
+  nameColor?: string;
+  distanceFactor?: number;
+}) {
   return (
-    <group position={position}>
-      <mesh position={[0, 1.12, 0]}>
-        <cylinderGeometry args={[0.28, 0.22, 0.85, 12]} />
-        <meshStandardMaterial color="#163a63" roughness={0.82} />
+    <group>
+      {/* Left leg */}
+      <mesh position={[-0.1, 0.42, 0]} castShadow>
+        <cylinderGeometry args={[0.085, 0.075, 0.82, 8]} />
+        <meshStandardMaterial color="#1a1408" roughness={0.9} />
       </mesh>
-
-      <mesh position={[0, 1.72, 0]}>
-        <sphereGeometry args={[0.24, 18, 18]} />
-        <meshStandardMaterial color="#d4a876" roughness={0.78} />
+      {/* Right leg */}
+      <mesh position={[0.1, 0.42, 0]} castShadow>
+        <cylinderGeometry args={[0.085, 0.075, 0.82, 8]} />
+        <meshStandardMaterial color="#1a1408" roughness={0.9} />
       </mesh>
-
-      <mesh position={[0, 1.76, -0.04]}>
-        <sphereGeometry args={[0.255, 14, 14]} />
-        <meshStandardMaterial color="#e8e0cf" roughness={0.9} />
+      {/* Left boot */}
+      <mesh position={[-0.1, 0.06, 0.04]} castShadow>
+        <boxGeometry args={[0.15, 0.12, 0.28]} />
+        <meshStandardMaterial color="#0a0806" roughness={0.92} />
       </mesh>
-
-      <mesh position={[0, 1.98, 0]}>
-        <cylinderGeometry args={[0.38, 0.38, 0.045, 20]} />
-        <meshStandardMaterial color="#1b1510" roughness={0.9} />
+      {/* Right boot */}
+      <mesh position={[0.1, 0.06, 0.04]} castShadow>
+        <boxGeometry args={[0.15, 0.12, 0.28]} />
+        <meshStandardMaterial color="#0a0806" roughness={0.92} />
       </mesh>
-
-      <Html position={[0, 2.75, 0]} center distanceFactor={5} style={{ pointerEvents: "none" }}>
-        <div style={{ background: "rgba(0,0,0,0.78)", color: "#fbbf24", padding: "5px 10px", borderRadius: 8, fontSize: 14, fontFamily: "EB Garamond, serif", whiteSpace: "nowrap", border: "1px solid rgba(251,191,36,0.55)" }}>
-          Ben
-        </div>
-      </Html>
-    </group>
-  );
-}
-
-function TownLife() {
-  return (
-    <>
-      <Citizen name="Merchant" position={[-2.5, 0, -1.6]} color="#4a2e0e" />
-      <Citizen name="Postmaster" position={[-3.2, 0, 5]} color="#1a3a6b" />
-      <Citizen name="Blacksmith" position={[3.2, 0, 13]} color="#1a1a1a" />
-      <Wagon position={[2.8, 0, -2]} rotation={[0, -0.45, 0]} />
-      <Horse position={[1.5, 0, -3.2]} rotation={[0, -0.45, 0]} />
-    </>
-  );
-}
-
-function Citizen({ name, position, color }: { name: string; position: [number, number, number]; color: string }) {
-  return (
-    <group position={position}>
-      <mesh position={[0, 1.05, 0]}>
-        <cylinderGeometry args={[0.22, 0.18, 0.8, 10]} />
-        <meshStandardMaterial color={color} roughness={0.85} />
+      {/* Torso */}
+      <mesh position={[0, 1.08, 0]} castShadow>
+        <boxGeometry args={[0.4, 0.6, 0.22]} />
+        <meshStandardMaterial color={coatColor} roughness={0.82} />
       </mesh>
-
-      <mesh position={[0, 1.58, 0]}>
-        <sphereGeometry args={[0.2, 12, 12]} />
-        <meshStandardMaterial color="#d4a876" roughness={0.85} />
+      {/* Waistcoat/vest layer */}
+      <mesh position={[0, 1.08, 0.1]}>
+        <boxGeometry args={[0.22, 0.5, 0.04]} />
+        <meshStandardMaterial color="#c9a84c" roughness={0.78} emissive="#c9a84c" emissiveIntensity={0.08} />
       </mesh>
-
-      <Html position={[0, 2.55, 0]} center distanceFactor={7}>
-        <div style={{ background: "rgba(0,0,0,0.72)", color: "#fbbf24", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontFamily: "EB Garamond, serif", border: "1px solid rgba(251,191,36,.35)", whiteSpace: "nowrap" }}>
+      {/* Left arm */}
+      <mesh position={[-0.26, 1.05, 0]} rotation={[0, 0, 0.18]} castShadow>
+        <cylinderGeometry args={[0.068, 0.055, 0.56, 8]} />
+        <meshStandardMaterial color={coatColor} roughness={0.84} />
+      </mesh>
+      {/* Right arm */}
+      <mesh position={[0.26, 1.05, 0]} rotation={[0, 0, -0.18]} castShadow>
+        <cylinderGeometry args={[0.068, 0.055, 0.56, 8]} />
+        <meshStandardMaterial color={coatColor} roughness={0.84} />
+      </mesh>
+      {/* Left hand */}
+      <mesh position={[-0.3, 0.78, 0]}>
+        <sphereGeometry args={[0.055, 8, 8]} />
+        <meshStandardMaterial color={skinColor} roughness={0.8} />
+      </mesh>
+      {/* Right hand */}
+      <mesh position={[0.3, 0.78, 0]}>
+        <sphereGeometry args={[0.055, 8, 8]} />
+        <meshStandardMaterial color={skinColor} roughness={0.8} />
+      </mesh>
+      {/* Neck */}
+      <mesh position={[0, 1.44, 0]}>
+        <cylinderGeometry args={[0.075, 0.09, 0.14, 8]} />
+        <meshStandardMaterial color={skinColor} roughness={0.8} />
+      </mesh>
+      {/* Head */}
+      <mesh position={[0, 1.66, 0]} castShadow>
+        <sphereGeometry args={[0.195, 16, 16]} />
+        <meshStandardMaterial color={skinColor} roughness={0.78} />
+      </mesh>
+      {/* Tricorn hat brim */}
+      <mesh position={[0, 1.88, 0]}>
+        <cylinderGeometry args={[0.36, 0.36, 0.05, 20]} />
+        <meshStandardMaterial color={hatColor} roughness={0.88} />
+      </mesh>
+      {/* Hat crown */}
+      <mesh position={[0, 2.04, 0]}>
+        <cylinderGeometry args={[0.19, 0.22, 0.32, 12]} />
+        <meshStandardMaterial color={hatColor} roughness={0.88} />
+      </mesh>
+      {/* Hat band */}
+      <mesh position={[0, 1.93, 0]}>
+        <cylinderGeometry args={[0.21, 0.21, 0.06, 12]} />
+        <meshStandardMaterial color="#c9a84c" roughness={0.6} emissive="#c9a84c" emissiveIntensity={0.15} metalness={0.3} />
+      </mesh>
+      {/* Name tag */}
+      <Html position={[0, 2.55, 0]} center distanceFactor={distanceFactor} style={{ pointerEvents: "none" }}>
+        <div style={{ background: "rgba(0,0,0,0.78)", color: nameColor, padding: "3px 9px", borderRadius: 7, fontSize: 11, fontFamily: "EB Garamond, serif", whiteSpace: "nowrap", border: "1px solid rgba(201,168,76,0.45)" }}>
           {name}
         </div>
       </Html>
@@ -1200,13 +1152,97 @@ function Citizen({ name, position, color }: { name: string; position: [number, n
   );
 }
 
+// Ben NPC — distinguished gold-accented coat
+function BenNPC({ position }: { position: [number, number, number] }) {
+  const groupRef = useRef<THREE.Group>(null);
+
+  useFrame(({ clock }) => {
+    if (!groupRef.current) return;
+    groupRef.current.rotation.y = Math.sin(clock.elapsedTime * 0.4) * 0.55;
+  });
+
+  return (
+    <group ref={groupRef} position={position}>
+      <HumanFigure
+        coatColor="#163a63"
+        skinColor="#d4a876"
+        hatColor="#1b1510"
+        name="Ben Franklin"
+        nameColor="#fbbf24"
+        distanceFactor={5}
+      />
+    </group>
+  );
+}
+
+// Town NPC citizens with walking animation
+function Citizen({ name, position, color, skin = "#d4a876", walkRadius = 0, walkSpeed = 1 }: {
+  name: string;
+  position: [number, number, number];
+  color: string;
+  skin?: string;
+  walkRadius?: number;
+  walkSpeed?: number;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const timeOffset = useRef(Math.random() * Math.PI * 2);
+
+  useFrame(({ clock }) => {
+    if (!groupRef.current || walkRadius === 0) return;
+    const t = clock.elapsedTime * walkSpeed + timeOffset.current;
+    groupRef.current.position.x = position[0] + Math.cos(t) * walkRadius;
+    groupRef.current.position.z = position[2] + Math.sin(t) * walkRadius;
+    groupRef.current.rotation.y = -t + Math.PI / 2;
+  });
+
+  return (
+    <group ref={groupRef} position={position}>
+      <HumanFigure
+        coatColor={color}
+        skinColor={skin}
+        hatColor="#1a1208"
+        name={name}
+        distanceFactor={7}
+      />
+    </group>
+  );
+}
+
+function TownLife() {
+  return (
+    <>
+      <Citizen name="Merchant" position={[-2.5, 0, -1.6]} color="#4a2e0e" skin="#c49060" walkRadius={1.2} walkSpeed={0.35} />
+      <Citizen name="Postmaster" position={[-3.2, 0, 5]} color="#1a3a6b" walkRadius={0.8} walkSpeed={0.28} />
+      <Citizen name="Blacksmith" position={[3.2, 0, 13]} color="#3a3030" skin="#a87040" walkRadius={1.0} walkSpeed={0.4} />
+      <Citizen name="Farmer" position={[22, 0, 8]} color="#4a3c1a" walkRadius={2.0} walkSpeed={0.22} />
+      <Citizen name="Sailor" position={[-20, 0, -28]} color="#1a2a4a" walkRadius={1.5} walkSpeed={0.32} />
+      <Wagon position={[2.8, 0, -2]} rotation={[0, -0.45, 0]} />
+      <Horse position={[1.5, 0, -3.2]} rotation={[0, -0.45, 0]} />
+    </>
+  );
+}
+
 function Horse({ position, rotation }: { position: [number, number, number]; rotation: [number, number, number] }) {
   return (
     <group position={position} rotation={rotation}>
-      <mesh position={[0, 1, 0]} castShadow>
-        <boxGeometry args={[1.15, 0.5, 0.38]} />
-        <meshStandardMaterial color="#4a2a14" roughness={0.9} />
+      <mesh position={[0, 0.7, 0]} castShadow>
+        <boxGeometry args={[1.2, 0.52, 0.42]} />
+        <meshStandardMaterial color="#3a2216" roughness={0.9} />
       </mesh>
+      {/* Head */}
+      <mesh position={[0.55, 1.0, 0]} castShadow>
+        <boxGeometry args={[0.38, 0.3, 0.22]} />
+        <meshStandardMaterial color="#3a2216" roughness={0.9} />
+      </mesh>
+      {/* Legs */}
+      {[-0.38, 0.38].map((lx) =>
+        [-0.5, 0.5].map((lz) => (
+          <mesh key={`${lx}-${lz}`} position={[lx, 0.3, lz * 0.7]} castShadow>
+            <cylinderGeometry args={[0.06, 0.06, 0.62, 6]} />
+            <meshStandardMaterial color="#2a1a0e" roughness={0.92} />
+          </mesh>
+        ))
+      )}
     </group>
   );
 }
@@ -1218,7 +1254,6 @@ function Wagon({ position, rotation }: { position: [number, number, number]; rot
         <boxGeometry args={[1.4, 0.55, 0.85]} />
         <meshStandardMaterial color="#3a210e" roughness={0.9} />
       </mesh>
-
       {[-0.55, 0.55].map((x) =>
         [-0.48, 0.48].map((z) => (
           <mesh key={`${x}-${z}`} position={[x, 0.35, z]} rotation={[Math.PI / 2, 0, 0]}>
@@ -1238,17 +1273,14 @@ function Ship({ position, rotation = 0 }: { position: [number, number, number]; 
         <boxGeometry args={[4.5, 1.8, 12]} />
         <meshStandardMaterial color="#3a2a1a" roughness={0.9} />
       </mesh>
-
       <mesh position={[0, 2.4, 0]} castShadow>
         <boxGeometry args={[4, 0.3, 10]} />
         <meshStandardMaterial color="#8b6f47" roughness={0.85} />
       </mesh>
-
       <mesh position={[0, 6, 0]} castShadow>
         <cylinderGeometry args={[0.12, 0.12, 9, 8]} />
         <meshStandardMaterial color="#2a2a2a" roughness={0.95} />
       </mesh>
-
       <mesh position={[0, 5.5, -1]} rotation={[0.3, 0, 0]}>
         <planeGeometry args={[3.5, 6]} />
         <meshStandardMaterial color="#f5f0d8" side={THREE.DoubleSide} transparent opacity={0.9} />
@@ -1257,18 +1289,12 @@ function Ship({ position, rotation = 0 }: { position: [number, number, number]; 
   );
 }
 
+// ── Other multiplayer player ──────────────────────────────────────────────────
+
 function OtherPlayer({
-  x,
-  z,
-  yaw,
-  avatarIdx,
-  name,
+  x, z, yaw, avatarIdx, name,
 }: {
-  x: number;
-  z: number;
-  yaw: number;
-  avatarIdx: number;
-  name: string;
+  x: number; z: number; yaw: number; avatarIdx: number; name: string;
 }) {
   const group = useRef<THREE.Group>(null);
   const av = AVATARS[avatarIdx] ?? AVATARS[0];
@@ -1282,24 +1308,19 @@ function OtherPlayer({
 
   return (
     <group ref={group} position={[x, 0, z]}>
-      <mesh position={[0, 1.1, 0]}>
-        <cylinderGeometry args={[0.22, 0.2, 0.75, 8]} />
-        <meshStandardMaterial color={av.color} roughness={0.85} />
-      </mesh>
-
-      <mesh position={[0, 1.66, 0]}>
-        <sphereGeometry args={[0.2, 10, 10]} />
-        <meshStandardMaterial color="#d4a876" roughness={0.85} />
-      </mesh>
-
-      <Html position={[0, 2.55, 0]} center distanceFactor={8} style={{ pointerEvents: "none" }}>
-        <div style={{ background: "rgba(0,0,0,0.75)", color: "#c9a84c", padding: "2px 8px", borderRadius: 6, fontSize: 10, fontFamily: "EB Garamond, serif", whiteSpace: "nowrap", border: "1px solid rgba(201,168,76,0.35)" }}>
-          {name}
-        </div>
-      </Html>
+      <HumanFigure
+        coatColor={av.coat}
+        skinColor={av.skin}
+        hatColor={av.hat}
+        name={name}
+        nameColor="#c9a84c"
+        distanceFactor={8}
+      />
     </group>
   );
 }
+
+// ── Entry cinematic ───────────────────────────────────────────────────────────
 
 function EntryTransition({ building, onDone }: { building: BuildingDef; onDone: () => void }) {
   useEffect(() => {
@@ -1310,12 +1331,9 @@ function EntryTransition({ building, onDone }: { building: BuildingDef; onDone: 
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center"
-      style={{
-        background: "radial-gradient(ellipse at center,rgba(0,0,0,.18) 0%,rgba(0,0,0,.98) 100%)",
-      }}
+      style={{ background: "radial-gradient(ellipse at center,rgba(0,0,0,.18) 0%,rgba(0,0,0,.98) 100%)" }}
     >
       <div style={{ fontSize: 78, marginBottom: 18 }}>{building.icon}</div>
-
       <h2
         style={{
           fontFamily: "EB Garamond, serif",
@@ -1330,16 +1348,7 @@ function EntryTransition({ building, onDone }: { building: BuildingDef; onDone: 
       >
         {building.label}
       </h2>
-
-      <p
-        style={{
-          fontFamily: "EB Garamond, serif",
-          color: "rgba(201,168,76,.55)",
-          fontSize: 13,
-          letterSpacing: "0.3em",
-          textTransform: "uppercase",
-        }}
-      >
+      <p style={{ fontFamily: "EB Garamond, serif", color: "rgba(201,168,76,.55)", fontSize: 13, letterSpacing: "0.3em", textTransform: "uppercase" }}>
         Entering…
       </p>
     </div>
