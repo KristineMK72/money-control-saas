@@ -1,19 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  AppShell,
-  DarkPanel,
-  MetricCard,
-  Notice,
-  PageHeader,
-  Panel,
-  inputClass,
-  moneyButtonClass,
-} from "@/components/AppFrame";
+import { useRouter } from "next/navigation";
 import BenBubble from "@/components/BenBubble";
 import PaperScrollScanner from "@/components/PaperScrollScanner";
-import ScrollRevealCard from "@/components/ScrollRevealCard";
 import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/money/utils";
@@ -25,6 +15,8 @@ import {
   parseTransactionsScreenshot,
   type ParsedTxn,
 } from "@/lib/money/receiptOcr";
+
+const SPEND_BG = "/60993E25-B30B-49BB-B61E-024554E45008.png";
 
 type SpendRow = {
   id: string;
@@ -57,20 +49,23 @@ const categories: SpendCategory[] = [
 ];
 
 const categoryLabel: Record<SpendCategory, string> = {
-  groceries: "Groceries",
-  gas: "Gas",
-  eating_out: "Eating out",
-  bills: "Bills",
-  kids: "Kids",
-  business: "Business",
-  self_care: "Self care",
-  subscriptions: "Subscriptions",
-  misc: "Misc",
+  groceries: "🛒 Groceries",
+  gas: "⛽ Gas",
+  eating_out: "🍽️ Eating out",
+  bills: "📋 Bills",
+  kids: "👶 Kids",
+  business: "💼 Business",
+  self_care: "✨ Self care",
+  subscriptions: "📱 Subscriptions",
+  misc: "💰 Misc",
 };
 
 const basePaymentMethods = ["Debit", "Cash", "Checking", "Savings"];
 
+type ActiveDrawer = "add" | "scan" | null;
+
 export default function SpendPage() {
+  const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [userId, setUserId] = useState<string | null>(null);
@@ -79,6 +74,8 @@ export default function SpendPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [showBenNotice, setShowBenNotice] = useState(false);
+  const [drawer, setDrawer] = useState<ActiveDrawer>("add");
 
   const [dateISO, setDateISO] = useState(todayISO());
   const [merchant, setMerchant] = useState("");
@@ -92,6 +89,11 @@ export default function SpendPage() {
   const [foundTxns, setFoundTxns] = useState<ParsedTxn[]>([]);
   const [selectedTxns, setSelectedTxns] = useState<Record<number, boolean>>({});
 
+  function showMsg(text: string) {
+    setMessage(text);
+    setTimeout(() => setMessage(""), 3500);
+  }
+
   async function reloadRows(uid = userId) {
     if (!uid) return;
 
@@ -102,7 +104,7 @@ export default function SpendPage() {
       .order("date_iso", { ascending: false });
 
     if (error) {
-      setMessage(error.message);
+      showMsg(error.message);
       return;
     }
 
@@ -132,14 +134,14 @@ export default function SpendPage() {
       const { data, error } = await supabase.auth.getSession();
 
       if (error) {
-        setMessage(error.message);
+        showMsg(error.message);
         setLoading(false);
         return;
       }
 
       const user = data.session?.user;
       if (!user) {
-        setMessage("Sign in and Ben will stop guessing from the hallway.");
+        showMsg("Sign in and Ben will stop guessing from the hallway.");
         setLoading(false);
         return;
       }
@@ -154,16 +156,14 @@ export default function SpendPage() {
   }, [supabase]);
 
   async function handleAddSpend() {
-    setMessage("");
-
     if (!userId) {
-      setMessage("Please sign in first.");
+      showMsg("Please sign in first.");
       return;
     }
 
     const amt = Number(amount);
     if (!merchant.trim() || !Number.isFinite(amt) || amt <= 0) {
-      setMessage("Add a merchant and a real amount. Ben is witty, not psychic.");
+      showMsg("Add a merchant and a real amount.");
       return;
     }
 
@@ -180,7 +180,7 @@ export default function SpendPage() {
     });
 
     if (error) {
-      setMessage(error.message);
+      showMsg(error.message);
       setSaving(false);
       return;
     }
@@ -193,13 +193,15 @@ export default function SpendPage() {
     setDateISO(todayISO());
 
     await reloadRows(userId);
-
-    setMessage("Spending logged. The money trail has entered evidence.");
+    showMsg("Spending logged. The money trail has entered evidence.");
     setSaving(false);
   }
 
   async function handleDelete(id: string) {
     if (!userId) return;
+
+    const ok = window.confirm("Delete this spend entry?");
+    if (!ok) return;
 
     const { error } = await supabase
       .from("spend_entries")
@@ -208,19 +210,19 @@ export default function SpendPage() {
       .eq("user_id", userId);
 
     if (error) {
-      setMessage(error.message);
+      showMsg(error.message);
       return;
     }
 
     setEntries((prev) => prev.filter((entry) => entry.id !== id));
-    setMessage("Entry removed.");
+    showMsg("Entry removed.");
   }
 
   async function handleOCR() {
     if (!imageFile) return;
 
     setOcrBusy(true);
-    setMessage("Ben is reading the receipt with his serious spectacles on.");
+    showMsg("Ben is reading the receipt with his serious spectacles on.");
 
     try {
       const result = await ocrImageFile(imageFile);
@@ -234,14 +236,14 @@ export default function SpendPage() {
         }, {})
       );
 
-      setMessage(
+      showMsg(
         parsed.length
           ? `Found ${parsed.length} possible transactions. Review before importing.`
           : "No clear transactions found. You can still enter it manually."
       );
-    } catch (error) {
-      console.error("Spend OCR error:", error);
-      setMessage("The scanner stumbled on that image. Try a clearer screenshot.");
+    } catch (err) {
+      console.error("Spend OCR error:", err);
+      showMsg("The scanner stumbled on that image. Try a clearer screenshot.");
     }
 
     setOcrBusy(false);
@@ -268,7 +270,7 @@ export default function SpendPage() {
       .filter((row) => Number.isFinite(row.amount) && row.amount > 0);
 
     if (rows.length === 0) {
-      setMessage("Select at least one transaction with a valid amount.");
+      showMsg("Select at least one transaction with a valid amount.");
       return;
     }
 
@@ -277,7 +279,7 @@ export default function SpendPage() {
     const { error } = await supabase.from("spend_entries").insert(rows);
 
     if (error) {
-      setMessage(error.message);
+      showMsg(error.message);
       setSaving(false);
       return;
     }
@@ -287,8 +289,7 @@ export default function SpendPage() {
     setImageFile(null);
 
     await reloadRows(userId);
-
-    setMessage(`Imported ${rows.length} transactions. Ben filed the receipts.`);
+    showMsg(`Imported ${rows.length} transactions. Ben filed the receipts.`);
     setSaving(false);
   }
 
@@ -301,25 +302,28 @@ export default function SpendPage() {
 
   const totalSpend = entries.reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
+  const thisMonthTotal = useMemo(() => {
+    const now = new Date().toISOString().slice(0, 7);
+    return entries
+      .filter((e) => e.date_iso?.startsWith(now))
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  }, [entries]);
+
   const topCategory = useMemo(() => {
     const totals: Record<string, number> = {};
-
     entries.forEach((entry) => {
-      const key = categoryLabel[entry.category] || "Misc";
+      const key = categoryLabel[entry.category]?.replace(/^[^\s]+ /, "") || "Misc";
       totals[key] = (totals[key] || 0) + Number(entry.amount || 0);
     });
-
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
   }, [entries]);
 
   const topPaymentMethod = useMemo(() => {
     const totals: Record<string, number> = {};
-
     entries.forEach((entry) => {
       const key = entry.payment_method || "Unknown";
       totals[key] = (totals[key] || 0) + Number(entry.amount || 0);
     });
-
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
   }, [entries]);
 
@@ -332,261 +336,633 @@ export default function SpendPage() {
     dailyIncomeNeeded: totalSpend > 0 ? Math.ceil(totalSpend / 30) : 0,
   });
 
-  const spendMood =
-    totalSpend > 0 && topCategory?.[0]?.toLowerCase().includes("eating")
-      ? "/ben-facepalm.png"
-      : totalSpend > 0
-      ? "/ben-thinking.png"
-      : "/ben-head.png";
-
   if (loading) {
     return (
-      <AppShell max="max-w-5xl">
-        <Panel>Loading spend controls...</Panel>
-      </AppShell>
+      <div className="flex min-h-screen items-center justify-center bg-black">
+        <p className="font-cinzel text-[#c9a84c]">
+          Opening Franklin&apos;s Market Ledger…
+        </p>
+      </div>
     );
   }
 
   return (
-    <AppShell max="max-w-5xl">
-      <PageHeader
-        eyebrow="AskBen Spend"
-        title="Spend"
-        subtitle="Track every dollar leaving the building, including how thou paid for it."
-      />
-
-      {message && <Notice>{message}</Notice>}
-
-      <ScrollRevealCard
-        title="Spending Briefing"
-        subtitle="Totals, top category, payment method, and Ben's read"
-        image={spendMood}
-        defaultOpen
-      >
-        <DarkPanel>
-          <BenBubble message={benInsight.text} mood={benInsight.mood} />
-        </DarkPanel>
-
-        <section className="mt-5 grid gap-4 md:grid-cols-3">
-          <MetricCard label="Total Spend" value={money(totalSpend)} tone="amber" />
-
-          <MetricCard
-            label="Top Category"
-            value={topCategory ? topCategory[0] : "None yet"}
-            helper={topCategory ? money(topCategory[1]) : "No spend logged"}
-            tone="sky"
-          />
-
-          <MetricCard
-            label="Top Payment Method"
-            value={topPaymentMethod ? topPaymentMethod[0] : "None yet"}
-            helper={
-              topPaymentMethod ? money(topPaymentMethod[1]) : "No method logged"
-            }
-            tone="zinc"
-          />
-        </section>
-      </ScrollRevealCard>
-
-      <ScrollRevealCard
-        title="Add Spending"
-        subtitle={merchant || amount ? "Draft ready for the ledger" : "Manual entry"}
-        image="/ben-thinking.png"
-        defaultOpen
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <input
-            value={merchant}
-            onChange={(e) => setMerchant(e.target.value)}
-            placeholder="Merchant or place"
-            className={inputClass}
-          />
-
-          <input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="Amount"
-            inputMode="decimal"
-            className={inputClass}
-          />
-
-          <input
-            type="date"
-            value={dateISO}
-            onChange={(e) => setDateISO(e.target.value)}
-            className={inputClass}
-          />
-
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as SpendCategory)}
-            className={inputClass}
-          >
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {categoryLabel[cat]}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value)}
-            className={inputClass}
-          >
-            {paymentOptions.map((method) => (
-              <option key={method} value={method}>
-                {method}
-              </option>
-            ))}
-          </select>
-
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Optional note"
-            className={`${inputClass} min-h-24 md:col-span-2`}
-          />
-
-          <button
-            onClick={handleAddSpend}
-            disabled={saving || !userId}
-            className={`${moneyButtonClass} md:col-span-2`}
-          >
-            {saving ? "Saving..." : "Add Spend"}
-          </button>
-        </div>
-      </ScrollRevealCard>
-
-      <ScrollRevealCard
-        title="Receipt Scanner"
-        subtitle={
-          ocrBusy
-            ? "Ben is reading the receipt..."
-            : "Upload a screenshot, receipt, or photo"
-        }
-        image="/ben-mastermind.png"
-      >
-        <PaperScrollScanner
-          title="Scan Receipt"
-          description="Upload a bank screenshot, receipt, or photo. Choose the payment method, then import."
-          file={imageFile}
-          busy={ocrBusy}
-          onFileChange={(file) => {
-            setImageFile(file);
-            setFoundTxns([]);
-            setSelectedTxns({});
-            setMessage("");
+    <main
+      className="min-h-screen bg-black text-[#f5e6c8]"
+      style={{ fontFamily: "EB Garamond, serif" }}
+    >
+      {/* ── Hero ── */}
+      <section className="relative mx-auto max-w-5xl">
+        <div
+          className="px-4 py-3 text-center"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(0,0,0,.98), rgba(15,8,4,.92))",
+            borderBottom: "1px solid rgba(201,168,76,.25)",
           }}
-          onScan={handleOCR}
-        />
-      </ScrollRevealCard>
-
-      {foundTxns.length > 0 && (
-        <ScrollRevealCard
-          title="Review Imports"
-          subtitle={`${foundTxns.length} possible transactions found`}
-          image="/ben-recovery.png"
-          defaultOpen
         >
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-2xl font-black text-zinc-950">Review imports</h2>
-              <p className="text-sm font-semibold text-zinc-600">
-                Imported transactions will use payment method:{" "}
-                <span className="font-black">{paymentMethod}</span>
-              </p>
-            </div>
+          <p className="font-cinzel text-xs uppercase tracking-[0.35em] text-[#c9a84c]">
+            Franklin&apos;s Landing
+          </p>
+          <h1 className="font-cinzel text-2xl font-bold tracking-wide text-[#f5e6c8] sm:text-4xl">
+            General Store of Spending
+          </h1>
+        </div>
 
-            <button
-              onClick={importSelected}
-              disabled={saving}
-              className={moneyButtonClass}
-            >
-              Import selected
-            </button>
+        <img
+          src={SPEND_BG}
+          alt="General Store of Spending"
+          className="block h-auto w-full"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = "none";
+          }}
+        />
+
+        <button
+          onClick={() => router.push("/world")}
+          className="absolute left-4 top-20 rounded-full px-4 py-2 text-sm sm:top-24"
+          style={{
+            background: "rgba(0,0,0,.72)",
+            border: "1px solid rgba(201,168,76,.45)",
+            color: "#f5e6c8",
+          }}
+        >
+          ← Back to Town
+        </button>
+
+        <button
+          onClick={() => setShowBenNotice(true)}
+          className="absolute right-4 top-20 rounded-full px-4 py-2 text-sm sm:top-24"
+          style={{
+            background: "rgba(0,0,0,.72)",
+            border: "1px solid rgba(201,168,76,.45)",
+            color: "#f5e6c8",
+          }}
+        >
+          Ben&apos;s Notice
+        </button>
+      </section>
+
+      {/* ── Main content ── */}
+      <section className="relative z-10 mx-auto -mt-2 max-w-5xl px-4 pb-24 sm:-mt-8">
+        <div
+          className="rounded-3xl p-4 sm:p-5"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(8,5,3,.94), rgba(0,0,0,.99))",
+            border: "1px solid rgba(201,168,76,.35)",
+            boxShadow: "0 -30px 80px rgba(0,0,0,.9)",
+          }}
+        >
+          {/* ── Notice banner ── */}
+          {message && (
+            <p className="mb-4 rounded-xl bg-[#c9a84c]/20 px-4 py-3 text-center text-[#f5e6c8]">
+              {message}
+            </p>
+          )}
+
+          {/* ── Top stats ── */}
+          <div
+            className="mb-5 grid grid-cols-2 overflow-hidden rounded-2xl sm:grid-cols-4"
+            style={{
+              border: "1px solid rgba(201,168,76,.4)",
+              background: "rgba(0,0,0,.58)",
+            }}
+          >
+            <Metric icon="🪙" label="Total Spend" value={money(totalSpend)} color="#ef4444" />
+            <Metric icon="📅" label="This Month" value={money(thisMonthTotal)} color="#c9a84c" />
+            <Metric
+              icon="📊"
+              label="Top Category"
+              value={topCategory ? topCategory[0] : "None yet"}
+              color="#c9a84c"
+            />
+            <Metric
+              icon="💳"
+              label="Top Method"
+              value={topPaymentMethod ? topPaymentMethod[0] : "None yet"}
+              color="#c9a84c"
+            />
           </div>
 
-          <div className="mt-5 grid gap-3">
-            {foundTxns.map((txn, index) => (
-              <label
-                key={`${txn.merchant}-${index}`}
-                className="flex items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4"
-              >
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={!!selectedTxns[index]}
-                    onChange={(e) =>
-                      setSelectedTxns((prev) => ({
-                        ...prev,
-                        [index]: e.target.checked,
-                      }))
-                    }
-                  />
+          {/* ── Ben's briefing ── */}
+          <Card
+            title="Ben's Spending Briefing"
+            sub="Total spend, top category, and where your money is going."
+          >
+            <BenBubble message={benInsight.text} mood={benInsight.mood} />
 
-                  <div>
-                    <p className="font-black">{txn.merchant || "Transaction"}</p>
-                    <p className="text-sm font-semibold text-zinc-600">
-                      {txn.dateText || dateISO} • {paymentMethod}
-                    </p>
+            {(topCategory || topPaymentMethod) && (
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                {topCategory && (
+                  <StatTile
+                    icon="📊"
+                    label="Biggest Category"
+                    value={topCategory[0]}
+                    sub={money(topCategory[1])}
+                  />
+                )}
+                {topPaymentMethod && (
+                  <StatTile
+                    icon="💳"
+                    label="Most Used Method"
+                    value={topPaymentMethod[0]}
+                    sub={money(topPaymentMethod[1])}
+                  />
+                )}
+              </div>
+            )}
+          </Card>
+
+          {/* ── Drawer buttons ── */}
+          <div className="my-5 grid grid-cols-2 gap-3">
+            {(
+              [
+                { key: "add", label: "+ Add Spend" },
+                { key: "scan", label: "📸 Scan Receipt" },
+              ] as const
+            ).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setDrawer(drawer === key ? null : key)}
+                className="rounded-xl py-4 font-cinzel text-base"
+                style={{
+                  background:
+                    drawer === key
+                      ? "linear-gradient(180deg, rgba(201,168,76,.42), rgba(70,40,10,.45))"
+                      : "rgba(0,0,0,.45)",
+                  border:
+                    drawer === key
+                      ? "1px solid rgba(251,191,36,.85)"
+                      : "1px solid rgba(201,168,76,.35)",
+                  color: drawer === key ? "#f5e6c8" : "#c9a84c",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Add Spend drawer ── */}
+          {drawer === "add" && (
+            <DrawerPanel
+              title="Record Spending"
+              sub="Log every dollar leaving the household — and exactly how you paid."
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  label="Merchant / Place"
+                  value={merchant}
+                  onChange={setMerchant}
+                  placeholder="Walmart, Shell, Amazon…"
+                />
+                <Input
+                  label="Amount"
+                  value={amount}
+                  onChange={setAmount}
+                  type="number"
+                  placeholder="0.00"
+                />
+                <Input
+                  label="Date"
+                  value={dateISO}
+                  onChange={setDateISO}
+                  type="date"
+                />
+                <SelectInput
+                  label="Category"
+                  value={category}
+                  onChange={(v) => setCategory(v as SpendCategory)}
+                  options={categories.map((cat) => ({
+                    value: cat,
+                    label: categoryLabel[cat],
+                  }))}
+                />
+
+                {/* Payment method — full-width, clearly labeled */}
+                <div className="sm:col-span-2">
+                  <SelectInput
+                    label="Payment Method"
+                    value={paymentMethod}
+                    onChange={setPaymentMethod}
+                    options={paymentOptions.map((method) => ({
+                      value: method,
+                      label: method,
+                    }))}
+                    highlight
+                  />
+                  <p className="mt-1 text-xs text-[#9a7d5a]">
+                    Credit cards from your Debts ledger appear here automatically.
+                  </p>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block">
+                    <span className="text-xs uppercase tracking-widest text-[#c9a84c]">
+                      Note (optional)
+                    </span>
+                    <textarea
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="Optional note"
+                      rows={2}
+                      className="mt-1 w-full rounded-lg px-3 py-2 text-black"
+                      style={{ background: "#f5e6c8" }}
+                    />
+                  </label>
+                </div>
+
+                <button
+                  onClick={() => void handleAddSpend()}
+                  disabled={saving || !userId}
+                  className="rounded-xl bg-green-800 py-3 font-bold disabled:opacity-50 sm:col-span-2"
+                >
+                  {saving ? "Saving…" : "💰 Save Spend"}
+                </button>
+              </div>
+            </DrawerPanel>
+          )}
+
+          {/* ── Scan Receipt drawer ── */}
+          {drawer === "scan" && (
+            <DrawerPanel
+              title="Scan Receipt"
+              sub="Upload a bank screenshot, receipt, or photo. Choose the payment method, then import."
+            >
+              {/* Payment method selector shown prominently before scanning */}
+              <div className="mb-4">
+                <SelectInput
+                  label="Payment Method for Import"
+                  value={paymentMethod}
+                  onChange={setPaymentMethod}
+                  options={paymentOptions.map((method) => ({
+                    value: method,
+                    label: method,
+                  }))}
+                  highlight
+                />
+                <p className="mt-1 text-xs text-[#9a7d5a]">
+                  All imported transactions will be tagged with this method.
+                </p>
+              </div>
+
+              <PaperScrollScanner
+                title="Scan Receipt"
+                description="Ben will read every line. Review before importing."
+                file={imageFile}
+                busy={ocrBusy}
+                onFileChange={(file) => {
+                  setImageFile(file);
+                  setFoundTxns([]);
+                  setSelectedTxns({});
+                }}
+                onScan={() => void handleOCR()}
+              />
+
+              {/* Scanned results */}
+              {foundTxns.length > 0 && (
+                <div className="mt-5">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-cinzel text-lg font-bold text-[#c9a84c]">
+                        Review Imports
+                      </h3>
+                      <p className="text-sm text-[#b99b60]">
+                        {foundTxns.length} transactions found · paying with{" "}
+                        <span className="font-bold text-[#f5e6c8]">
+                          {paymentMethod}
+                        </span>
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => void importSelected()}
+                      disabled={saving}
+                      className="rounded-xl bg-green-800 px-4 py-2 font-bold text-sm disabled:opacity-50"
+                    >
+                      {saving ? "Importing…" : "Import Selected"}
+                    </button>
+                  </div>
+
+                  <div className="grid gap-2">
+                    {foundTxns.map((txn, index) => (
+                      <label
+                        key={`${txn.merchant}-${index}`}
+                        className="flex items-center justify-between gap-4 rounded-xl px-4 py-3 cursor-pointer"
+                        style={{
+                          background: selectedTxns[index]
+                            ? "rgba(201,168,76,.1)"
+                            : "rgba(255,255,255,.04)",
+                          border: `1px solid ${selectedTxns[index] ? "rgba(201,168,76,.45)" : "rgba(201,168,76,.18)"}`,
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={!!selectedTxns[index]}
+                            onChange={(e) =>
+                              setSelectedTxns((prev) => ({
+                                ...prev,
+                                [index]: e.target.checked,
+                              }))
+                            }
+                          />
+                          <div>
+                            <p className="font-bold">
+                              {txn.merchant || "Transaction"}
+                            </p>
+                            <p className="text-sm text-[#9a7d5a]">
+                              {txn.dateText || dateISO} · {paymentMethod}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-lg font-bold text-[#4ade80]">
+                          {money(Number(txn.amount || 0))}
+                        </p>
+                      </label>
+                    ))}
                   </div>
                 </div>
-
-                <p className="text-lg font-black">
-                  {money(Number(txn.amount || 0))}
-                </p>
-              </label>
-            ))}
-          </div>
-        </ScrollRevealCard>
-      )}
-
-      <ScrollRevealCard
-        title="Recent Spending"
-        subtitle={`${entries.length} entries in the merchant ledger`}
-        image="/ben-recovery.png"
-        defaultOpen
-      >
-        <div className="grid gap-3">
-          {entries.length === 0 ? (
-            <p className="text-sm font-semibold text-zinc-600">
-              No spending yet. Suspiciously peaceful.
-            </p>
-          ) : (
-            entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 md:flex-row md:items-center md:justify-between"
-              >
-                <div>
-                  <p className="font-black">{entry.merchant || "Spending"}</p>
-
-                  <p className="text-sm font-semibold text-zinc-600">
-                    {entry.date_iso} •{" "}
-                    {categoryLabel[entry.category] || entry.category}
-                    {entry.payment_method ? ` • ${entry.payment_method}` : ""}
-                    {entry.note ? ` • ${entry.note}` : ""}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <p className="text-lg font-black">
-                    {money(Number(entry.amount || 0))}
-                  </p>
-
-                  <button
-                    onClick={() => void handleDelete(entry.id)}
-                    className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))
+              )}
+            </DrawerPanel>
           )}
+
+          {/* ── Recent spending ── */}
+          <Card
+            title="Recent Spending"
+            sub={`${entries.length} entries in the merchant ledger`}
+          >
+            <div className="mt-2 grid gap-2">
+              {entries.length === 0 ? (
+                <p className="text-center text-[#9a7d5a]">
+                  No spending yet. Suspiciously peaceful.
+                </p>
+              ) : (
+                entries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between gap-3 rounded-xl px-4 py-3"
+                    style={{
+                      background: "rgba(255,255,255,.04)",
+                      border: "1px solid rgba(201,168,76,.18)",
+                    }}
+                  >
+                    <div>
+                      <p className="font-bold">
+                        {entry.merchant || "Spending"}
+                      </p>
+                      <p className="text-sm text-[#9a7d5a]">
+                        {entry.date_iso}
+                        {entry.category
+                          ? ` · ${categoryLabel[entry.category]?.replace(/^[^\s]+ /, "") ?? entry.category}`
+                          : ""}
+                        {entry.payment_method ? ` · ${entry.payment_method}` : ""}
+                        {entry.note ? ` · ${entry.note}` : ""}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <p className="text-xl font-bold text-[#ef4444]">
+                        {money(Number(entry.amount || 0))}
+                      </p>
+                      <button
+                        onClick={() => void handleDelete(entry.id)}
+                        className="rounded-xl px-3 py-2 text-sm font-bold"
+                        style={{
+                          background: "rgba(127,29,29,.35)",
+                          border: "1px solid rgba(248,113,113,.45)",
+                          color: "#fecaca",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+
+          <p className="mt-6 text-center italic text-[#c9a84c]">
+            &ldquo;Beware of little expenses; a small leak will sink a great ship.&rdquo; — Benjamin Franklin
+          </p>
         </div>
-      </ScrollRevealCard>
-    </AppShell>
+      </section>
+
+      {/* ── Ben's Notice modal ── */}
+      {showBenNotice && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 px-4">
+          <div
+            className="max-w-md rounded-3xl p-5"
+            style={{
+              background: "#fff7df",
+              border: "2px solid #c9a84c",
+              color: "#1a0f0a",
+              boxShadow: "0 30px 80px rgba(0,0,0,.7)",
+            }}
+          >
+            <div className="flex gap-3">
+              <img
+                src="/ben.png"
+                alt="Ben"
+                className="h-16 w-16 rounded-xl border border-[#c9a84c] object-cover"
+              />
+              <div>
+                <p className="font-cinzel text-xs uppercase tracking-[0.25em] text-[#8a3a12]">
+                  Ben&apos;s Almanack
+                </p>
+                <p className="mt-2 text-lg font-bold leading-snug">
+                  {benInsight.text}
+                </p>
+                <p className="mt-3 text-sm">
+                  You have {entries.length} spending entries logged. Top method:{" "}
+                  {topPaymentMethod ? topPaymentMethod[0] : "none recorded yet"}.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowBenNotice(false)}
+              className="mt-5 w-full rounded-xl py-3 font-bold"
+              style={{ background: "#1a0f0a", color: "#f5e6c8" }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+// ── Shared layout helpers ────────────────────────────────────────────
+
+function Card({
+  title,
+  sub,
+  children,
+}: {
+  title: string;
+  sub?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="mb-4 rounded-2xl p-4"
+      style={{
+        background: "rgba(15,8,4,.9)",
+        border: "1px solid rgba(201,168,76,.35)",
+      }}
+    >
+      <h2 className="font-cinzel text-xl font-bold text-[#c9a84c]">{title}</h2>
+      {sub && <p className="mb-4 mt-1 text-sm text-[#b99b60]">{sub}</p>}
+      <div className={sub ? "" : "mt-3"}>{children}</div>
+    </div>
+  );
+}
+
+function DrawerPanel({
+  title,
+  sub,
+  children,
+}: {
+  title: string;
+  sub?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="mb-4 rounded-2xl p-4"
+      style={{
+        background: "rgba(15,8,4,.9)",
+        border: "1px solid rgba(201,168,76,.35)",
+      }}
+    >
+      <h3 className="font-cinzel text-xl font-bold text-[#c9a84c]">{title}</h3>
+      {sub && <p className="mb-4 mt-1 text-sm text-[#b99b60]">{sub}</p>}
+      <div className="mt-3">{children}</div>
+    </div>
+  );
+}
+
+function Metric({
+  icon,
+  label,
+  value,
+  color = "#c9a84c",
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  color?: string;
+}) {
+  return (
+    <div className="border-b border-[#c9a84c]/20 p-4 text-center last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+      <div className="text-3xl">{icon}</div>
+      <p className="mt-2 text-xs uppercase tracking-widest text-[#d6c09a]">
+        {label}
+      </p>
+      <p className="mt-1 text-xl font-bold leading-tight" style={{ color }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function StatTile({
+  icon,
+  label,
+  value,
+  sub,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <div
+      className="rounded-xl p-3 text-center"
+      style={{
+        background: "rgba(0,0,0,.45)",
+        border: "1px solid rgba(201,168,76,.25)",
+      }}
+    >
+      <p className="text-xl">{icon}</p>
+      <p className="mt-1 text-xs uppercase tracking-wider text-[#d6c09a]">
+        {label}
+      </p>
+      <p className="mt-1 font-bold text-[#c9a84c]">{value}</p>
+      {sub && <p className="text-sm text-[#9a7d5a]">{sub}</p>}
+    </div>
+  );
+}
+
+function Input({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs uppercase tracking-widest text-[#c9a84c]">
+        {label}
+      </span>
+      <input
+        type={type}
+        inputMode={type === "number" ? "decimal" : undefined}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="mt-1 w-full rounded-lg px-3 py-2 text-black"
+        style={{ background: "#f5e6c8" }}
+      />
+    </label>
+  );
+}
+
+function SelectInput({
+  label,
+  value,
+  onChange,
+  options,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  highlight?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span
+        className="text-xs uppercase tracking-widest font-bold"
+        style={{ color: highlight ? "#fbbf24" : "#c9a84c" }}
+      >
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full rounded-lg px-3 py-2 text-black font-bold"
+        style={{
+          background: highlight ? "#fff7df" : "#f5e6c8",
+          border: highlight ? "2px solid #c9a84c" : undefined,
+        }}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
