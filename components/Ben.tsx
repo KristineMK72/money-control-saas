@@ -36,6 +36,7 @@ const MOOD_STYLES: Record<BenMood, { border: string; glow: string; badge: string
   celebratory: { border: "border-yellow-500/60", glow: "shadow-yellow-600/30", badge: "bg-yellow-800/40 text-yellow-50" },
   stern: { border: "border-stone-600/50", glow: "shadow-stone-800/20", badge: "bg-stone-800/40 text-stone-200" },
   wise: { border: "border-indigo-700/50", glow: "shadow-indigo-800/20", badge: "bg-indigo-900/30 text-indigo-100" },
+  witty: { border: "border-yellow-400/40", glow: "shadow-yellow-700/20", badge: "bg-yellow-900/30 text-yellow-100" },
 };
 
 const ANIMATION_EMOJI: Record<Animation, string> = {
