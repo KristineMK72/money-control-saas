@@ -13,6 +13,8 @@ export type {
   BenLocation,
   SpeechContext,
   FinancialSnapshot,
+  BenInput,
+  BenOutput,
   BenSpeechRequest,
   BenSpeech,
   BenLetter,
