@@ -1,6 +1,9 @@
 /**
  * Shared types for the Franklin / Ben character system.
  * Everything in Franklin's Landing that speaks through Ben uses these.
+ *
+ * Also keeps BenEngine types (BenInput / BenOutput) so the dashboard
+ * analysis layer and the colonial speech layer share one module.
  */
 
 export type BenMood =
@@ -12,7 +15,8 @@ export type BenMood =
   | "encouraging"
   | "celebratory"
   | "stern"
-  | "wise";
+  | "wise"
+  | "witty"; // used by BenEngine / BenBubble / GlobalBenAdvisor
 
 export type BenLocation =
   | "TownSquare"
@@ -65,6 +69,24 @@ export interface FinancialSnapshot {
   /** Any overdue amount */
   overdueAmount?: number;
 }
+
+/* ── BenEngine (dashboard analysis) ─────────────────────────────── */
+
+export interface BenInput {
+  name: string | null;
+  timeframeLabel: string;
+  totalNeeded: number;
+  incomeSoFar: number;
+  incomeGap: number;
+  dailyIncomeNeeded: number;
+}
+
+export interface BenOutput {
+  text: string;
+  mood: BenMood;
+}
+
+/* ── Colonial speech layer ──────────────────────────────────────── */
 
 export interface BenSpeechRequest {
   context: SpeechContext;
