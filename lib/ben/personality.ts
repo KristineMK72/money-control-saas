@@ -68,6 +68,11 @@ export const MOOD_TRAITS: Record<
     animation: "nod",
     tone: "proverbial and thoughtful",
   },
+  witty: {
+    energy: "light",
+    animation: "nod",
+    tone: "dry and good-humored",
+  },
 };
 
 /** Common colonial flourishes Ben may use */
