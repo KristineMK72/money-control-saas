@@ -333,11 +333,18 @@ const streamFrom = useCallback(async (body: object) => {
       let errMsg = `HTTP ${res.status}`;
       try {
         const raw = await res.text();
-        // Only show the raw body if it looks like a plain error message, not RSC/HTML
-        if (raw && raw.length < 300 && !raw.includes('["$') && !raw.startsWith("<!")) {
+        // Prefer a short plain error; ignore RSC / HTML payloads
+        if (
+          raw &&
+          raw.length < 300 &&
+          !raw.includes('["$') &&
+          !raw.startsWith("<!")
+        ) {
           errMsg = raw;
         }
-      } catch {}
+      } catch {
+        // keep default errMsg
+      }
       setText(`Error from Ben's quill: ${errMsg}`);
       setStatus("error");
       return;
@@ -346,51 +353,44 @@ const streamFrom = useCallback(async (body: object) => {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let full = "";
-    // Buffer for partial SSE lines that span chunk boundaries
-    let lineBuffer = "";
+    let lineBuffer = ""; // holds partial SSE lines across chunk boundaries
+
+    const applyDelta = (raw: string) => {
+      if (!raw || raw === "[DONE]") return false;
+      try {
+        const delta = JSON.parse(raw)?.choices?.[0]?.delta?.content;
+        if (delta) {
+          full += delta;
+          setText(full);
+        }
+      } catch {
+        // ignore malformed JSON lines
+      }
+      return raw === "[DONE]";
+    };
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
       const chunk = decoder.decode(value, { stream: true });
-      // Prepend any leftover partial line from the previous chunk
       const toProcess = lineBuffer + chunk;
       const lines = toProcess.split("\n");
-      // The last element may be an incomplete line — hold it for next chunk
       lineBuffer = lines.pop() ?? "";
 
       for (const line of lines) {
         if (!line.startsWith("data: ")) continue;
         const raw = line.slice(6).trim();
-        if (raw === "[DONE]") {
+        if (applyDelta(raw)) {
           lineBuffer = "";
           break;
-        }
-        try {
-          const delta = JSON.parse(raw)?.choices?.[0]?.delta?.content;
-          if (delta) {
-            full += delta;
-            setText(full);
-          }
-        } catch {
-          // ignore malformed JSON lines
         }
       }
     }
 
-    // Flush any final leftover that might contain a last data line
+    // Flush any leftover partial line
     if (lineBuffer.startsWith("data: ")) {
-      const raw = lineBuffer.slice(6).trim();
-      if (raw && raw !== "[DONE]") {
-        try {
-          const delta = JSON.parse(raw)?.choices?.[0]?.delta?.content;
-          if (delta) {
-            full += delta;
-            setText(full);
-          }
-        } catch {}
-      }
+      applyDelta(lineBuffer.slice(6).trim());
     }
 
     setStatus("done");
@@ -400,7 +400,29 @@ const streamFrom = useCallback(async (body: object) => {
   }
 }, []);
 
-// Render markdown-ish bold + sections (inline ** anywhere)
+// Auto-run when financial context is ready
+useEffect(() => {
+  if (context && status === "idle") {
+    void streamFrom({ financialContext: context });
+  }
+}, [context, status, streamFrom]);
+
+// Keep the response pane scrolled to the latest token
+useEffect(() => {
+  if (scrollRef.current) {
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }
+}, [text]);
+
+async function handleAsk() {
+  if (!question.trim() || asking) return;
+  setAsking(true);
+  await streamFrom({ financialContext: context, question: question.trim() });
+  setQuestion("");
+  setAsking(false);
+}
+
+/** Render markdown-ish bold: whole-line headers + inline **text** */
 function renderText(raw: string) {
   const lines = raw.split("\n");
 
@@ -409,24 +431,60 @@ function renderText(raw: string) {
       return <div key={i} className="h-1" />;
     }
 
-    // Whole-line bold headers (TOP PRIORITY, BIGGEST RISK, etc.)
+    // Whole-line bold headers (e.g. **TOP PRIORITY**)
     if (
       line.startsWith("**") &&
       line.endsWith("**") &&
       line.indexOf("**", 2) === line.length - 2
     ) {
-      const inner = line.slice(2, -2);
       return (
         <p
           key={i}
           className="font-cinzel font-bold mt-4 mb-1 text-sm"
           style={{ color: "#c9a84c" }}
         >
-          {inner}
+          {line.slice(2, -2)}
         </p>
       );
     }
 
+    // Inline **bold** anywhere in the sentence
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    const re = /\*\*(.+?)\*\*/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = re.exec(line)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(line.slice(lastIndex, match.index));
+      }
+      parts.push(
+        <span
+          key={`${i}-${match.index}`}
+          className="font-cinzel font-bold"
+          style={{ color: "#c9a84c" }}
+        >
+          {match[1]}
+        </span>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < line.length) {
+      parts.push(line.slice(lastIndex));
+    }
+
+    return (
+      <p
+        key={i}
+        className="text-sm leading-relaxed"
+        style={{ color: "#e8d5b7" }}
+      >
+        {parts.length > 0 ? parts : line}
+      </p>
+    );
+  });
+}
     // Inline **bold** anywhere in the sentence
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
