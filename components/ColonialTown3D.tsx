@@ -605,18 +605,14 @@ function InfiniteTerrain() {
       const angle = (i / 80) * Math.PI * 2;
       const radius = 56 + ((i * 19) % 54);
       return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius, angle };
-    });
+    }).filter((stone) => stone.z > -27);
   }, []);
 
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[300, 300, 24, 24]} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 310]} receiveShadow>
+        <planeGeometry args={[1200, 680]} />
         <meshStandardMaterial color="#100c06" roughness={0.98} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, 0]}>
-        <ringGeometry args={[86, 140, 128]} />
-        <meshStandardMaterial color="#0b0804" transparent opacity={0.82} roughness={1} />
       </mesh>
       {stones.map((s, i) => (
         <mesh key={i} position={[s.x, 0.01, s.z]} rotation={[-Math.PI / 2, 0, s.angle]} receiveShadow>
@@ -650,12 +646,12 @@ function HarborWater() {
 
   return (
     <group position={[0, 0, -105]}>
-      <mesh ref={deepWater} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.2, -35]}>
-        <planeGeometry args={[300, 210]} />
+      <mesh ref={deepWater} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.2, -380]}>
+        <planeGeometry args={[1200, 900]} />
         <meshStandardMaterial color="#0b2948" roughness={0.16} metalness={0.72} transparent opacity={0.88} />
       </mesh>
       <mesh ref={nearShore} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.14, 56]}>
-        <planeGeometry args={[300, 36]} />
+        <planeGeometry args={[1200, 36]} />
         <meshStandardMaterial color="#18506d" roughness={0.28} metalness={0.5} transparent opacity={0.9} />
       </mesh>
       {Array.from({ length: 5 }, (_, i) => (
@@ -665,7 +661,7 @@ function HarborWater() {
           rotation={[-Math.PI / 2, 0, 0]}
           position={[0, 0.01, 34 + i * 7]}
         >
-          <planeGeometry args={[280, 0.45 + (i % 2) * 0.25]} />
+          <planeGeometry args={[1000, 0.45 + (i % 2) * 0.25]} />
           <meshBasicMaterial color="#d9edf0" transparent opacity={0.22} depthWrite={false} />
         </mesh>
       ))}
@@ -684,11 +680,11 @@ function Shoreline() {
     <group>
       {/* Sand, stone, and timber form a hard edge between town and harbor. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, -29.5]} receiveShadow>
-        <planeGeometry args={[180, 6]} />
+        <planeGeometry args={[1200, 6]} />
         <meshStandardMaterial color="#8d7042" roughness={1} />
       </mesh>
       <mesh position={[0, 0.34, -33]} castShadow receiveShadow>
-        <boxGeometry args={[180, 0.7, 1.3]} />
+        <boxGeometry args={[1200, 0.7, 1.3]} />
         <meshStandardMaterial color="#3d3930" roughness={0.96} />
       </mesh>
       {rocks.map((rock, index) => (

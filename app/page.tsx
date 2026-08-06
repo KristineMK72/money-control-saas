@@ -60,17 +60,18 @@ export default function HomePage() {
         <div className="grid items-center gap-10 lg:min-h-[calc(100vh-210px)] lg:grid-cols-[1.02fr_0.98fr]">
           <div className="max-w-3xl">
             <div className="mb-4 inline-flex rounded-full border border-yellow-300/35 bg-black/45 px-4 py-2 text-xs font-black uppercase tracking-[0.25em] text-yellow-200 shadow-xl backdrop-blur-xl">
-              AskBen financial triage
+              Money clarity, with a little Franklin wit
             </div>
 
             <h1 className="max-w-4xl text-4xl font-black tracking-tight text-white drop-shadow-2xl sm:text-6xl lg:text-7xl">
-              Know what to pay first.
-              <span className="block text-cyan-300">Then make the next move.</span>
+              Make your money clearer.
+              <span className="block text-cyan-300">Even when it&apos;s doing just fine.</span>
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg font-semibold leading-8 text-white/90 drop-shadow-xl sm:text-xl">
-              AskBen looks at your bills, debts, income, spending, and payments
-              to turn money stress into a clear next step.
+              Whether you&apos;re untangling overdue bills, sharpening a comfortable
+              plan, or chasing a new goal, AskBen turns your money into a clear
+              next move—without the lecture or the powdered wig.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
@@ -98,8 +99,9 @@ export default function HomePage() {
             </div>
 
             <p className="mt-4 max-w-xl text-sm font-semibold leading-6 text-white/75">
-              Start with the free ledger. Upgrade later when you want deeper
-              forecasting, imports, and crisis-mode planning.
+              Start with the free ledger. Upgrade when you want deeper
+              forecasting, imports, and planning tools. Ben has opinions;
+              fortunately, most of them are about compound interest.
             </p>
           </div>
 
@@ -111,16 +113,16 @@ export default function HomePage() {
 
         <div id="how-it-works" className="mt-16 grid scroll-mt-28 gap-4 md:grid-cols-3">
           <FeatureCard
-            title="Know what to pay first"
-            text="Ben ranks bills, debts, and due dates so you can stop guessing and make the next smart move."
+            title="Calm the chaos"
+            text="When money feels urgent, Ben ranks bills, debts, and due dates so the next move is clear."
           />
           <FeatureCard
-            title="Make money feel like a game"
+            title="Fine-tune what&apos;s working"
+            text="Already in a good place? Spot patterns, strengthen your plan, and give every extra dollar a better assignment."
+          />
+          <FeatureCard
+            title="Make progress feel like a game"
             text="Earn XP, complete Governor’s Orders, unlock badges, and rebuild Franklin’s Landing one win at a time."
-          />
-          <FeatureCard
-            title="Track without shame"
-            text="Bills, spending, debt, payments, savings, and progress all live in one calmer place."
           />
         </div>
 
@@ -130,22 +132,23 @@ export default function HomePage() {
           </p>
 
           <h2 className="mt-3 text-4xl font-black">
-            Money problems rarely start with money.
+            Your money doesn&apos;t have to be on fire
             <span className="block text-cyan-300">
-              They start with stress.
+              to deserve a better plan.
             </span>
           </h2>
 
           <p className="mt-4 max-w-4xl text-lg font-semibold leading-8 text-white/80">
-            Most financial apps focus on numbers. AskBen focuses on people.
-            Behind every overdue bill, debt balance, budget category, and
-            financial goal is a real person trying to breathe again.
+            AskBen is for the overdue, the on-track, the goal-chasers, and the
+            pleasantly curious. Some days you need help protecting the lights;
+            other days you want to know whether the vacation fund can meet the
+            emergency fund without causing a diplomatic incident.
           </p>
 
           <p className="mt-4 max-w-4xl text-lg font-semibold leading-8 text-white/80">
-            AskBen helps turn financial chaos into a calmer plan with guidance,
-            encouragement, progress tracking, and small wins that build
-            momentum.
+            Wherever you begin, Ben helps you see the whole picture, choose a
+            useful next step, and turn steady progress into something worth
+            celebrating.
           </p>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -153,9 +156,9 @@ export default function HomePage() {
               title="What AskBen Helps You Do"
               items={[
                 "Know what needs attention first",
-                "Track bills, spending, debt, income, and progress",
+                "Plan goals while keeping everyday money organized",
+                "Track bills, spending, debt, income, and savings",
                 "Earn achievements and celebrate milestones",
-                "Build momentum one small win at a time",
               ]}
             />
 
@@ -188,7 +191,7 @@ export default function HomePage() {
             <p className="text-lg font-black leading-8 text-yellow-100">
               One payment. One decision. One victory.
               <span className="block text-cyan-200">
-                One rebuilt Treasury at a time.
+                Or one already-solid Treasury made even sharper.
               </span>
             </p>
 
@@ -206,7 +209,7 @@ export default function HomePage() {
             eyebrow="Pro Monthly"
             price="$5"
             suffix="/month"
-            text="Perfect for users who want screenshot import, smarter prioritization, and a calm weekly money plan."
+            text="A flexible monthly option for smarter priorities, screenshot imports, goal tracking, and a calmer weekly plan."
             href="/signup?plan=monthly"
             cta="Choose $5/month"
             items={[
@@ -222,7 +225,7 @@ export default function HomePage() {
             eyebrow="Pro Yearly"
             price="$39"
             suffix="/year"
-            text="Best value for users who want the full app all year and a lower effective monthly price."
+            text="Best value for year-round planning, goal tracking, smarter prioritization, and a lower effective monthly price."
             href="/signup?plan=yearly"
             cta="Choose $39/year"
             items={[
@@ -261,7 +264,7 @@ function ProductMock() {
 
         <div>
           <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">
-            Live Triage Preview
+            Live Money Preview
           </div>
           <p className="mt-1 text-sm font-bold text-white/75">
             The kind of answer Ben gives when your ledger has real data.
@@ -271,19 +274,19 @@ function ProductMock() {
 
       <div className="mt-4 grid gap-3">
         <MockPanel
-          eyebrow="Due Soon"
-          title="Electric bill"
-          value="$148.20"
-          detail="Due tomorrow. Protect utilities before optional spending."
-          tone="danger"
+          eyebrow="This Week"
+          title="Essentials"
+          value="$460"
+          detail="Covered, scheduled, and no longer taking up space in your head."
+          tone="warning"
         />
 
         <MockPanel
-          eyebrow="Top Priority"
-          title="Car payment"
-          value="$312.00"
-          detail="Keeps transportation stable. Ranked above extra debt payments."
-          tone="warning"
+          eyebrow="Next Milestone"
+          title="Emergency fund"
+          value="74%"
+          detail="On track. One more steady month puts the next milestone within reach."
+          tone="success"
         />
 
         <div className="rounded-2xl border border-cyan-300/25 bg-cyan-300/10 p-4">
@@ -291,11 +294,11 @@ function ProductMock() {
             Ben&apos;s Advice
           </div>
           <p className="mt-2 text-lg font-black leading-7 text-white">
-            Pay the electric bill first, then set aside the car payment. The
-            credit card can wait until essentials are covered.
+            Your essentials are covered. Put this week&apos;s extra toward the
+            emergency fund, then enjoy the rest without interrogating every coffee.
           </p>
           <p className="mt-3 text-sm font-semibold leading-6 text-white/70">
-            AskBen uses due dates, minimums, payments already made, income, and
+            AskBen uses due dates, goals, payments already made, income, and
             spending patterns before giving advice.
           </p>
         </div>
@@ -315,12 +318,14 @@ function MockPanel({
   title: string;
   value: string;
   detail: string;
-  tone: "danger" | "warning";
+  tone: "danger" | "warning" | "success";
 }) {
   const toneClass =
     tone === "danger"
       ? "border-red-300/25 bg-red-400/10 text-red-100"
-      : "border-yellow-300/25 bg-yellow-300/10 text-yellow-100";
+      : tone === "success"
+        ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
+        : "border-yellow-300/25 bg-yellow-300/10 text-yellow-100";
 
   return (
     <div className={`rounded-2xl border p-4 ${toneClass}`}>

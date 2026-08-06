@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import WorldNavigationDrawer from "@/components/WorldNavigationDrawer";
 
 const ColonialTown3D = dynamic(
   () => import("@/components/ColonialTown3D"),
@@ -20,6 +21,7 @@ export default function WorldPage() {
   return (
     <main className="fixed inset-0 z-[10000] bg-[#040608]">
       <ColonialTown3D />
+      <WorldNavigationDrawer />
     </main>
   );
 }
