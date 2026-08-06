@@ -312,212 +312,178 @@ function DebtScenarios({ debts }: { debts: DebtRow[] }) {
 // ── AI Advisor streaming section ──────────────────────────────────────────────
 
 function AiAdvisor({ context }: { context: string }) {
-  const [text,      setText]      = useState("");
-  const [status,    setStatus]    = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [question,  setQuestion]  = useState("");
-  const [asking,    setAsking]    = useState(false);
+  const [text, setText] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-const streamFrom = useCallback(async (body: object) => {
-  setText("");
-  setStatus("loading");
+  const streamFrom = useCallback(async (body: object) => {
+    setText("");
+    setStatus("loading");
 
-  try {
-    const res = await fetch("/api/ben-advice", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    try {
+      const res = await fetch("/api/ben-advice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
 
-    if (!res.ok || !res.body) {
-      let errMsg = `HTTP ${res.status}`;
-      try {
-        const raw = await res.text();
-        // Prefer a short plain error; ignore RSC / HTML payloads
-        if (
-          raw &&
-          raw.length < 300 &&
-          !raw.includes('["$') &&
-          !raw.startsWith("<!")
-        ) {
-          errMsg = raw;
+      if (!res.ok || !res.body) {
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const raw = await res.text();
+          if (
+            raw &&
+            raw.length < 300 &&
+            !raw.includes('["$') &&
+            !raw.startsWith("<!")
+          ) {
+            errMsg = raw;
+          }
+        } catch {
+          // keep default errMsg
         }
-      } catch {
-        // keep default errMsg
+        setText(`Error from Ben's quill: ${errMsg}`);
+        setStatus("error");
+        return;
       }
-      setText(`Error from Ben's quill: ${errMsg}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let full = "";
+      let lineBuffer = "";
+
+      const applyDelta = (raw: string): boolean => {
+        if (!raw || raw === "[DONE]") return raw === "[DONE]";
+        try {
+          const delta = JSON.parse(raw)?.choices?.[0]?.delta?.content;
+          if (delta) {
+            full += delta;
+            setText(full);
+          }
+        } catch {
+          // ignore malformed JSON lines
+        }
+        return false;
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const toProcess = lineBuffer + chunk;
+        const lines = toProcess.split("\n");
+        lineBuffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (applyDelta(raw)) {
+            lineBuffer = "";
+            break;
+          }
+        }
+      }
+
+      // Flush leftover partial line
+      if (lineBuffer.startsWith("data: ")) {
+        applyDelta(lineBuffer.slice(6).trim());
+      }
+
+      setStatus("done");
+    } catch (e) {
+      setText(`Could not reach Ben's quill: ${String(e)}`);
       setStatus("error");
-      return;
     }
+  }, []);
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let full = "";
-    let lineBuffer = ""; // holds partial SSE lines across chunk boundaries
+  // Auto-run when financial context is ready
+  useEffect(() => {
+    if (context && status === "idle") {
+      void streamFrom({ financialContext: context });
+    }
+  }, [context, status, streamFrom]);
 
-    const applyDelta = (raw: string) => {
-      if (!raw || raw === "[DONE]") return false;
-      try {
-        const delta = JSON.parse(raw)?.choices?.[0]?.delta?.content;
-        if (delta) {
-          full += delta;
-          setText(full);
-        }
-      } catch {
-        // ignore malformed JSON lines
+  // Keep response pane scrolled to the latest token
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [text]);
+
+  async function handleAsk() {
+    if (!question.trim() || asking) return;
+    setAsking(true);
+    await streamFrom({ financialContext: context, question: question.trim() });
+    setQuestion("");
+    setAsking(false);
+  }
+
+  /** Render markdown-ish bold: whole-line headers + inline **text** */
+  function renderText(raw: string) {
+    const lines = raw.split("\n");
+
+    return lines.map((line, i) => {
+      if (line.trim() === "") {
+        return <div key={i} className="h-1" />;
       }
-      return raw === "[DONE]";
-    };
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value, { stream: true });
-      const toProcess = lineBuffer + chunk;
-      const lines = toProcess.split("\n");
-      lineBuffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const raw = line.slice(6).trim();
-        if (applyDelta(raw)) {
-          lineBuffer = "";
-          break;
-        }
+      // Whole-line bold headers (e.g. **TOP PRIORITY**)
+      if (
+        line.startsWith("**") &&
+        line.endsWith("**") &&
+        line.indexOf("**", 2) === line.length - 2
+      ) {
+        return (
+          <p
+            key={i}
+            className="font-cinzel font-bold mt-4 mb-1 text-sm"
+            style={{ color: "#c9a84c" }}
+          >
+            {line.slice(2, -2)}
+          </p>
+        );
       }
-    }
 
-    // Flush any leftover partial line
-    if (lineBuffer.startsWith("data: ")) {
-      applyDelta(lineBuffer.slice(6).trim());
-    }
+      // Inline **bold** anywhere in the sentence
+      const parts: React.ReactNode[] = [];
+      let lastIndex = 0;
+      const re = /\*\*(.+?)\*\*/g;
+      let match: RegExpExecArray | null;
 
-    setStatus("done");
-  } catch (e) {
-    setText(`Could not reach Ben's quill: ${String(e)}`);
-    setStatus("error");
-  }
-}, []);
+      while ((match = re.exec(line)) !== null) {
+        if (match.index > lastIndex) {
+          parts.push(line.slice(lastIndex, match.index));
+        }
+        parts.push(
+          <span
+            key={`${i}-${match.index}`}
+            className="font-cinzel font-bold"
+            style={{ color: "#c9a84c" }}
+          >
+            {match[1]}
+          </span>
+        );
+        lastIndex = match.index + match[0].length;
+      }
 
-// Auto-run when financial context is ready
-useEffect(() => {
-  if (context && status === "idle") {
-    void streamFrom({ financialContext: context });
-  }
-}, [context, status, streamFrom]);
+      if (lastIndex < line.length) {
+        parts.push(line.slice(lastIndex));
+      }
 
-// Keep the response pane scrolled to the latest token
-useEffect(() => {
-  if (scrollRef.current) {
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }
-}, [text]);
-
-async function handleAsk() {
-  if (!question.trim() || asking) return;
-  setAsking(true);
-  await streamFrom({ financialContext: context, question: question.trim() });
-  setQuestion("");
-  setAsking(false);
-}
-
-/** Render markdown-ish bold: whole-line headers + inline **text** */
-function renderText(raw: string) {
-  const lines = raw.split("\n");
-
-  return lines.map((line, i) => {
-    if (line.trim() === "") {
-      return <div key={i} className="h-1" />;
-    }
-
-    // Whole-line bold headers (e.g. **TOP PRIORITY**)
-    if (
-      line.startsWith("**") &&
-      line.endsWith("**") &&
-      line.indexOf("**", 2) === line.length - 2
-    ) {
       return (
         <p
           key={i}
-          className="font-cinzel font-bold mt-4 mb-1 text-sm"
-          style={{ color: "#c9a84c" }}
+          className="text-sm leading-relaxed"
+          style={{ color: "#e8d5b7" }}
         >
-          {line.slice(2, -2)}
+          {parts.length > 0 ? parts : line}
         </p>
       );
-    }
-
-    // Inline **bold** anywhere in the sentence
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-    const re = /\*\*(.+?)\*\*/g;
-    let match: RegExpExecArray | null;
-
-    while ((match = re.exec(line)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(line.slice(lastIndex, match.index));
-      }
-      parts.push(
-        <span
-          key={`${i}-${match.index}`}
-          className="font-cinzel font-bold"
-          style={{ color: "#c9a84c" }}
-        >
-          {match[1]}
-        </span>
-      );
-      lastIndex = match.index + match[0].length;
-    }
-
-    if (lastIndex < line.length) {
-      parts.push(line.slice(lastIndex));
-    }
-
-    return (
-      <p
-        key={i}
-        className="text-sm leading-relaxed"
-        style={{ color: "#e8d5b7" }}
-      >
-        {parts.length > 0 ? parts : line}
-      </p>
-    );
-  });
-}
-    // Inline **bold** anywhere in the sentence
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-    const re = /\*\*(.+?)\*\*/g;
-    let match: RegExpExecArray | null;
-
-    while ((match = re.exec(line)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(line.slice(lastIndex, match.index));
-      }
-      parts.push(
-        <span
-          key={`${i}-${match.index}`}
-          className="font-cinzel font-bold"
-          style={{ color: "#c9a84c" }}
-        >
-          {match[1]}
-        </span>
-      );
-      lastIndex = match.index + match[0].length;
-    }
-
-    if (lastIndex < line.length) {
-      parts.push(line.slice(lastIndex));
-    }
-
-    return (
-      <p key={i} className="text-sm leading-relaxed" style={{ color: "#e8d5b7" }}>
-        {parts.length > 0 ? parts : line}
-      </p>
-    );
-  });
-}
+    });
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -525,19 +491,33 @@ function renderText(raw: string) {
       <div
         ref={scrollRef}
         className="rounded-xl p-4 min-h-[120px] max-h-[420px] overflow-y-auto"
-        style={{ background: "rgba(5,2,1,0.88)", border: "1px solid rgba(107,68,35,0.35)" }}
+        style={{
+          background: "rgba(5,2,1,0.88)",
+          border: "1px solid rgba(107,68,35,0.35)",
+        }}
       >
         {status === "idle" && (
-          <p className="text-sm italic text-center mt-6" style={{ color: "#5a4030" }}>Awaiting your financial data…</p>
+          <p
+            className="text-sm italic text-center mt-6"
+            style={{ color: "#5a4030" }}
+          >
+            Awaiting your financial data…
+          </p>
         )}
         {status === "loading" && text === "" && (
-          <p className="font-cinzel text-sm animate-pulse text-center mt-6" style={{ color: "#c9a84c" }}>
+          <p
+            className="font-cinzel text-sm animate-pulse text-center mt-6"
+            style={{ color: "#c9a84c" }}
+          >
             Ben is consulting the ledgers…
           </p>
         )}
         {text && renderText(text)}
         {status === "loading" && text && (
-          <span className="inline-block w-2 h-4 align-text-bottom animate-pulse ml-0.5" style={{ background: "#c9a84c" }} />
+          <span
+            className="inline-block w-2 h-4 align-text-bottom animate-pulse ml-0.5"
+            style={{ background: "#c9a84c" }}
+          />
         )}
       </div>
 
@@ -548,10 +528,17 @@ function renderText(raw: string) {
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void handleAsk(); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleAsk();
+            }}
             placeholder="Ask Ben a follow-up question…"
             className="flex-1 rounded-xl px-4 py-3 text-sm"
-            style={{ background: "rgba(245,230,200,0.95)", color: "#24130a", border: "1px solid rgba(201,168,76,0.5)", fontFamily: "EB Garamond, serif" }}
+            style={{
+              background: "rgba(245,230,200,0.95)",
+              color: "#24130a",
+              border: "1px solid rgba(201,168,76,0.5)",
+              fontFamily: "EB Garamond, serif",
+            }}
           />
           <button
             type="button"
@@ -571,7 +558,11 @@ function renderText(raw: string) {
           type="button"
           onClick={() => void streamFrom({ financialContext: context })}
           className="w-full rounded-xl py-2 text-xs font-cinzel uppercase tracking-widest transition-all active:scale-95"
-          style={{ background: "rgba(107,68,35,0.15)", border: "1px solid rgba(107,68,35,0.35)", color: "#7a5d3a" }}
+          style={{
+            background: "rgba(107,68,35,0.15)",
+            border: "1px solid rgba(107,68,35,0.35)",
+            color: "#7a5d3a",
+          }}
         >
           ↺ Refresh Analysis
         </button>
