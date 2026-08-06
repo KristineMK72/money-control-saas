@@ -33,7 +33,9 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/world");
+    const requested = new URLSearchParams(window.location.search).get("next");
+    const destination = requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/world";
+    router.push(destination);
     router.refresh();
   }
 

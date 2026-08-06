@@ -26,6 +26,7 @@ const imFell = IM_Fell_English({
   subsets: ["latin"],
   weight: ["400"],
   variable: "--font-im-fell",
+  adjustFontFallback: false,
 });
 
 export const metadata: Metadata = {
@@ -110,43 +111,6 @@ function NavLink({ href, children }: { href: string; children: ReactNode }) {
       }}
     >
       {children}
-    </a>
-  );
-}
-
-function HeaderIconLink({
-  href,
-  label,
-  title,
-}: {
-  href: string;
-  label: string;
-  title: string;
-}) {
-  return (
-    <a
-      href={href}
-      aria-label={title}
-      title={title}
-      style={{
-        width: 48,
-        height: 48,
-        display: "grid",
-        placeItems: "center",
-        borderRadius: 16,
-        textDecoration: "none",
-        color: "#fff7ed",
-        background: "rgba(5,5,8,0.75)",
-        border: "1px solid rgba(255,255,255,0.18)",
-        boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-        backdropFilter: "blur(14px)",
-        WebkitBackdropFilter: "blur(14px)",
-        fontSize: 21,
-        fontWeight: 900,
-        flexShrink: 0,
-      }}
-    >
-      {label}
     </a>
   );
 }
@@ -290,33 +254,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                     flexShrink: 0,
                   }}
                 >
-                  <HeaderIconLink href="/settings" label="⚙️" title="Settings" />
-                  
                   {/* NOTE: Make sure to check inside this component file to match the arrays! */}
                   <MobileMenu />
                   
                   <div className="hidden sm:block">
                     <UserGreeting />
                   </div>
-
-                  <a
-                    href="/login"
-                    style={{
-                      padding: "11px 20px",
-                      borderRadius: 999,
-                      textDecoration: "none",
-                      fontWeight: 800,
-                      fontSize: 15,
-                      color: "#fff",
-                      background: "rgba(5,5,8,0.8)",
-                      border: "1px solid rgba(255,255,255,0.2)",
-                      boxShadow: "0 8px 25px rgba(0,0,0,0.35)",
-                      backdropFilter: "blur(14px)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Login
-                  </a>
 
                   <LogoutButton />
                 </div>
@@ -418,7 +361,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
           <main style={{ 
             position: "relative", 
-            zIndex: 1, 
             flex: "1 1 auto",
             minHeight: "60vh"
           }}>

@@ -73,8 +73,8 @@ export default function OnboardingTour() {
     const { data } = await supabase
       .from("profiles")
       .select("onboarding_complete")
-      .eq("id", user.id)
-      .single();
+      .eq("user_id", user.id)
+      .maybeSingle();
 
     if (!data?.onboarding_complete) {
       setOpen(true);
@@ -87,7 +87,7 @@ export default function OnboardingTour() {
       await supabase
         .from("profiles")
         .update({ onboarding_complete: true, updated_at: new Date().toISOString() })
-        .eq("id", userId);
+        .eq("user_id", userId);
     }
     playCoins();
     setOpen(false);

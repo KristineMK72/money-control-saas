@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { playCoins, playError, playBell } from "@/lib/sounds";
+import { playCoins, playError, playBell, setSoundEnabled } from "@/lib/sounds";
 
 const SMITHY_BG = "/055F883D-453E-4D8A-8A8A-9DE9A309F58B.png";
 
@@ -142,8 +142,8 @@ export default function SettingsPage() {
     const { data, error } = await supabase
       .from("profiles")
       .select("id, full_name, ben_voice, dark_mode, sound_effects, reduced_motion, is_premium, premium_status, xp, level, reputation, ben_avatar")
-      .eq("id", user.id)
-      .single<ProfileRow>();
+      .eq("user_id", user.id)
+      .maybeSingle<ProfileRow>();
 
     if (error && error.code !== "PGRST116") {
       setMessage(error.message);
@@ -158,6 +158,7 @@ export default function SettingsPage() {
       setBenAvatar(data.ben_avatar ?? "female_classic");
       setDarkMode(data.dark_mode ?? false);
       setSoundEffects(data.sound_effects ?? true);
+      setSoundEnabled(data.sound_effects ?? true);
       setReducedMotion(data.reduced_motion ?? false);
       setIsPremium(data.is_premium ?? false);
       setPremiumStatus(data.premium_status ?? "free");
@@ -175,7 +176,7 @@ export default function SettingsPage() {
     setMessage("");
 
     const { error } = await supabase.from("profiles").upsert({
-      id: userId,
+      user_id: userId,
       full_name: fullName,
       ben_voice: benVoice,
       ben_avatar: benAvatar,
@@ -183,7 +184,7 @@ export default function SettingsPage() {
       sound_effects: soundEffects,
       reduced_motion: reducedMotion,
       updated_at: new Date().toISOString(),
-    });
+    }, { onConflict: "user_id" });
 
     if (error) {
       playError();
@@ -330,7 +331,14 @@ export default function SettingsPage() {
               <h2 className="mb-3 font-cinzel text-lg font-bold text-[#c9a84c]">Experience</h2>
               <div className="space-y-3">
                 <Toggle label="Dark Mode" checked={darkMode} onChange={setDarkMode} />
-                <Toggle label="Sound Effects" checked={soundEffects} onChange={setSoundEffects} />
+                <Toggle
+                  label="Sound Effects"
+                  checked={soundEffects}
+                  onChange={(on) => {
+                    setSoundEffects(on);
+                    setSoundEnabled(on);
+                  }}
+                />
                 <Toggle label="Reduced Motion" checked={reducedMotion} onChange={setReducedMotion} />
               </div>
             </div>
@@ -345,7 +353,7 @@ export default function SettingsPage() {
               </div>
 
               <Link
-                href="/upgrade"
+                href="/signup?plan=monthly"
                 className="mt-3 flex w-full justify-center rounded-xl px-5 py-3 font-cinzel font-bold"
                 style={{ background: isPremium ? "rgba(107,68,35,.2)" : "#c9a84c", color: isPremium ? "#c9a84c" : "#1a0f0a" }}
               >

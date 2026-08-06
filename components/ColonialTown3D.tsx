@@ -9,8 +9,6 @@ import {
   Sparkles,
   Text,
 } from "@react-three/drei";
-import { EffectComposer, Bloom, Vignette, SMAA } from "@react-three/postprocessing";
-import { BlendFunction } from "postprocessing";
 import {
   Suspense,
   useCallback,
@@ -23,6 +21,7 @@ import { useRouter } from "next/navigation";
 import * as THREE from "three";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getUnlockedProps, type UnlockPropType } from "@/lib/world/levelUnlocks";
+import { playDoor, startTownAmbient, stopTownAmbient } from "@/lib/sounds";
 
 const SPEED = 10;
 const EYE_HEIGHT = 1.75;
@@ -61,25 +60,6 @@ type PlayerState = {
   z: number;
   yaw: number;
 };
-
-function playDoorSound() {
-  try {
-    const AudioCtor = window.AudioContext || (window as any).webkitAudioContext;
-    const ctx = new AudioCtor();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(220, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(65, ctx.currentTime + 0.65);
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.08);
-    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.7);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.7);
-  } catch {}
-}
 
 function useMultiplayer(userId: string | null, username: string, avatarIdx: number) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -177,8 +157,10 @@ export default function ColonialTown3D() {
   const enter = useCallback(() => {
     if (!near || entering) return;
     setEntering(near);
-    playDoorSound();
+    playDoor();
   }, [near, entering]);
+
+  useEffect(() => () => stopTownAmbient(), []);
 
   useEffect(() => {
     const fn = (e: KeyboardEvent) => { if (e.code === "KeyE") enter(); };
@@ -188,6 +170,7 @@ export default function ColonialTown3D() {
 
   function startWorld() {
     setLocked(true);
+    startTownAmbient("harbor");
     if (isMobile) return;
     setTimeout(() => { controlsApiRef.current?.lock?.(); }, 150);
   }
@@ -195,13 +178,14 @@ export default function ColonialTown3D() {
   return (
     <div className="relative h-full w-full overflow-hidden">
       <Canvas
+        dpr={isMobile ? 1 : [1, 1.5]}
         camera={{ fov: 72, near: 0.1, far: 900, position: START_POS }}
         gl={{
           antialias: false,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.35,
         }}
-        shadows={{ type: THREE.PCFSoftShadowMap }}
+        shadows={isMobile ? false : { type: THREE.PCFSoftShadowMap }}
       >
         <Suspense fallback={null}>
           <Scene
@@ -216,11 +200,6 @@ export default function ColonialTown3D() {
             others={others}
             broadcast={broadcast}
           />
-          <EffectComposer multisampling={0}>
-            <SMAA />
-            <Bloom luminanceThreshold={0.35} luminanceSmoothing={0.9} intensity={1.2} mipmapBlur />
-            <Vignette offset={0.25} darkness={0.58} blendFunction={BlendFunction.NORMAL} />
-          </EffectComposer>
         </Suspense>
       </Canvas>
 
@@ -481,7 +460,7 @@ function Scene({
         intensity={4.2}
         color="#ffcc88"
         castShadow
-        shadow-mapSize={[4096, 4096]}
+        shadow-mapSize={[2048, 2048]}
         shadow-camera-near={1}
         shadow-camera-far={240}
         shadow-camera-left={-80}
@@ -492,7 +471,7 @@ function Scene({
       />
       <hemisphereLight args={["#6a4a2a", "#1a1008", 1.8]} />
 
-      <Sparkles count={170} scale={[72, 12, 96]} position={[0, 2, 0]} size={1.5} speed={0.3} color="#fbbf24" opacity={0.38} />
+      <Sparkles count={100} scale={[72, 12, 96]} position={[0, 2, 0]} size={1.5} speed={0.3} color="#fbbf24" opacity={0.38} />
 
       <InfiniteTerrain />
       <HarborWater />
@@ -622,8 +601,8 @@ function MobileTouchControls({
 
 function InfiniteTerrain() {
   const stones = useMemo(() => {
-    return Array.from({ length: 120 }, (_, i) => {
-      const angle = (i / 120) * Math.PI * 2;
+    return Array.from({ length: 80 }, (_, i) => {
+      const angle = (i / 80) * Math.PI * 2;
       const radius = 56 + ((i * 19) % 54);
       return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius, angle };
     });
@@ -1241,6 +1220,21 @@ function HumanFigure({
       <mesh position={[0, 1.66, 0]} castShadow>
         <sphereGeometry args={[0.195, 16, 16]} />
         <meshStandardMaterial color={skinColor} roughness={0.78} />
+      </mesh>
+      {/* Simple colonial portrait features, facing the waistcoat/front (+z). */}
+      {[-0.07, 0.07].map((x) => (
+        <group key={x} position={[x, 1.7, 0.176]}>
+          <mesh><sphereGeometry args={[0.035, 8, 8]} /><meshStandardMaterial color="#f3eadc" roughness={0.75} /></mesh>
+          <mesh position={[0, 0, 0.028]}><sphereGeometry args={[0.014, 8, 8]} /><meshStandardMaterial color="#2a1a10" roughness={0.7} /></mesh>
+        </group>
+      ))}
+      <mesh position={[0, 1.65, 0.194]}>
+        <sphereGeometry args={[0.028, 8, 8]} />
+        <meshStandardMaterial color={skinColor} roughness={0.8} />
+      </mesh>
+      <mesh position={[0, 1.585, 0.19]}>
+        <boxGeometry args={[0.085, 0.012, 0.012]} />
+        <meshStandardMaterial color="#6b3025" roughness={0.9} />
       </mesh>
       {/* Tricorn hat brim */}
       <mesh position={[0, 1.88, 0]}>

@@ -176,7 +176,7 @@ export function buildArrivalAnnouncement(data: FinancialSnapshot): {
   }
 
   const actions = [
-    { label: "Visit Bank", href: "/bank", icon: "🏦" },
+    { label: "Visit Income Ledger", href: "/income", icon: "🏦" },
     { label: "Visit Payment Hall", href: "/payments", icon: "💰" },
   ];
 

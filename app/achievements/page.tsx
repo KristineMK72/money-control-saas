@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { clampMoney } from "@/lib/money/math";
-import { playLevelUp, playCoins } from "@/lib/sounds";
+import { playLevelUp, playXpGain } from "@/lib/sounds";
 import { awardXp } from "@/lib/xp/awardXp";
 
 /* ─── Achievement definitions ───────────────────────────────────── */
@@ -159,7 +159,6 @@ export default function AchievementsPage() {
   const [loading,  setLoading]  = useState(true);
   const [ach,      setAch]      = useState<AchievementData | null>(null);
   const [message,  setMessage]  = useState("");
-  const [prevUnlocked, setPrevUnlocked] = useState(0);
 
   useEffect(() => { void loadData(); }, []);
 
@@ -203,17 +202,12 @@ export default function AchievementsPage() {
       onboarded:    profile?.onboarding_complete ?? false,
     };
 
-    const unlockedCount = ACHIEVEMENTS.filter(a => a.check(data)).length;
-    if (prevUnlocked > 0 && unlockedCount > prevUnlocked) {
-      playLevelUp();
-    } else if (unlockedCount > 0) {
-      playCoins();
-    }
-    setPrevUnlocked(unlockedCount);
     setAch(data);
     setLoading(false);
 
     const unlocked = ACHIEVEMENTS.filter(a => a.check(data));
+    let awarded = false;
+    let gainedLevel = false;
     for (const achievement of unlocked) {
       const result = await awardXp({
         amount: achievement.xpReward,
@@ -225,7 +219,12 @@ export default function AchievementsPage() {
         setMessage(result.error || "Achievement XP could not be recorded.");
         break;
       }
+      if (!result.alreadyClaimed) {
+        awarded = true;
+        gainedLevel ||= !!result.leveledUp;
+      }
     }
+    if (awarded) gainedLevel ? playLevelUp() : playXpGain();
   }
 
   if (loading) {

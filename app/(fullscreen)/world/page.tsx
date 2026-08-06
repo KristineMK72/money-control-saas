@@ -18,7 +18,7 @@ const ColonialTown3D = dynamic(
 
 export default function WorldPage() {
   return (
-    <main className="fixed inset-0 z-50 bg-[#040608]">
+    <main className="fixed inset-0 z-[10000] bg-[#040608]">
       <ColonialTown3D />
     </main>
   );

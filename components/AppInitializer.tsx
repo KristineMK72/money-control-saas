@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useMoneyStore } from "@/lib/money/store";
+import { initAudio, playClick } from "@/lib/sounds";
 
 export default function AppInitializer({
   children,
@@ -53,6 +54,22 @@ export default function AppInitializer({
       subscription.unsubscribe();
     };
   }, [supabase, setAll, reset]);
+
+  useEffect(() => {
+    const unlock = () => initAudio();
+    const click = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest("button, a")) playClick();
+    };
+    window.addEventListener("pointerdown", unlock, { capture: true, once: true });
+    window.addEventListener("keydown", unlock, { capture: true, once: true });
+    document.addEventListener("click", click);
+    return () => {
+      window.removeEventListener("pointerdown", unlock, { capture: true });
+      window.removeEventListener("keydown", unlock, { capture: true });
+      document.removeEventListener("click", click);
+    };
+  }, []);
 
   return <>{children}</>;
 }

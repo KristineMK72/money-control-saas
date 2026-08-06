@@ -3,12 +3,11 @@
 /**
  * Example: wire town audio into the dashboard shell.
  *
- * 1. Put mp3s in public/audio/ (see AUDIO_MANIFEST in useTownAudio.ts)
- * 2. Call unlock() from the first user tap (e.g. dismiss parchment or "Enable sound")
- * 3. duck()/unduck() around Ben speech
+ * 1. Call unlock() from the first user tap (e.g. dismiss parchment or "Enable sound")
+ * 2. duck()/unduck() around Ben speech
  */
 
-import { useTownAudio, AUDIO_MANIFEST } from "@/lib/ben";
+import { useTownAudio } from "@/lib/ben";
 import type { FinancialSnapshot } from "@/lib/ben";
 
 export function useDashboardAudio(data: FinancialSnapshot) {

@@ -26,7 +26,7 @@ export default function ForgotPasswordPage() {
     }
 
     const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-      redirectTo: "https://www.askben.buzz/reset-password",
+      redirectTo: `${window.location.origin}/reset-password`,
     });
 
     if (error) {

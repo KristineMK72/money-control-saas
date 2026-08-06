@@ -137,7 +137,8 @@ export default function SignupPage() {
       return;
     }
 
-    window.location.href = "/world";
+    const requested = new URLSearchParams(window.location.search).get("next");
+    window.location.href = requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/world";
   }
 
   return (
