@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import SubscriptionOptions from "@/components/SubscriptionOptions";
 
 export default function LoginPage() {
   const supabase = createSupabaseBrowserClient();
-  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,8 +33,7 @@ export default function LoginPage() {
 
     const requested = new URLSearchParams(window.location.search).get("next");
     const destination = requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/world";
-    router.push(destination);
-    router.refresh();
+    window.location.assign(destination);
   }
 
   return (
