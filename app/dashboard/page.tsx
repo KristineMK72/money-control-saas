@@ -318,90 +318,148 @@ function AiAdvisor({ context }: { context: string }) {
   const [asking,    setAsking]    = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const streamFrom = useCallback(async (body: object) => {
-    setText("");
-    setStatus("loading");
+const streamFrom = useCallback(async (body: object) => {
+  setText("");
+  setStatus("loading");
 
-    try {
-      const res = await fetch("/api/ben-advice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+  try {
+    const res = await fetch("/api/ben-advice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
 
-      if (!res.ok || !res.body) {
-        const err = await res.text();
-        setText(`Error from Ben's quill: ${err}`);
-        setStatus("error");
-        return;
-      }
+    if (!res.ok || !res.body) {
+      let errMsg = `HTTP ${res.status}`;
+      try {
+        const raw = await res.text();
+        // Only show the raw body if it looks like a plain error message, not RSC/HTML
+        if (raw && raw.length < 300 && !raw.includes('["$') && !raw.startsWith("<!")) {
+          errMsg = raw;
+        }
+      } catch {}
+      setText(`Error from Ben's quill: ${errMsg}`);
+      setStatus("error");
+      return;
+    }
 
-      const reader  = res.body.getReader();
-      const decoder = new TextDecoder();
-      let full = "";
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let full = "";
+    // Buffer for partial SSE lines that span chunk boundaries
+    let lineBuffer = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split("\n")) {
-          if (!line.startsWith("data: ")) continue;
-          const raw = line.slice(6).trim();
-          if (raw === "[DONE]") break;
-          try {
-            const delta = JSON.parse(raw)?.choices?.[0]?.delta?.content;
-            if (delta) {
-              full += delta;
-              setText(full);
-            }
-          } catch {}
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      // Prepend any leftover partial line from the previous chunk
+      const toProcess = lineBuffer + chunk;
+      const lines = toProcess.split("\n");
+      // The last element may be an incomplete line — hold it for next chunk
+      lineBuffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]") {
+          lineBuffer = "";
+          break;
+        }
+        try {
+          const delta = JSON.parse(raw)?.choices?.[0]?.delta?.content;
+          if (delta) {
+            full += delta;
+            setText(full);
+          }
+        } catch {
+          // ignore malformed JSON lines
         }
       }
-
-      setStatus("done");
-    } catch (e) {
-      setText(`Could not reach Ben's quill: ${String(e)}`);
-      setStatus("error");
     }
-  }, []);
 
-  // Auto-run when context is ready
-  useEffect(() => {
-    if (context && status === "idle") {
-      void streamFrom({ financialContext: context });
-    }
-  }, [context, status, streamFrom]);
-
-  // Auto-scroll
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [text]);
-
-  async function handleAsk() {
-    if (!question.trim() || asking) return;
-    setAsking(true);
-    await streamFrom({ financialContext: context, question: question.trim() });
-    setQuestion("");
-    setAsking(false);
-  }
-
-  // Render markdown-ish bold + sections
-  function renderText(raw: string) {
-    const lines = raw.split("\n");
-    return lines.map((line, i) => {
-      const isBold = line.startsWith("**") && line.includes("**", 2);
-      if (isBold) {
-        const inner = line.replace(/\*\*/g, "");
-        return (
-          <p key={i} className="font-cinzel font-bold mt-4 mb-1 text-sm" style={{ color: "#c9a84c" }}>
-            {inner}
-          </p>
-        );
+    // Flush any final leftover that might contain a last data line
+    if (lineBuffer.startsWith("data: ")) {
+      const raw = lineBuffer.slice(6).trim();
+      if (raw && raw !== "[DONE]") {
+        try {
+          const delta = JSON.parse(raw)?.choices?.[0]?.delta?.content;
+          if (delta) {
+            full += delta;
+            setText(full);
+          }
+        } catch {}
       }
-      if (line.trim() === "") return <div key={i} className="h-1" />;
-      return <p key={i} className="text-sm leading-relaxed" style={{ color: "#e8d5b7" }}>{line}</p>;
-    });
+    }
+
+    setStatus("done");
+  } catch (e) {
+    setText(`Could not reach Ben's quill: ${String(e)}`);
+    setStatus("error");
   }
+}, []);
+
+// Render markdown-ish bold + sections (inline ** anywhere)
+function renderText(raw: string) {
+  const lines = raw.split("\n");
+
+  return lines.map((line, i) => {
+    if (line.trim() === "") {
+      return <div key={i} className="h-1" />;
+    }
+
+    // Whole-line bold headers (TOP PRIORITY, BIGGEST RISK, etc.)
+    if (
+      line.startsWith("**") &&
+      line.endsWith("**") &&
+      line.indexOf("**", 2) === line.length - 2
+    ) {
+      const inner = line.slice(2, -2);
+      return (
+        <p
+          key={i}
+          className="font-cinzel font-bold mt-4 mb-1 text-sm"
+          style={{ color: "#c9a84c" }}
+        >
+          {inner}
+        </p>
+      );
+    }
+
+    // Inline **bold** anywhere in the sentence
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    const re = /\*\*(.+?)\*\*/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = re.exec(line)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(line.slice(lastIndex, match.index));
+      }
+      parts.push(
+        <span
+          key={`${i}-${match.index}`}
+          className="font-cinzel font-bold"
+          style={{ color: "#c9a84c" }}
+        >
+          {match[1]}
+        </span>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < line.length) {
+      parts.push(line.slice(lastIndex));
+    }
+
+    return (
+      <p key={i} className="text-sm leading-relaxed" style={{ color: "#e8d5b7" }}>
+        {parts.length > 0 ? parts : line}
+      </p>
+    );
+  });
+}
 
   return (
     <div className="flex flex-col gap-4">
