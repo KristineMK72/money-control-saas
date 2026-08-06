@@ -22,6 +22,7 @@ import {
 import { useRouter } from "next/navigation";
 import * as THREE from "three";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getUnlockedProps, type UnlockPropType } from "@/lib/world/levelUnlocks";
 
 const SPEED = 10;
 const EYE_HEIGHT = 1.75;
@@ -336,6 +337,21 @@ function Scene({
   const nearestRef = useRef<BuildingDef | null>(null);
   const introDone = useRef(false);
   const { camera } = useThree();
+  const [playerLevel, setPlayerLevel] = useState(1);
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from("profiles")
+        .select("level")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      setPlayerLevel(Math.max(1, Number(data?.level ?? 1)));
+    })();
+  }, []);
 
   useEffect(() => {
     camera.position.set(...START_POS);
@@ -480,6 +496,7 @@ function Scene({
 
       <InfiniteTerrain />
       <HarborWater />
+      <Shoreline />
       <Street />
 
       {BUILDINGS.map((b) => (
@@ -497,6 +514,10 @@ function Scene({
       <BenNPC position={[0, 0, 4]} />
       <TownLife />
       <Trees />
+
+      {getUnlockedProps(playerLevel).map((prop, index) => (
+        <UnlockedWorldProp key={`${prop.type}-${index}`} type={prop.type} position={prop.position} />
+      ))}
 
       <Ship position={[-35, 0, -95]} rotation={0.4} />
       <Ship position={[25, 0, -110]} rotation={-0.6} />
@@ -629,22 +650,116 @@ function InfiniteTerrain() {
 }
 
 function HarborWater() {
+  const nearShore = useRef<THREE.Mesh>(null);
+  const deepWater = useRef<THREE.Mesh>(null);
+  const foam = useRef<Array<THREE.Mesh | null>>([]);
+
+  useFrame(({ clock }) => {
+    const elapsed = clock.getElapsedTime();
+    if (nearShore.current) nearShore.current.position.y = -0.14 + Math.sin(elapsed * 1.6) * 0.045;
+    if (deepWater.current) {
+      deepWater.current.position.y = -0.2 + Math.sin(elapsed * 0.45) * 0.025;
+      const material = deepWater.current.material as THREE.MeshStandardMaterial;
+      material.opacity = 0.86 + Math.sin(elapsed * 0.5) * 0.04;
+    }
+    foam.current.forEach((band, index) => {
+      if (!band) return;
+      band.position.z = 34 + ((elapsed * (0.45 + index * 0.035) + index * 7) % 32);
+      band.position.y = 0.01 + Math.sin(elapsed * 1.2 + index) * 0.018;
+    });
+  });
+
   return (
-    <group position={[0, 0, -88]}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.18, 0]}>
-        <planeGeometry args={[300, 150]} />
-        <meshStandardMaterial color="#0f2a4a" roughness={0.16} metalness={0.75} transparent opacity={0.92} />
+    <group position={[0, 0, -105]}>
+      <mesh ref={deepWater} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.2, -35]}>
+        <planeGeometry args={[300, 210]} />
+        <meshStandardMaterial color="#0b2948" roughness={0.16} metalness={0.72} transparent opacity={0.88} />
       </mesh>
-      {Array.from({ length: 10 }, (_, i) => (
-        <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.15 + i * 0.006, -24 + i * 9]}>
-          <planeGeometry args={[270, 7]} />
-          <meshStandardMaterial color={i % 2 ? "#1e4d73" : "#143858"} transparent opacity={0.22} roughness={0.25} metalness={0.55} />
+      <mesh ref={nearShore} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.14, 56]}>
+        <planeGeometry args={[300, 36]} />
+        <meshStandardMaterial color="#18506d" roughness={0.28} metalness={0.5} transparent opacity={0.9} />
+      </mesh>
+      {Array.from({ length: 5 }, (_, i) => (
+        <mesh
+          key={i}
+          ref={(mesh) => { foam.current[i] = mesh; }}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, 0.01, 34 + i * 7]}
+        >
+          <planeGeometry args={[280, 0.45 + (i % 2) * 0.25]} />
+          <meshBasicMaterial color="#d9edf0" transparent opacity={0.22} depthWrite={false} />
         </mesh>
       ))}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 54]}>
-        <planeGeometry args={[200, 8]} />
-        <meshStandardMaterial color="#2a1a0b" roughness={0.96} />
+    </group>
+  );
+}
+
+function Shoreline() {
+  const rocks = useMemo(() => Array.from({ length: 34 }, (_, i) => ({
+    x: -72 + ((i * 29) % 144),
+    z: -32.5 + ((i * 7) % 4) * 0.55,
+    size: 0.35 + ((i * 11) % 7) * 0.08,
+  })), []);
+
+  return (
+    <group>
+      {/* Sand, stone, and timber form a hard edge between town and harbor. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, -29.5]} receiveShadow>
+        <planeGeometry args={[180, 6]} />
+        <meshStandardMaterial color="#8d7042" roughness={1} />
       </mesh>
+      <mesh position={[0, 0.34, -33]} castShadow receiveShadow>
+        <boxGeometry args={[180, 0.7, 1.3]} />
+        <meshStandardMaterial color="#3d3930" roughness={0.96} />
+      </mesh>
+      {rocks.map((rock, index) => (
+        <mesh key={index} position={[rock.x, rock.size * 0.45, rock.z]} rotation={[index, index * 0.7, 0]} castShadow>
+          <dodecahedronGeometry args={[rock.size, 0]} />
+          <meshStandardMaterial color={index % 2 ? "#575349" : "#34332e"} roughness={1} />
+        </mesh>
+      ))}
+      <group position={[0, 0, -43]}>
+        <mesh position={[0, 0.38, 0]} castShadow receiveShadow>
+          <boxGeometry args={[7, 0.55, 23]} />
+          <meshStandardMaterial color="#573716" roughness={0.9} />
+        </mesh>
+        {Array.from({ length: 12 }, (_, i) => (
+          <mesh key={i} position={[0, 0.68, -10.5 + i * 1.9]} castShadow>
+            <boxGeometry args={[7.4, 0.16, 0.18]} />
+            <meshStandardMaterial color="#8a5b2c" roughness={0.95} />
+          </mesh>
+        ))}
+        {[-2.8, 2.8].map((x) => [-9, -2, 5, 10].map((z) => (
+          <mesh key={`${x}-${z}`} position={[x, -0.7, z]} castShadow>
+            <cylinderGeometry args={[0.16, 0.2, 2.2, 8]} />
+            <meshStandardMaterial color="#38220f" roughness={1} />
+          </mesh>
+        )))}
+      </group>
+    </group>
+  );
+}
+
+function UnlockedWorldProp({ type, position }: { type: UnlockPropType; position: [number, number, number] }) {
+  if (type === "Crate") {
+    return <mesh position={[position[0], 0.5, position[2]]} castShadow><boxGeometry args={[1, 1, 1]} /><meshStandardMaterial color="#6e451f" roughness={0.95} /></mesh>;
+  }
+  if (type === "Barrel") {
+    return <mesh position={[position[0], 0.65, position[2]]} castShadow><cylinderGeometry args={[0.45, 0.5, 1.3, 12]} /><meshStandardMaterial color="#5b3518" roughness={0.9} /></mesh>;
+  }
+  if (type === "FlagPole") {
+    return (
+      <group position={position}>
+        <mesh position={[0, 3.5, 0]} castShadow><cylinderGeometry args={[0.07, 0.1, 7, 8]} /><meshStandardMaterial color="#5b3b20" roughness={0.9} /></mesh>
+        <mesh position={[0.9, 5.8, 0]}><planeGeometry args={[1.8, 1.1]} /><meshStandardMaterial color="#8b1a1a" side={THREE.DoubleSide} /></mesh>
+      </group>
+    );
+  }
+  return (
+    <group position={position}>
+      <mesh position={[0, 1.25, 0]} castShadow><boxGeometry args={[4, 0.2, 2.2]} /><meshStandardMaterial color="#70451e" roughness={0.9} /></mesh>
+      {[-1.7, 1.7].map((x) => <mesh key={x} position={[x, 0.65, 0]}><boxGeometry args={[0.16, 1.3, 0.16]} /><meshStandardMaterial color="#39220f" /></mesh>)}
+      <mesh position={[0, 2.4, 0]} rotation={[0, 0, Math.PI / 12]}><boxGeometry args={[4.5, 0.12, 2.6]} /><meshStandardMaterial color="#8b1a1a" roughness={0.85} /></mesh>
     </group>
   );
 }
@@ -1267,8 +1382,15 @@ function Wagon({ position, rotation }: { position: [number, number, number]; rot
 }
 
 function Ship({ position, rotation = 0 }: { position: [number, number, number]; rotation?: number }) {
+  const ship = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (!ship.current) return;
+    const elapsed = clock.getElapsedTime() + position[0] * 0.03;
+    ship.current.position.y = position[1] + Math.sin(elapsed * 0.55) * 0.18;
+    ship.current.rotation.z = Math.sin(elapsed * 0.42) * 0.025;
+  });
   return (
-    <group position={position} rotation={[0, rotation, 0]}>
+    <group ref={ship} position={position} rotation={[0, rotation, 0]}>
       <mesh position={[0, 1.2, 0]} castShadow>
         <boxGeometry args={[4.5, 1.8, 12]} />
         <meshStandardMaterial color="#3a2a1a" roughness={0.9} />

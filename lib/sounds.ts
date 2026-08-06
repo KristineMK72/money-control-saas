@@ -48,6 +48,20 @@ export function playLevelUp() {
   });
 }
 
+export function playXpGain() {
+  const c = ctx(); if (!c) return;
+  [523, 659].forEach((freq, i) => {
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    const t = c.currentTime + i * 0.1;
+    osc.connect(gain); gain.connect(c.destination);
+    osc.type = "sine"; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.16, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    osc.start(t); osc.stop(t + 0.29);
+  });
+}
+
 export function playError() {
   const c = ctx(); if (!c) return;
   const osc = c.createOscillator();

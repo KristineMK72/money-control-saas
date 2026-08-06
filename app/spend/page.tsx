@@ -8,6 +8,7 @@ import { BenEngine } from "@/lib/ben/engine";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/money/utils";
 import { money } from "@/lib/money/math";
+import { awardXp } from "@/lib/xp/awardXp";
 import type { SpendCategory } from "@/lib/money/types";
 import {
   guessCategoryFromMerchant,
@@ -34,6 +35,23 @@ type DebtOption = {
   id: string;
   name: string | null;
   kind: "credit" | "loan" | null;
+};
+
+type SpendNeed = {
+  id: string;
+  title: string;
+  category: SpendCategory | null;
+  estimated_amount: number | null;
+  priority: string;
+  status: string;
+  due_date: string | null;
+};
+
+type LocalAlternative = {
+  name: string;
+  distanceMi: number;
+  mapsUrl: string;
+  priceLevel?: string;
 };
 
 const categories: SpendCategory[] = [
@@ -70,6 +88,7 @@ export default function SpendPage() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [entries, setEntries] = useState<SpendRow[]>([]);
+  const [needs, setNeeds] = useState<SpendNeed[]>([]);
   const [creditCards, setCreditCards] = useState<DebtOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -88,6 +107,15 @@ export default function SpendPage() {
   const [ocrBusy, setOcrBusy] = useState(false);
   const [foundTxns, setFoundTxns] = useState<ParsedTxn[]>([]);
   const [selectedTxns, setSelectedTxns] = useState<Record<number, boolean>>({});
+  const [needTitle, setNeedTitle] = useState("");
+  const [needCategory, setNeedCategory] = useState<SpendCategory>("groceries");
+  const [needEstimate, setNeedEstimate] = useState("");
+  const [needDueDate, setNeedDueDate] = useState("");
+  const [needPriority, setNeedPriority] = useState("normal");
+  const [deals, setDeals] = useState<Record<string, LocalAlternative[]>>({});
+  const [dealMessages, setDealMessages] = useState<Record<string, string>>({});
+  const [dealsBusyKey, setDealsBusyKey] = useState<string | null>(null);
+  const [scannedTip, setScannedTip] = useState<{ category: SpendCategory; merchant: string; amount: number } | null>(null);
 
   function showMsg(text: string) {
     setMessage(text);
@@ -129,6 +157,21 @@ export default function SpendPage() {
     setCreditCards(data || []);
   }
 
+  async function reloadNeeds(uid = userId) {
+    if (!uid) return;
+    const { data, error } = await supabase
+      .from("spend_needs")
+      .select("id, title, category, estimated_amount, priority, status, due_date")
+      .eq("user_id", uid)
+      .eq("status", "open")
+      .order("due_date", { ascending: true, nullsFirst: false });
+    if (error) {
+      console.error("Spend needs load error:", error.message);
+      return;
+    }
+    setNeeds(data || []);
+  }
+
   useEffect(() => {
     async function init() {
       const { data, error } = await supabase.auth.getSession();
@@ -147,7 +190,7 @@ export default function SpendPage() {
       }
 
       setUserId(user.id);
-      await Promise.all([reloadRows(user.id), reloadPaymentMethods(user.id)]);
+      await Promise.all([reloadRows(user.id), reloadPaymentMethods(user.id), reloadNeeds(user.id)]);
       setLoading(false);
     }
 
@@ -216,6 +259,110 @@ export default function SpendPage() {
 
     setEntries((prev) => prev.filter((entry) => entry.id !== id));
     showMsg("Entry removed.");
+  }
+
+  async function handleAddNeed() {
+    if (!userId || !needTitle.trim()) {
+      showMsg("Add a title for the household need.");
+      return;
+    }
+    const estimate = needEstimate ? Number(needEstimate) : null;
+    if (estimate !== null && (!Number.isFinite(estimate) || estimate < 0)) {
+      showMsg("Enter a valid estimate.");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase.from("spend_needs").insert({
+      user_id: userId,
+      title: needTitle.trim(),
+      category: needCategory,
+      estimated_amount: estimate,
+      due_date: needDueDate || null,
+      priority: needPriority,
+    });
+    if (error) showMsg(error.message);
+    else {
+      setNeedTitle(""); setNeedEstimate(""); setNeedDueDate(""); setNeedPriority("normal");
+      await reloadNeeds(userId);
+      showMsg("Need added to this week's market list.");
+    }
+    setSaving(false);
+  }
+
+  async function handleMarkBought(need: SpendNeed) {
+    if (!userId) return;
+    const amountText = window.prompt("Amount paid", need.estimated_amount?.toString() || "");
+    if (amountText === null) return;
+    const boughtAmount = Number(amountText);
+    if (!Number.isFinite(boughtAmount) || boughtAmount <= 0) {
+      showMsg("Enter the amount actually paid.");
+      return;
+    }
+    const boughtMerchant = window.prompt("Merchant", "")?.trim();
+    if (!boughtMerchant) return;
+
+    setSaving(true);
+    const { data: spend, error: spendError } = await supabase
+      .from("spend_entries")
+      .insert({
+        user_id: userId,
+        date_iso: todayISO(),
+        merchant: boughtMerchant,
+        amount: boughtAmount,
+        category: need.category || "misc",
+        payment_method: paymentMethod,
+        note: `Fulfilled need: ${need.title}`,
+      })
+      .select("id")
+      .single();
+    if (spendError) {
+      showMsg(spendError.message); setSaving(false); return;
+    }
+    const { error: needError } = await supabase
+      .from("spend_needs")
+      .update({ status: "done", fulfilled_spend_id: spend.id })
+      .eq("id", need.id)
+      .eq("user_id", userId);
+    if (needError) {
+      showMsg(needError.message); setSaving(false); return;
+    }
+    await awardXp({ amount: 12, reason: "Fulfilled a need", eventKey: `need:fulfilled:${need.id}` });
+    await Promise.all([reloadRows(userId), reloadNeeds(userId)]);
+    showMsg("Need fulfilled and recorded in the merchant ledger.");
+    setSaving(false);
+  }
+
+  async function findDeals(key: string, dealCategory: SpendCategory, dealMerchant?: string, dealAmount?: number) {
+    if (!navigator.geolocation) {
+      showMsg("Location is not available in this browser.");
+      return;
+    }
+    setDealsBusyKey(key);
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      try {
+        const response = await fetch("/api/local-deals", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lat: coords.latitude,
+            lng: coords.longitude,
+            category: dealCategory,
+            merchant: dealMerchant,
+            amount: dealAmount,
+          }),
+        });
+        const result = await response.json() as { alternatives?: LocalAlternative[]; message?: string };
+        setDeals((current) => ({ ...current, [key]: result.alternatives || [] }));
+        setDealMessages((current) => ({ ...current, [key]: result.message || "Nearby options" }));
+      } catch {
+        setDealMessages((current) => ({ ...current, [key]: "Nearby options are temporarily unavailable" }));
+      } finally {
+        setDealsBusyKey(null);
+      }
+    }, () => {
+      setDealsBusyKey(null);
+      showMsg("Location permission is needed to find nearby options.");
+    }, { enableHighAccuracy: false, timeout: 10000 });
   }
 
   async function handleOCR() {
@@ -287,6 +434,13 @@ export default function SpendPage() {
     setFoundTxns([]);
     setSelectedTxns({});
     setImageFile(null);
+
+    const tipRow = rows.find((row) => ["groceries", "gas", "eating_out"].includes(row.category));
+    setScannedTip(tipRow ? {
+      category: tipRow.category,
+      merchant: tipRow.merchant,
+      amount: tipRow.amount,
+    } : null);
 
     await reloadRows(userId);
     showMsg(`Imported ${rows.length} transactions. Ben filed the receipts.`);
@@ -444,6 +598,88 @@ export default function SpendPage() {
               color="#c9a84c"
             />
           </div>
+
+          <Card
+            title="Needs This Week"
+            sub="Plan household purchases before they become surprise spending."
+          >
+            <div className="grid gap-3 rounded-xl p-3 sm:grid-cols-2" style={{ background: "rgba(0,0,0,.35)" }}>
+              <Input label="Need" value={needTitle} onChange={setNeedTitle} placeholder="School supplies, groceries…" />
+              <SelectInput
+                label="Category"
+                value={needCategory}
+                onChange={(value) => setNeedCategory(value as SpendCategory)}
+                options={categories.map((item) => ({ value: item, label: categoryLabel[item] }))}
+              />
+              <Input label="Estimate" value={needEstimate} onChange={setNeedEstimate} type="number" placeholder="0.00" />
+              <Input label="Due" value={needDueDate} onChange={setNeedDueDate} type="date" />
+              <SelectInput
+                label="Priority"
+                value={needPriority}
+                onChange={setNeedPriority}
+                options={["low", "normal", "high"].map((item) => ({ value: item, label: item[0].toUpperCase() + item.slice(1) }))}
+              />
+              <button
+                type="button"
+                onClick={() => void handleAddNeed()}
+                disabled={saving || !userId}
+                className="self-end rounded-xl bg-[#6b4423] py-2.5 font-bold disabled:opacity-50"
+              >
+                Add Need
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <SelectInput
+                label="Payment Method When Marking Bought"
+                value={paymentMethod}
+                onChange={setPaymentMethod}
+                options={paymentOptions.map((method) => ({ value: method, label: method }))}
+                highlight
+              />
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              {needs.length === 0 ? (
+                <p className="text-center text-[#9a7d5a]">No open needs on the market list.</p>
+              ) : needs.map((need) => (
+                <div key={need.id} className="rounded-xl p-4" style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(201,168,76,.2)" }}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-[#f5e6c8]">{need.title}</p>
+                      <p className="text-sm text-[#9a7d5a]">
+                        {need.category ? categoryLabel[need.category] || need.category : "Uncategorized"}
+                        {need.estimated_amount !== null ? ` · est. ${money(Number(need.estimated_amount))}` : ""}
+                        {need.due_date ? ` · due ${need.due_date}` : ""}
+                        {` · ${need.priority} priority`}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void findDeals(need.id, need.category || "misc", undefined, Number(need.estimated_amount || 0))}
+                        disabled={dealsBusyKey === need.id}
+                        className="rounded-lg border border-[#c9a84c]/50 px-3 py-2 text-sm text-[#c9a84c] disabled:opacity-50"
+                      >
+                        {dealsBusyKey === need.id ? "Looking…" : "Find deals"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleMarkBought(need)}
+                        disabled={saving}
+                        className="rounded-lg bg-green-800 px-3 py-2 text-sm font-bold disabled:opacity-50"
+                      >
+                        Mark bought
+                      </button>
+                    </div>
+                  </div>
+                  {(dealMessages[need.id] || deals[need.id]) && (
+                    <LocalAlternatives message={dealMessages[need.id]} alternatives={deals[need.id] || []} />
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
 
           {/* ── Ben's briefing ── */}
           <Card
@@ -683,6 +919,24 @@ export default function SpendPage() {
                   </div>
                 </div>
               )}
+
+              {scannedTip && (
+                <div className="mt-5 rounded-xl p-4" style={{ background: "rgba(201,168,76,.1)", border: "1px solid rgba(201,168,76,.35)" }}>
+                  <p className="font-cinzel font-bold text-[#c9a84c]">Ben&apos;s Local Tip</p>
+                  <p className="mt-1 text-sm text-[#d6c09a]">Compare nearby options for future {categoryLabel[scannedTip.category].replace(/^[^\s]+ /, "").toLowerCase()} purchases. Availability and prices can vary.</p>
+                  <button
+                    type="button"
+                    onClick={() => void findDeals("scanned-tip", scannedTip.category, scannedTip.merchant, scannedTip.amount)}
+                    disabled={dealsBusyKey === "scanned-tip"}
+                    className="mt-3 rounded-lg border border-[#c9a84c]/60 px-3 py-2 text-sm font-bold text-[#c9a84c] disabled:opacity-50"
+                  >
+                    {dealsBusyKey === "scanned-tip" ? "Looking…" : "Find nearby alternatives"}
+                  </button>
+                  {(dealMessages["scanned-tip"] || deals["scanned-tip"]) && (
+                    <LocalAlternatives message={dealMessages["scanned-tip"]} alternatives={deals["scanned-tip"] || []} />
+                  )}
+                </div>
+              )}
             </DrawerPanel>
           )}
 
@@ -815,6 +1069,26 @@ function Card({
       <h2 className="font-cinzel text-xl font-bold text-[#c9a84c]">{title}</h2>
       {sub && <p className="mb-4 mt-1 text-sm text-[#b99b60]">{sub}</p>}
       <div className={sub ? "" : "mt-3"}>{children}</div>
+    </div>
+  );
+}
+
+function LocalAlternatives({ message, alternatives }: { message?: string; alternatives: LocalAlternative[] }) {
+  return (
+    <div className="mt-3 border-t border-[#c9a84c]/20 pt-3">
+      <p className="text-sm italic text-[#d6c09a]">{message || "Nearby places that may be worth comparing"}</p>
+      {alternatives.length > 0 && (
+        <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+          {alternatives.map((alternative) => (
+            <li key={`${alternative.name}-${alternative.distanceMi}`}>
+              <a href={alternative.mapsUrl} target="_blank" rel="noreferrer" className="block rounded-lg bg-black/30 px-3 py-2 text-sm text-[#c9a84c] underline decoration-[#c9a84c]/40">
+                {alternative.name} · {alternative.distanceMi.toFixed(1)} mi
+                {alternative.priceLevel ? ` · ${alternative.priceLevel.replace("PRICE_LEVEL_", "").toLowerCase().replaceAll("_", " ")}` : ""}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

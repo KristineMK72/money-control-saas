@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { clampMoney } from "@/lib/money/math";
 import { playLevelUp, playCoins } from "@/lib/sounds";
+import { awardXp } from "@/lib/xp/awardXp";
 
 /* ─── Achievement definitions ───────────────────────────────────── */
 
@@ -174,7 +175,7 @@ export default function AchievementsPage() {
       supabase.from("debts").select("id").eq("user_id", user.id),
       supabase.from("profiles")
         .select("xp, level, reputation, onboarding_complete")
-        .eq("id", user.id).single(),
+        .eq("user_id", user.id).maybeSingle(),
     ]);
 
     const incomeRows   = incomeRes.data   || [];
@@ -211,6 +212,20 @@ export default function AchievementsPage() {
     setPrevUnlocked(unlockedCount);
     setAch(data);
     setLoading(false);
+
+    const unlocked = ACHIEVEMENTS.filter(a => a.check(data));
+    for (const achievement of unlocked) {
+      const result = await awardXp({
+        amount: achievement.xpReward,
+        reason: `Unlocked achievement: ${achievement.title}`,
+        eventKey: `achievement:${achievement.id}`,
+        playSound: false,
+      });
+      if (!result.ok) {
+        setMessage(result.error || "Achievement XP could not be recorded.");
+        break;
+      }
+    }
   }
 
   if (loading) {
