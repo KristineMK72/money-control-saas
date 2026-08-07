@@ -36,6 +36,11 @@ export async function POST(req: NextRequest) {
 
     const risk = detectVisitorRisk(userAgent, pathname);
 
+    // Attach logged-in user when available (powers retention + unique users)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     const { error: visitorError } = await supabase.from("visitors").insert({
       ip_hash: ipHash,
       user_agent: userAgent,
@@ -50,6 +55,7 @@ export async function POST(req: NextRequest) {
       is_suspicious: risk.isSuspicious,
       risk_score: risk.riskScore,
       reason: risk.reason,
+      user_id: user?.id ?? null,
     });
 
     if (visitorError) {
