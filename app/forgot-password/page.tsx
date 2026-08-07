@@ -10,12 +10,14 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
+  const [sent, setSent] = useState(false);
 
   async function sendResetLink(e: React.FormEvent) {
     e.preventDefault();
 
     setSending(true);
     setMessage("");
+    setSent(false);
 
     const cleanEmail = email.trim();
 
@@ -32,7 +34,9 @@ export default function ForgotPasswordPage() {
     if (error) {
       setMessage(error.message);
     } else {
-      setMessage("Password reset link sent. Check your email.");
+      window.sessionStorage.setItem("askben.recovery.email", cleanEmail);
+      setMessage("Password reset code sent. Check your email, then enter it here.");
+      setSent(true);
     }
 
     setSending(false);
@@ -70,6 +74,15 @@ export default function ForgotPasswordPage() {
             <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm font-bold text-cyan-50">
               {message}
             </div>
+          ) : null}
+
+          {sent ? (
+            <Link
+              href="/reset-password"
+              className="rounded-xl bg-emerald-500 px-5 py-3 text-center font-black text-black transition hover:opacity-90"
+            >
+              Enter Verification Code
+            </Link>
           ) : null}
 
           <button

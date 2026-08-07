@@ -20,6 +20,8 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [verificationToken, setVerificationToken] = useState("");
+  const [awaitingVerification, setAwaitingVerification] = useState(false);
 
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -83,7 +85,7 @@ export default function SignupPage() {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: cleanEmail,
       password,
       options: {
@@ -101,15 +103,68 @@ export default function SignupPage() {
       return;
     }
 
-    setMessage(
-      plan === "free"
-        ? "Account created. Check your email for confirmation, then log in."
-        : "Account created. Check your email, then continue to Stripe for your subscription.",
-    );
+    if (data.session) {
+      window.location.assign("/world");
+      return;
+    }
 
-    setMode("login");
+    setMessage("Account created. Enter the verification code sent to your email.");
+    setAwaitingVerification(true);
     setPassword("");
     setConfirmPassword("");
+    setLoading(false);
+  }
+
+  async function handleVerifySignup(e: React.FormEvent) {
+    e.preventDefault();
+    setMessage("");
+
+    const cleanEmail = email.trim();
+    const cleanToken = verificationToken.replace(/\s/g, "");
+
+    if (!cleanEmail || !cleanToken) {
+      setMessage("Enter your email and the verification code from your inbox.");
+      return;
+    }
+
+    setLoading(true);
+
+    const { error } = await supabase.auth.verifyOtp({
+      email: cleanEmail,
+      token: cleanToken,
+      type: "signup",
+    });
+
+    if (error) {
+      setMessage(
+        error.code === "otp_expired"
+          ? "That code is invalid or expired. Request a fresh email and try the newest code."
+          : error.message,
+      );
+      setLoading(false);
+      return;
+    }
+
+    window.location.assign("/world");
+  }
+
+  async function resendSignupCode() {
+    setMessage("");
+    setLoading(true);
+
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    setMessage(
+      error
+        ? error.message
+        : "A fresh verification code is on its way. Use the newest email.",
+    );
     setLoading(false);
   }
 
@@ -203,6 +258,8 @@ export default function SignupPage() {
               type="button"
               onClick={() => {
                 setMode("signup");
+                setAwaitingVerification(false);
+                setVerificationToken("");
                 setMessage("");
                 setPassword("");
               }}
@@ -219,6 +276,8 @@ export default function SignupPage() {
               type="button"
               onClick={() => {
                 setMode("login");
+                setAwaitingVerification(false);
+                setVerificationToken("");
                 setMessage("");
                 setConfirmPassword("");
               }}
@@ -246,21 +305,33 @@ export default function SignupPage() {
             </p>
 
             <h2 className="mt-3 text-4xl font-black">
-              {mode === "signup" ? "Create account" : "Welcome Back"}
+              {awaitingVerification
+                ? "Verify your email"
+                : mode === "signup"
+                  ? "Create account"
+                  : "Welcome Back"}
             </h2>
 
             <p className="mt-3 text-sm font-semibold leading-6 text-white/70">
-              {mode === "signup"
-                ? "Use your name, email, and create a password to get started."
+              {awaitingVerification
+                ? "Enter the one-time code from your AskBen email."
+                : mode === "signup"
+                  ? "Use your name, email, and create a password to get started."
                 : "Sign in to AskBen and continue rebuilding your Treasury."}
             </p>
           </div>
 
           <form
-            onSubmit={mode === "signup" ? handleSignup : handleLogin}
+            onSubmit={
+              awaitingVerification
+                ? handleVerifySignup
+                : mode === "signup"
+                  ? handleSignup
+                  : handleLogin
+            }
             className="mt-6 grid gap-4"
           >
-            {mode === "signup" ? (
+            {mode === "signup" && !awaitingVerification ? (
               <input
                 type="text"
                 placeholder="Your name"
@@ -278,20 +349,33 @@ export default function SignupPage() {
               className={inputClass}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              readOnly={awaitingVerification}
             />
 
-            <input
-              type="password"
-              placeholder="Password"
-              autoComplete={
-                mode === "signup" ? "new-password" : "current-password"
-              }
-              className={inputClass}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            {awaitingVerification ? (
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="Verification code"
+                autoComplete="one-time-code"
+                className={inputClass}
+                value={verificationToken}
+                onChange={(e) => setVerificationToken(e.target.value)}
+              />
+            ) : (
+              <input
+                type="password"
+                placeholder="Password"
+                autoComplete={
+                  mode === "signup" ? "new-password" : "current-password"
+                }
+                className={inputClass}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            )}
 
-            {mode === "login" ? (
+            {mode === "login" && !awaitingVerification ? (
               <div className="text-right">
                 <a
                   href="/forgot-password"
@@ -302,7 +386,7 @@ export default function SignupPage() {
               </div>
             ) : null}
 
-            {mode === "signup" ? (
+            {mode === "signup" && !awaitingVerification ? (
               <input
                 type="password"
                 placeholder="Confirm password"
@@ -328,16 +412,45 @@ export default function SignupPage() {
               }
             >
               {loading
-                ? mode === "signup"
+                ? awaitingVerification
+                  ? "Verifying..."
+                  : mode === "signup"
                   ? "Creating account..."
                   : "Logging in..."
-                : mode === "signup"
+                : awaitingVerification
+                  ? "Verify email"
+                  : mode === "signup"
                   ? "Create account"
                   : "Login"}
             </button>
+
+            {awaitingVerification ? (
+              <div className="grid gap-3 text-center">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={resendSignupCode}
+                  className="text-sm font-black text-cyan-300 hover:underline disabled:opacity-50"
+                >
+                  Send a fresh code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAwaitingVerification(false);
+                    setVerificationToken("");
+                    setMessage("");
+                  }}
+                  className="text-sm font-black text-yellow-200 hover:underline"
+                >
+                  Use a different email
+                </button>
+              </div>
+            ) : null}
           </form>
 
-          <div className="mt-6 border-t border-white/15 pt-6 text-center text-sm font-semibold text-white/65">
+          {!awaitingVerification ? (
+            <div className="mt-6 border-t border-white/15 pt-6 text-center text-sm font-semibold text-white/65">
             {mode === "signup" ? (
               <p>
                 Already have an account?{" "}
@@ -345,6 +458,8 @@ export default function SignupPage() {
                   type="button"
                   onClick={() => {
                     setMode("login");
+                    setAwaitingVerification(false);
+                    setVerificationToken("");
                     setMessage("");
                     setConfirmPassword("");
                   }}
@@ -360,6 +475,8 @@ export default function SignupPage() {
                   type="button"
                   onClick={() => {
                     setMode("signup");
+                    setAwaitingVerification(false);
+                    setVerificationToken("");
                     setMessage("");
                     setPassword("");
                   }}
@@ -369,7 +486,8 @@ export default function SignupPage() {
                 </button>
               </p>
             )}
-          </div>
+            </div>
+          ) : null}
         </section>
       </div>
     </main>
