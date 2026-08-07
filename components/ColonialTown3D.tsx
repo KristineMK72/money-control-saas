@@ -44,12 +44,12 @@ const BUILDINGS = [
 type BuildingDef = (typeof BUILDINGS)[number];
 
 const AVATARS = [
-  { coat: "#8b1a1a", hat: "#1a0a0a", skin: "#d4a876" },
-  { coat: "#1a3a6b", hat: "#0a0e1a", skin: "#c49060" },
-  { coat: "#4a2e0e", hat: "#1a0f04", skin: "#d4a876" },
-  { coat: "#1a4a1a", hat: "#081408", skin: "#a87040" },
-  { coat: "#2a1a4a", hat: "#0a0818", skin: "#d4a876" },
-  { coat: "#4a1a6b", hat: "#1a0824", skin: "#b08050" },
+  { coat: "#087f68", hat: "#17130f", skin: "#d4a876" },
+  { coat: "#24558a", hat: "#0a0e1a", skin: "#c49060" },
+  { coat: "#8a3f2d", hat: "#1a0f04", skin: "#d4a876" },
+  { coat: "#396b3d", hat: "#081408", skin: "#a87040" },
+  { coat: "#664487", hat: "#0a0818", skin: "#d4a876" },
+  { coat: "#7d315f", hat: "#1a0824", skin: "#b08050" },
 ];
 
 type PlayerState = {
@@ -1275,6 +1275,9 @@ function HumanFigure({
   coatColor,
   skinColor,
   hatColor,
+  waistcoatColor = "#6b351f",
+  hairColor = "#d8d0bc",
+  accentColor = "#d9b84a",
   name,
   nameColor = "#fbbf24",
   distanceFactor = 7,
@@ -1282,22 +1285,28 @@ function HumanFigure({
   coatColor: string;
   skinColor: string;
   hatColor: string;
+  waistcoatColor?: string;
+  hairColor?: string;
+  accentColor?: string;
   name: string;
   nameColor?: string;
   distanceFactor?: number;
 }) {
   return (
     <group>
-      {/* Left leg */}
-      <mesh position={[-0.1, 0.42, 0]} castShadow>
-        <cylinderGeometry args={[0.085, 0.075, 0.82, 8]} />
-        <meshStandardMaterial color="#1a1408" roughness={0.9} />
-      </mesh>
-      {/* Right leg */}
-      <mesh position={[0.1, 0.42, 0]} castShadow>
-        <cylinderGeometry args={[0.085, 0.075, 0.82, 8]} />
-        <meshStandardMaterial color="#1a1408" roughness={0.9} />
-      </mesh>
+      {/* Knee breeches and stockings */}
+      {[-0.1, 0.1].map((x) => (
+        <group key={`leg-${x}`}>
+          <mesh position={[x, 0.59, 0]} castShadow>
+            <cylinderGeometry args={[0.09, 0.08, 0.34, 10]} />
+            <meshStandardMaterial color={waistcoatColor} roughness={0.86} />
+          </mesh>
+          <mesh position={[x, 0.29, 0]} castShadow>
+            <cylinderGeometry args={[0.076, 0.068, 0.34, 10]} />
+            <meshStandardMaterial color="#eee7d5" roughness={0.82} />
+          </mesh>
+        </group>
+      ))}
       {/* Left boot */}
       <mesh position={[-0.1, 0.06, 0.04]} castShadow>
         <boxGeometry args={[0.15, 0.12, 0.28]} />
@@ -1308,6 +1317,19 @@ function HumanFigure({
         <boxGeometry args={[0.15, 0.12, 0.28]} />
         <meshStandardMaterial color="#0a0806" roughness={0.92} />
       </mesh>
+      {[-0.1, 0.1].map((x) => (
+        <mesh key={`buckle-${x}`} position={[x, 0.1, 0.19]}>
+          <boxGeometry args={[0.07, 0.055, 0.018]} />
+          <meshStandardMaterial color={accentColor} metalness={0.65} roughness={0.35} />
+        </mesh>
+      ))}
+      {/* Split coat tails */}
+      {[-0.13, 0.13].map((x) => (
+        <mesh key={`tail-${x}`} position={[x, 0.78, -0.035]} rotation={[0.08, 0, x * 0.35]} castShadow>
+          <boxGeometry args={[0.2, 0.48, 0.16]} />
+          <meshStandardMaterial color={coatColor} roughness={0.84} />
+        </mesh>
+      ))}
       {/* Torso */}
       <mesh position={[0, 1.08, 0]} castShadow>
         <boxGeometry args={[0.4, 0.6, 0.22]} />
@@ -1316,8 +1338,25 @@ function HumanFigure({
       {/* Waistcoat/vest layer */}
       <mesh position={[0, 1.08, 0.1]}>
         <boxGeometry args={[0.22, 0.5, 0.04]} />
-        <meshStandardMaterial color="#c9a84c" roughness={0.78} emissive="#c9a84c" emissiveIntensity={0.08} />
+        <meshStandardMaterial color={waistcoatColor} roughness={0.78} />
       </mesh>
+      {/* Lapels, cravat, and brass buttons */}
+      {[-0.11, 0.11].map((x) => (
+        <mesh key={`lapel-${x}`} position={[x, 1.2, 0.125]} rotation={[0, 0, x * 1.8]}>
+          <boxGeometry args={[0.1, 0.35, 0.035]} />
+          <meshStandardMaterial color={coatColor} roughness={0.78} />
+        </mesh>
+      ))}
+      <mesh position={[0, 1.35, 0.15]}>
+        <coneGeometry args={[0.11, 0.28, 4]} />
+        <meshStandardMaterial color="#f6f1e4" roughness={0.72} />
+      </mesh>
+      {[0.94, 1.08, 1.22].map((y) => (
+        <mesh key={`button-${y}`} position={[0, y, 0.135]}>
+          <sphereGeometry args={[0.025, 8, 8]} />
+          <meshStandardMaterial color={accentColor} metalness={0.6} roughness={0.35} />
+        </mesh>
+      ))}
       {/* Left arm */}
       <mesh position={[-0.26, 1.05, 0]} rotation={[0, 0, 0.18]} castShadow>
         <cylinderGeometry args={[0.068, 0.055, 0.56, 8]} />
@@ -1348,12 +1387,31 @@ function HumanFigure({
         <sphereGeometry args={[0.195, 16, 16]} />
         <meshStandardMaterial color={skinColor} roughness={0.78} />
       </mesh>
+      {/* Colonial hair and side curls */}
+      <mesh position={[0, 1.7, -0.115]} scale={[1.04, 1.08, 0.75]} castShadow>
+        <sphereGeometry args={[0.205, 14, 14]} />
+        <meshStandardMaterial color={hairColor} roughness={0.9} />
+      </mesh>
+      {[-1, 1].flatMap((side) =>
+        [1.73, 1.6, 1.48].map((y, index) => (
+          <mesh key={`curl-${side}-${y}`} position={[side * (0.19 + index * 0.006), y, -0.005]} castShadow>
+            <sphereGeometry args={[0.075 - index * 0.006, 10, 10]} />
+            <meshStandardMaterial color={hairColor} roughness={0.9} />
+          </mesh>
+        )),
+      )}
       {/* Simple colonial portrait features, facing the waistcoat/front (+z). */}
       {[-0.07, 0.07].map((x) => (
         <group key={x} position={[x, 1.7, 0.176]}>
           <mesh><sphereGeometry args={[0.035, 8, 8]} /><meshStandardMaterial color="#f3eadc" roughness={0.75} /></mesh>
           <mesh position={[0, 0, 0.028]}><sphereGeometry args={[0.014, 8, 8]} /><meshStandardMaterial color="#2a1a10" roughness={0.7} /></mesh>
         </group>
+      ))}
+      {[-0.07, 0.07].map((x) => (
+        <mesh key={`brow-${x}`} position={[x, 1.755, 0.19]} rotation={[0, 0, x * 1.2]}>
+          <boxGeometry args={[0.065, 0.012, 0.012]} />
+          <meshStandardMaterial color={hairColor} roughness={0.9} />
+        </mesh>
       ))}
       <mesh position={[0, 1.65, 0.194]}>
         <sphereGeometry args={[0.028, 8, 8]} />
@@ -1365,7 +1423,7 @@ function HumanFigure({
       </mesh>
       {/* Tricorn hat brim */}
       <mesh position={[0, 1.88, 0]}>
-        <cylinderGeometry args={[0.36, 0.36, 0.05, 20]} />
+        <cylinderGeometry args={[0.36, 0.36, 0.05, 3]} />
         <meshStandardMaterial color={hatColor} roughness={0.88} />
       </mesh>
       {/* Hat crown */}
@@ -1376,7 +1434,7 @@ function HumanFigure({
       {/* Hat band */}
       <mesh position={[0, 1.93, 0]}>
         <cylinderGeometry args={[0.21, 0.21, 0.06, 12]} />
-        <meshStandardMaterial color="#c9a84c" roughness={0.6} emissive="#c9a84c" emissiveIntensity={0.15} metalness={0.3} />
+        <meshStandardMaterial color={accentColor} roughness={0.6} emissive={accentColor} emissiveIntensity={0.12} metalness={0.3} />
       </mesh>
       {/* Name tag */}
       <Html position={[0, 2.55, 0]} center distanceFactor={distanceFactor} style={{ pointerEvents: "none" }}>
@@ -1400,9 +1458,11 @@ function BenNPC({ position }: { position: [number, number, number] }) {
   return (
     <group ref={groupRef} position={position}>
       <HumanFigure
-        coatColor="#163a63"
+        coatColor="#087f68"
         skinColor="#d4a876"
-        hatColor="#1b1510"
+        hatColor="#17130f"
+        waistcoatColor="#6b351f"
+        hairColor="#cbc3ad"
         name="Ben Franklin"
         nameColor="#fbbf24"
         distanceFactor={5}
@@ -1412,11 +1472,13 @@ function BenNPC({ position }: { position: [number, number, number] }) {
 }
 
 // Town NPC citizens with walking animation
-function Citizen({ name, position, color, skin = "#d4a876", walkRadius = 0, walkSpeed = 1 }: {
+function Citizen({ name, position, color, skin = "#d4a876", vest = "#6b351f", hair = "#d8d0bc", walkRadius = 0, walkSpeed = 1 }: {
   name: string;
   position: [number, number, number];
   color: string;
   skin?: string;
+  vest?: string;
+  hair?: string;
   walkRadius?: number;
   walkSpeed?: number;
 }) {
@@ -1437,6 +1499,8 @@ function Citizen({ name, position, color, skin = "#d4a876", walkRadius = 0, walk
         coatColor={color}
         skinColor={skin}
         hatColor="#1a1208"
+        waistcoatColor={vest}
+        hairColor={hair}
         name={name}
         distanceFactor={7}
       />
@@ -1447,11 +1511,11 @@ function Citizen({ name, position, color, skin = "#d4a876", walkRadius = 0, walk
 function TownLife() {
   return (
     <>
-      <Citizen name="Merchant" position={[-2.5, 0, -1.6]} color="#4a2e0e" skin="#c49060" walkRadius={1.2} walkSpeed={0.35} />
-      <Citizen name="Postmaster" position={[-3.2, 0, 5]} color="#1a3a6b" walkRadius={0.8} walkSpeed={0.28} />
-      <Citizen name="Blacksmith" position={[3.2, 0, 13]} color="#3a3030" skin="#a87040" walkRadius={1.0} walkSpeed={0.4} />
-      <Citizen name="Farmer" position={[22, 0, 8]} color="#4a3c1a" walkRadius={2.0} walkSpeed={0.22} />
-      <Citizen name="Sailor" position={[-20, 0, -28]} color="#1a2a4a" walkRadius={1.5} walkSpeed={0.32} />
+      <Citizen name="Merchant" position={[-2.5, 0, -1.6]} color="#8a3f2d" skin="#c49060" vest="#d1a24a" hair="#31231b" walkRadius={1.2} walkSpeed={0.35} />
+      <Citizen name="Postmaster" position={[-3.2, 0, 5]} color="#24558a" vest="#7c3f26" hair="#d7d0c2" walkRadius={0.8} walkSpeed={0.28} />
+      <Citizen name="Blacksmith" position={[3.2, 0, 13]} color="#3f4b50" skin="#a87040" vest="#70402c" hair="#211914" walkRadius={1.0} walkSpeed={0.4} />
+      <Citizen name="Farmer" position={[22, 0, 8]} color="#55733b" vest="#8a6535" hair="#8a6848" walkRadius={2.0} walkSpeed={0.22} />
+      <Citizen name="Sailor" position={[-20, 0, -28]} color="#176b72" vest="#70402c" hair="#d7d0c2" walkRadius={1.5} walkSpeed={0.32} />
       <Wagon position={[2.8, 0, -2]} rotation={[0, -0.45, 0]} />
       <Horse position={[1.5, 0, -3.2]} rotation={[0, -0.45, 0]} />
     </>
@@ -1555,6 +1619,7 @@ function OtherPlayer({
         coatColor={av.coat}
         skinColor={av.skin}
         hatColor={av.hat}
+        waistcoatColor="#6b351f"
         name={name}
         nameColor="#c9a84c"
         distanceFactor={8}

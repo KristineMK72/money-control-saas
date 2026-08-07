@@ -6,3 +6,6 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+Host: https://www.askben.buzz
+Sitemap: https://www.askben.buzz/sitemap.xml
