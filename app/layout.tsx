@@ -13,7 +13,22 @@ import MobileMenu from "@/components/MobileMenu";
 import GovernorHeader from "@/components/GovernorHeader";
 import GlobalBenAdvisor from "@/components/GlobalBenAdvisor";
 import SwipeHeader from "@/components/SwipeHeader";
+import { VisitorTracker } from "@/components/VisitorTracker"; // adjust path if needed
 
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <VisitorTracker />
+        {children}
+      </body>
+    </html>
+  );
+}
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 const cormorant = Cormorant_Garamond({
