@@ -307,13 +307,12 @@ export default function SettingsPage() {
                 <div>
                   <Label>Ben’s Voice</Label>
                   <select value={benVoice} onChange={(e) => setBenVoice(e.target.value)} style={INPUT}>
-                    <option value="encouraging">🌟 Encouraging Ben</option>
-                    <option value="funny">😄 Funny Ben</option>
-                    <option value="direct">⚡ Direct Ben</option>
-                    <option value="governor">🏛 Governor Ben</option>
-                  </select>
-                </div>
-
+                   {BEN_PERSONAS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                    {p.emoji} {p.label}
+                   </option>
+                    ))}
+                 </select>
                 <div>
                   <Label>Ben’s Avatar</Label>
                   <select value={benAvatar} onChange={(e) => setBenAvatar(e.target.value)} style={INPUT}>
