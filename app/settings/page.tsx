@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { playCoins, playError, playBell, setSoundEnabled } from "@/lib/sounds";
-
+import { BEN_PERSONAS } from "@/lib/ben/personas";
 const SMITHY_BG = "/055F883D-453E-4D8A-8A8A-9DE9A309F58B.png";
 
 type ProfileRow = {
