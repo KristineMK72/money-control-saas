@@ -14,6 +14,7 @@ import GovernorHeader from "@/components/GovernorHeader";
 import GlobalBenAdvisor from "@/components/GlobalBenAdvisor";
 import SwipeHeader from "@/components/SwipeHeader";
 import { VisitorTracker } from "@/components/VisitorTracker"; // adjust path if needed
+import TownCrierBriefing from "@/components/TownCrierBriefing";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -133,6 +134,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       >
         <BenWorldBackground />
         <VisitorTracker />
+        <TownCrierBriefing />
         <AppInitializer>
           <SwipeHeader>
             <div
