@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { BEN_PERSONAS } from "@/lib/ben/personas";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { playCoins, playError, playBell, setSoundEnabled } from "@/lib/sounds";
-import { BEN_PERSONAS } from "@/lib/ben/personas";
+
 const SMITHY_BG = "/055F883D-453E-4D8A-8A8A-9DE9A309F58B.png";
 
 type ProfileRow = {
@@ -307,12 +308,14 @@ export default function SettingsPage() {
                 <div>
                   <Label>Ben’s Voice</Label>
                   <select value={benVoice} onChange={(e) => setBenVoice(e.target.value)} style={INPUT}>
-                   {BEN_PERSONAS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                    {p.emoji} {p.label}
-                   </option>
+                    {BEN_PERSONAS.map((persona) => (
+                      <option key={persona.id} value={persona.id}>
+                        {persona.emoji} {persona.label}
+                      </option>
                     ))}
-                 </select>
+                  </select>
+                </div>
+
                 <div>
                   <Label>Ben’s Avatar</Label>
                   <select value={benAvatar} onChange={(e) => setBenAvatar(e.target.value)} style={INPUT}>

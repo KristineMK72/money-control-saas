@@ -1,264 +1,224 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { getBenPersona, getTownCrierMessage } from "@/lib/ben/personas";
+import { daysUntil, nextDateFromDueDay } from "@/lib/money/dates";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getPersona } from "@/lib/ben/personas";
 
-type Item = {
+type DueRow = {
   id: string;
-  name: string;
-  amount: number | string | null;
-  due_date: string | null;
-  kind: "bill" | "debt";
+  name?: string | null;
+  due_date?: string | null;
+  due_day?: number | string | null;
+  due?: string | null;
+  target?: number | string | null;
+  monthly_target?: number | string | null;
+  balance?: number | string | null;
+  min_payment?: number | string | null;
+  monthly_min_payment?: number | string | null;
 };
 
-function daysUntil(dateStr: string) {
-  const due = new Date(dateStr + "T12:00:00");
-  const now = new Date();
-  return Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+type BriefingItem = {
+  id: string;
+  name: string;
+  kind: "Bill" | "Debt";
+  dueDate: string;
+  daysAway: number;
+  amount: number | null;
+};
+
+const SESSION_KEY_PREFIX = "askben:town-crier:";
+
+function resolveDueDate(row: DueRow) {
+  const direct = row.due_date ?? row.due ?? null;
+  const directDays = daysUntil(direct);
+  if (direct && directDays !== null && directDays >= 0) return direct.slice(0, 10);
+  return nextDateFromDueDay(row.due_day);
 }
 
-function money(n: number) {
-  return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
-}
-
-function buildMessage(
-  personaId: string | null,
-  items: Item[],
-  displayName: string | null
-) {
-  const persona = getPersona(personaId);
-  const name = displayName?.split(" ")[0] || "friend";
-
-  if (items.length === 0) {
-    const empty: Record<string, string> = {
-      encouraging: `Good morrow, ${name}. No bills or debts press upon the next fortnight. A rare quiet in the Treasury — enjoy it.`,
-      funny: `Well met, ${name}! The ledger is suspiciously calm. No bills or debts for two weeks. Even Gossip Ben has nothing to report.`,
-      direct: `No bills or debts due in the next 14 days. Use the calm.`,
-      governor: `Citizen ${name}, the colony records no immediate demands of bill or debt. Strengthen the walls while the weather is fair.`,
-    };
-    return empty[persona.id] || empty.encouraging;
+function firstAmount(...values: Array<number | string | null | undefined>) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const amount = Number(value);
+    if (Number.isFinite(amount) && amount >= 0) return amount;
   }
-
-  const list = items
-    .slice(0, 5)
-    .map((item) => {
-      const days = item.due_date ? daysUntil(item.due_date) : null;
-      const when =
-        days === null
-          ? "soon"
-          : days <= 0
-            ? "today / overdue"
-            : days === 1
-              ? "tomorrow"
-              : `in ${days} days`;
-      const amt = item.amount ? ` (${money(Number(item.amount))})` : "";
-      const tag = item.kind === "debt" ? " [debt]" : "";
-      return `${item.name}${tag}${amt} — ${when}`;
-    })
-    .join("; ");
-
-  const more = items.length > 5 ? ` (and ${items.length - 5} more)` : "";
-
-  const lines: Record<string, string> = {
-    encouraging: `Well met, ${name}. These call for attention soon: ${list}${more}. We shall meet them one at a time — steady wins the race.`,
-    funny: `Ah, ${name}, the receipts and debts have been talking. Coming up: ${list}${more}. Shall we keep the drama short?`,
-    direct: `Due soon: ${list}${more}. Nearest dates first.`,
-    governor: `Citizen ${name}, the colony records these approaching duties: ${list}${more}. Diligence preserves reputation.`,
-  };
-
-  return lines[persona.id] || lines.encouraging;
+  return null;
 }
 
-const SESSION_KEY = "askben_town_crier_shown";
+function toBriefingItem(row: DueRow, kind: BriefingItem["kind"]): BriefingItem | null {
+  const dueDate = resolveDueDate(row);
+  const daysAway = daysUntil(dueDate);
+  if (!dueDate || daysAway === null || daysAway < 0 || daysAway > 14) return null;
+
+  return {
+    id: `${kind}:${row.id}`,
+    name: row.name?.trim() || (kind === "Bill" ? "Unnamed bill" : "Unnamed debt"),
+    kind,
+    dueDate,
+    daysAway,
+    amount: kind === "Bill"
+      ? firstAmount(row.monthly_target, row.target, row.min_payment)
+      : firstAmount(row.monthly_min_payment, row.min_payment),
+  };
+}
+
+function formatDueDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(
+    new Date(`${value}T12:00:00`),
+  );
+}
+
+function formatAmount(value: number | null) {
+  if (value === null) return null;
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(value);
+}
 
 export default function TownCrierBriefing() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const supabase = createSupabaseBrowserClient();
   const [open, setOpen] = useState(false);
-  const [message, setMessage] = useState("");
-  const [itemCount, setItemCount] = useState(0);
+  const [items, setItems] = useState<BriefingItem[]>([]);
+  const [personaId, setPersonaId] = useState<string | null>(null);
+  const [sessionKey, setSessionKey] = useState("");
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (sessionStorage.getItem(SESSION_KEY)) return;
+    let active = true;
 
-    async function load() {
-      const supabase = createSupabaseBrowserClient();
+    async function loadBriefing() {
+      if (pathname.startsWith("/onboarding/")) return;
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!active || !user) return;
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("ben_voice, full_name, display_name")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const key = `${SESSION_KEY_PREFIX}${user.id}`;
+      if (window.sessionStorage.getItem(key)) return;
 
-      const today = new Date();
-      const in14 = new Date();
-      in14.setDate(today.getDate() + 14);
-      const in14Str = in14.toISOString().slice(0, 10);
-
-      // Bills + Debts (same sources the bills page uses)
-      const [billsRes, debtsRes] = await Promise.all([
+      const [profileResult, billsResult, debtsResult] = await Promise.all([
+        supabase.from("profiles").select("ben_voice").eq("user_id", user.id).maybeSingle(),
         supabase
           .from("bills")
-          .select("id, name, amount, due_date")
-          .eq("user_id", user.id)
-          .not("due_date", "is", null)
-          .lte("due_date", in14Str)
-          .order("due_date", { ascending: true }),
+          .select("id, name, due_date, due, due_day, target, monthly_target, min_payment")
+          .eq("user_id", user.id),
         supabase
           .from("debts")
-          .select("id, name, balance, due_date, minimum_payment")
-          .eq("user_id", user.id)
-          .not("due_date", "is", null)
-          .lte("due_date", in14Str)
-          .order("due_date", { ascending: true }),
+          .select("id, name, due_date, due_day, min_payment, monthly_min_payment")
+          .eq("user_id", user.id),
       ]);
 
-      const bills: Item[] = (billsRes.data || []).map((b) => ({
-        id: b.id,
-        name: b.name,
-        amount: b.amount,
-        due_date: b.due_date,
-        kind: "bill" as const,
-      }));
+      if (!active) return;
+      if (billsResult.error || debtsResult.error) return;
 
-      const debts: Item[] = (debtsRes.data || []).map((d) => ({
-        id: d.id,
-        name: d.name,
-        amount: d.minimum_payment ?? d.balance,
-        due_date: d.due_date,
-        kind: "debt" as const,
-      }));
+      const upcoming = [
+        ...(billsResult.data ?? []).map((row) => toBriefingItem(row, "Bill")),
+        ...(debtsResult.data ?? []).map((row) => toBriefingItem(row, "Debt")),
+      ]
+        .filter((item): item is BriefingItem => item !== null)
+        .sort((a, b) => a.daysAway - b.daysAway || a.name.localeCompare(b.name));
 
-      // Merge and sort by due date
-      const combined = [...bills, ...debts].sort((a, b) => {
-        if (!a.due_date) return 1;
-        if (!b.due_date) return -1;
-        return a.due_date.localeCompare(b.due_date);
-      });
-
-      const text = buildMessage(
-        profile?.ben_voice ?? null,
-        combined,
-        profile?.full_name || profile?.display_name || null
-      );
-
-      setMessage(text);
-      setItemCount(combined.length);
+      window.sessionStorage.setItem(key, "shown");
+      setSessionKey(key);
+      setPersonaId(profileResult.data?.ben_voice ?? "encouraging");
+      setItems(upcoming);
       setOpen(true);
-      sessionStorage.setItem(SESSION_KEY, "1");
     }
 
-    void load();
-  }, []);
+    void loadBriefing();
+    return () => {
+      active = false;
+    };
+  }, [pathname, supabase]);
+
+  const persona = getBenPersona(personaId);
+  const message = useMemo(
+    () => getTownCrierMessage(personaId, items.length, items.filter((item) => item.daysAway <= 3).length),
+    [items, personaId],
+  );
+
+  function close() {
+    if (sessionKey) window.sessionStorage.setItem(sessionKey, "shown");
+    setOpen(false);
+  }
+
+  function openBills() {
+    close();
+    router.push("/bills");
+  }
 
   if (!open) return null;
 
   return (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 100000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(0,0,0,0.72)",
-        padding: 16,
-      }}
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="town-crier-title"
     >
-      <div
-        style={{
-          width: "min(92vw, 420px)",
-          background: "rgba(15,23,42,0.97)",
-          border: "1px solid rgba(201,168,76,0.45)",
-          borderRadius: 24,
-          padding: "28px 24px",
-          boxShadow: "0 24px 80px rgba(0,0,0,0.55)",
-          color: "#f5e6c8",
-        }}
-      >
-        <p
-          style={{
-            fontSize: 11,
-            fontWeight: 800,
-            letterSpacing: "0.22em",
-            textTransform: "uppercase",
-            color: "#c9a84c",
-            marginBottom: 8,
-          }}
-        >
-          Town Crier
-        </p>
+      <section className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-3xl border border-[#c9a84c]/60 bg-[#160d08] p-6 text-[#f5e6c8] shadow-2xl sm:p-8">
+        <div className="text-center">
+          <span className="text-4xl" aria-hidden="true">🔔</span>
+          <p className="mt-2 font-cinzel text-xs font-bold uppercase tracking-[0.32em] text-[#c9a84c]">
+            Town Crier · Fourteen-Day Briefing
+          </p>
+          <h2 id="town-crier-title" className="mt-2 font-cinzel text-3xl font-bold">
+            Hear ye, Governor
+          </h2>
+          <p className="mt-3 leading-7 text-[#d6c09a]">{message}</p>
+          <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-[#9a7d5a]">
+            Counsel from {persona.label}
+          </p>
+        </div>
 
-        <h2
-          style={{
-            fontFamily: "Cormorant Garamond, Georgia, serif",
-            fontSize: 26,
-            fontWeight: 700,
-            margin: "0 0 14px",
-            color: "#fff7ed",
-          }}
-        >
-          {itemCount > 0 ? "Duties on the horizon" : "A quiet ledger"}
-        </h2>
+        {items.length > 0 ? (
+          <ul className="mt-6 space-y-2">
+            {items.map((item) => {
+              const amount = formatAmount(item.amount);
+              return (
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between gap-4 rounded-xl border border-[#c9a84c]/25 bg-black/25 px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-bold text-[#f5e6c8]">{item.name}</p>
+                    <p className="text-xs uppercase tracking-wider text-[#9a7d5a]">{item.kind}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="font-semibold text-[#c9a84c]">{formatDueDate(item.dueDate)}</p>
+                    <p className="text-xs text-[#d6c09a]">
+                      {item.daysAway === 0 ? "Due today" : `In ${item.daysAway} day${item.daysAway === 1 ? "" : "s"}`}
+                      {amount !== null ? ` · ${amount}` : ""}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div className="mt-6 rounded-xl border border-emerald-400/25 bg-emerald-400/10 p-4 text-center text-sm text-emerald-100">
+            No recorded bills or debts are due in the next 14 days.
+          </div>
+        )}
 
-        <p
-          style={{
-            fontSize: 16,
-            lineHeight: 1.55,
-            color: "#e7d5b5",
-            marginBottom: 22,
-          }}
-        >
-          {message}
-        </p>
-
-        <div style={{ display: "flex", gap: 10 }}>
+        <div className="mt-7 grid gap-3 sm:grid-cols-2">
           <button
             type="button"
-            onClick={() => setOpen(false)}
-            style={{
-              flex: 1,
-              padding: "14px 18px",
-              borderRadius: 14,
-              border: "1px solid rgba(201,168,76,0.4)",
-              background: "transparent",
-              color: "#c9a84c",
-              fontWeight: 800,
-              fontSize: 15,
-              cursor: "pointer",
-            }}
+            onClick={close}
+            className="rounded-xl border border-[#c9a84c]/35 px-5 py-3 font-cinzel font-bold text-[#d6c09a]"
           >
             Dismiss
           </button>
-
-          <a
-            href="/bills"
-            style={{
-              flex: 1,
-              padding: "14px 18px",
-              borderRadius: 14,
-              border: "none",
-              background: "#c9a84c",
-              color: "#1a0f0a",
-              fontWeight: 800,
-              fontSize: 15,
-              textAlign: "center",
-              textDecoration: "none",
-            }}
+          <button
+            type="button"
+            onClick={openBills}
+            className="rounded-xl bg-[#c9a84c] px-5 py-3 font-cinzel font-bold text-[#1a0f0a]"
           >
             Open Bills
-          </a>
+          </button>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

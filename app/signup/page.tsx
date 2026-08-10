@@ -104,7 +104,8 @@ export default function SignupPage() {
     }
 
     if (data.session) {
-      window.location.assign("/world");
+      window.location.assign("/onboarding/persona");
+      return;
     }
 
     setMessage("Account created. Enter the verification code sent to your email.");
@@ -144,12 +145,12 @@ export default function SignupPage() {
       return;
     }
 
-  window.location.assign("/onboarding/persona");
+    window.location.assign("/onboarding/persona");
   }
+
   async function resendSignupCode() {
     setMessage("");
     setLoading(true);
-  }
 
     const { error } = await supabase.auth.resend({
       type: "signup",

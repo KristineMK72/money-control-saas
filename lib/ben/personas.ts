@@ -254,3 +254,36 @@ export function getPersona(id: string | null | undefined): BenPersona {
 export function getPersonaPrompt(id: string | null | undefined): string {
   return getPersona(id).systemPrompt;
 }
+
+export const getBenPersona = getPersona;
+
+export function getTownCrierMessage(
+  value: string | null | undefined,
+  itemCount: number,
+  urgentCount: number,
+) {
+  const persona = getPersona(value);
+
+  if (itemCount === 0) {
+    const clearMessages: Record<BenPersonaId, string> = {
+      encouraging: "The next fortnight looks clear. That breathing room is progress worth noticing.",
+      funny: "The crier checked twice: no bills are charging the gates this fortnight.",
+      direct: "Nothing is due in the next 14 days. Review the ledger if anything is missing.",
+      governor: "The treasury calendar is clear for the coming fortnight. Use the calm wisely.",
+    };
+    return clearMessages[persona.id];
+  }
+
+  const urgency = urgentCount > 0
+    ? `${urgentCount} ${urgentCount === 1 ? "item needs" : "items need"} attention within three days.`
+    : "Nothing on the list is due within three days.";
+
+  const dueMessages: Record<BenPersonaId, string> = {
+    encouraging: `${itemCount} ${itemCount === 1 ? "obligation is" : "obligations are"} approaching. We can take them one sensible step at a time. ${urgency}`,
+    funny: `${itemCount} ${itemCount === 1 ? "bill has" : "bills have"} sent word ahead. Better a polite greeting now than a cannon at the gate later. ${urgency}`,
+    direct: `${itemCount} ${itemCount === 1 ? "payment is" : "payments are"} due in the next 14 days. Check the nearest date first. ${urgency}`,
+    governor: `${itemCount} ${itemCount === 1 ? "obligation stands" : "obligations stand"} before the treasury this fortnight. Let us order the ledger by consequence and date. ${urgency}`,
+  };
+
+  return dueMessages[persona.id];
+}
