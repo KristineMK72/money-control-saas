@@ -145,6 +145,7 @@ export default function SignupPage() {
     }
 
   window.location.assign("/onboarding/persona");
+  }
   async function resendSignupCode() {
     setMessage("");
     setLoading(true);
