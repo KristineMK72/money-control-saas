@@ -31,7 +31,7 @@ async function setPremium(
     throw new Error("Supabase webhook credentials are not configured");
   }
 
-  const { error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("profiles")
     .update({
       is_premium: opts.isPremium,
@@ -40,10 +40,16 @@ async function setPremium(
       stripe_subscription_id: opts.subscriptionId ?? null,
       updated_at: new Date().toISOString(),
     })
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .select("user_id")
+    .maybeSingle();
 
   if (error) {
-    console.error("Failed to update profile premium status:", error);
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error(`Profile not found for Stripe user ${userId}`);
   }
 }
 

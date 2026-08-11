@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type Plan = "monthly" | "yearly";
 
@@ -8,6 +9,19 @@ const priceEnv: Record<Plan, string | undefined> = {
   yearly: process.env.STRIPE_PRICE_ID_YEARLY,
 };
 export async function POST(request: Request) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json(
+      { error: "You must be signed in to start checkout." },
+      { status: 401 }
+    );
+  }
+
   if (!process.env.STRIPE_SECRET_KEY) {
     return NextResponse.json(
       { error: "Missing STRIPE_SECRET_KEY." },
@@ -37,11 +51,21 @@ export async function POST(request: Request) {
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
+    client_reference_id: user.id,
     line_items: [{ price, quantity: 1 }],
     success_url: `${origin}/signup?plan=${plan}&checkout=success`,
     cancel_url: `${origin}/signup?plan=${plan}&checkout=cancelled`,
     allow_promotion_codes: true,
-    metadata: { plan },
+    metadata: {
+      user_id: user.id,
+      plan,
+    },
+    subscription_data: {
+      metadata: {
+        user_id: user.id,
+        plan,
+      },
+    },
   });
 
   return NextResponse.json({ url: session.url });
