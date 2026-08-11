@@ -4,16 +4,18 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs"; // required for raw body + Stripe signature
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2023-10-16",
-});
+function getStripeClient() {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) return null;
+  return new Stripe(secretKey, { apiVersion: "2023-10-16" });
+}
 
-// Service-role client so we can update any profile from the webhook
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!, // must be set in Vercel
-  { auth: { persistSession: false } }
-);
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) return null;
+  return createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+}
 
 async function setPremium(
   userId: string,
@@ -24,6 +26,11 @@ async function setPremium(
     subscriptionId?: string | null;
   }
 ) {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    throw new Error("Supabase webhook credentials are not configured");
+  }
+
   const { error } = await supabaseAdmin
     .from("profiles")
     .update({
@@ -43,10 +50,18 @@ async function setPremium(
 export async function POST(req: NextRequest) {
   const sig = req.headers.get("stripe-signature");
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const stripe = getStripeClient();
 
-  if (!sig || !webhookSecret) {
+  if (!stripe || !webhookSecret) {
     return NextResponse.json(
-      { error: "Missing signature or webhook secret" },
+      { error: "Stripe webhook is not configured" },
+      { status: 503 }
+    );
+  }
+
+  if (!sig) {
+    return NextResponse.json(
+      { error: "Missing signature" },
       { status: 400 }
     );
   }
