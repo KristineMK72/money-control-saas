@@ -5,9 +5,9 @@ import {
   Sky,
   PointerLockControls,
   Html,
-  Environment,
   Sparkles,
   Text,
+  useTexture,
 } from "@react-three/drei";
 import {
   Suspense,
@@ -20,7 +20,9 @@ import {
 import { useRouter } from "next/navigation";
 import * as THREE from "three";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { COLONIAL_TRIVIA } from "@/lib/ben/trivia";
 import { getUnlockedProps, type UnlockPropType } from "@/lib/world/levelUnlocks";
+import { TOWN_NPCS, getNpcPosition, type TownNpc } from "@/lib/world/npcs";
 import { playDoor, startTownAmbient, stopTownAmbient } from "@/lib/sounds";
 
 const SPEED = 10;
@@ -28,6 +30,62 @@ const EYE_HEIGHT = 1.75;
 const START_POS: [number, number, number] = [0, 34, 44];
 const FIRST_PERSON_POS: [number, number, number] = [0, EYE_HEIGHT, 27];
 const CHANNEL = "franklins-landing-v4";
+const NPC_INTERACTION_DISTANCE = 4.4;
+const WORLD_TRIVIA = COLONIAL_TRIVIA.slice(0, 24);
+
+type WeatherMode = "clear" | "rain" | "fog";
+type TimeMode = "morning" | "midday" | "evening" | "night";
+type DialogueState = { npc: TownNpc; text: string } | null;
+
+const TIME_LIGHTING: Record<TimeMode, {
+  sky: string;
+  fog: string;
+  ambient: string;
+  ambientIntensity: number;
+  sun: string;
+  sunIntensity: number;
+  sunPosition: [number, number, number];
+  hemisphere: [string, string, number];
+  lantern: number;
+}> = {
+  morning: {
+    sky: "#c98f62", fog: "#6f5039", ambient: "#ffd7a1", ambientIntensity: 1.25,
+    sun: "#ffbf78", sunIntensity: 2.8, sunPosition: [-70, 35, -50], hemisphere: ["#e7b779", "#332416", 1.2], lantern: 2.5,
+  },
+  midday: {
+    sky: "#78a9cc", fog: "#6c7d7f", ambient: "#fff4da", ambientIntensity: 1.65,
+    sun: "#fff1c2", sunIntensity: 4.3, sunPosition: [45, 85, -35], hemisphere: ["#bfe1f2", "#403426", 1.65], lantern: 1.2,
+  },
+  evening: {
+    sky: "#a75c42", fog: "#5b382b", ambient: "#ffc382", ambientIntensity: 1.05,
+    sun: "#ff984f", sunIntensity: 3.1, sunPosition: [70, 24, -55], hemisphere: ["#d88155", "#251711", 1.05], lantern: 5.5,
+  },
+  night: {
+    sky: "#101c2d", fog: "#1a2633", ambient: "#8ba8ca", ambientIntensity: 1.05,
+    sun: "#b8cff0", sunIntensity: 2.05, sunPosition: [-30, 45, 20], hemisphere: ["#41648d", "#171b20", 1.15], lantern: 10.5,
+  },
+};
+
+function getTimeMode(): TimeMode {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 10) return "morning";
+  if (hour >= 10 && hour < 17) return "midday";
+  if (hour >= 17 && hour < 21) return "evening";
+  return "night";
+}
+
+function randomWeather(): WeatherMode {
+  const roll = Math.random();
+  if (roll < 0.18) return "rain";
+  if (roll < 0.36) return "fog";
+  return "clear";
+}
+
+function randomWorldTrivia(preferMoney: boolean) {
+  const moneyFacts = WORLD_TRIVIA.filter((fact) => fact.category === "money" || fact.category === "proverb");
+  const pool = preferMoney && moneyFacts.length ? moneyFacts : WORLD_TRIVIA;
+  return pool[Math.floor(Math.random() * pool.length)]!.text;
+}
 
 // Lighter brick colors + slightly reduced heights so buildings feel approachable
 const BUILDINGS = [
@@ -126,9 +184,14 @@ export default function ColonialTown3D() {
   const [userId, setUserId] = useState<string | null>(null);
   const [username, setUsername] = useState("Colonist");
   const [avatarIdx, setAvatarIdx] = useState(0);
+  const [nearNpc, setNearNpc] = useState<TownNpc | null>(null);
+  const [dialogue, setDialogue] = useState<DialogueState>(null);
+  const [weather, setWeather] = useState<WeatherMode>("clear");
+  const [entryCelebration, setEntryCelebration] = useState(0);
 
   useEffect(() => {
     setIsMobile("ontouchstart" in window || navigator.maxTouchPoints > 0);
+    setWeather(randomWeather());
     const saved = localStorage.getItem("colonial-avatar");
     if (saved !== null) {
       const parsed = Number.parseInt(saved, 10);
@@ -154,22 +217,43 @@ export default function ColonialTown3D() {
 
   const { others, broadcast } = useMultiplayer(userId, username, avatarIdx);
 
-  const enter = useCallback(() => {
+  const interact = useCallback(() => {
+    if (dialogue) {
+      setDialogue(null);
+      return;
+    }
+
+    if (nearNpc) {
+      const useTrivia = Math.random() > (nearNpc.isBen ? 0.58 : 0.72);
+      const text = useTrivia
+        ? randomWorldTrivia(!nearNpc.isBen)
+        : nearNpc.lines[Math.floor(Math.random() * nearNpc.lines.length)];
+      setDialogue({ npc: nearNpc, text });
+      return;
+    }
+
     if (!near || entering) return;
     setEntering(near);
     playDoor();
-  }, [near, entering]);
+  }, [dialogue, near, nearNpc, entering]);
 
   useEffect(() => () => stopTownAmbient(), []);
 
   useEffect(() => {
-    const fn = (e: KeyboardEvent) => { if (e.code === "KeyE") enter(); };
+    const fn = (e: KeyboardEvent) => {
+      if (e.code === "KeyE") interact();
+      if (e.code === "KeyC" && dialogue?.npc.isBen) router.push("/chat");
+      if (e.code === "KeyV") {
+        setWeather((current) => current === "clear" ? "rain" : current === "rain" ? "fog" : "clear");
+      }
+    };
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
-  }, [enter]);
+  }, [dialogue, interact, router]);
 
   function startWorld() {
     setLocked(true);
+    setEntryCelebration((value) => value + 1);
     startTownAmbient("harbor");
     if (isMobile) return;
     setTimeout(() => { controlsApiRef.current?.lock?.(); }, 150);
@@ -195,13 +279,26 @@ export default function ColonialTown3D() {
             isMobile={isMobile}
             nearId={near?.id ?? null}
             onNear={setNear}
+            onNearNpc={setNearNpc}
             onLock={setLocked}
             onControlsReady={(controls: any) => { controlsApiRef.current = controls; }}
             others={others}
             broadcast={broadcast}
+            weather={weather}
+            entryCelebration={entryCelebration}
           />
         </Suspense>
       </Canvas>
+
+      <button
+        type="button"
+        onClick={() => setWeather((current) => current === "clear" ? "rain" : current === "rain" ? "fog" : "clear")}
+        className="absolute right-3 top-14 z-40 rounded-full border border-[#c9a84c]/45 bg-[#100b07]/90 px-3 py-2 text-xs font-bold text-[#f4d675] shadow-lg backdrop-blur"
+        aria-label={`Weather: ${weather}. Change weather`}
+      >
+        {weather === "clear" ? "☀ Clear" : weather === "rain" ? "🌦 Light rain" : "🌫 Soft fog"}
+        {!isMobile ? " · V" : ""}
+      </button>
 
       {!locked && (
         <div className="absolute inset-0 z-20 flex items-end justify-center bg-black/20 px-4 pb-10">
@@ -239,11 +336,11 @@ export default function ColonialTown3D() {
         </div>
       )}
 
-      {(locked || isMobile) && near && !entering && (
+      {(locked || isMobile) && (nearNpc || near) && !entering && !dialogue && (
         <div className="absolute inset-x-0 bottom-36 z-50 flex justify-center px-4">
           <button
             type="button"
-            onClick={enter}
+            onClick={interact}
             className="font-cinzel rounded-2xl px-8 py-4 text-base font-bold transition-transform active:scale-95"
             style={{
               background: "rgba(201,168,76,0.98)",
@@ -252,9 +349,45 @@ export default function ColonialTown3D() {
               border: "1px solid rgba(255,255,255,0.35)",
             }}
           >
-            {near.icon} Enter {near.label.replace("\n", " ")}
+            {nearNpc
+              ? `${nearNpc.icon} Speak with ${nearNpc.name}`
+              : `${near!.icon} Enter ${near!.label.replace("\n", " ")}`}
             {!isMobile ? " — Press E" : ""}
           </button>
+        </div>
+      )}
+
+      {dialogue && (
+        <div className="absolute inset-x-0 bottom-28 z-[60] flex justify-center px-4">
+          <section className="w-full max-w-lg rounded-3xl border border-[#c9a84c]/55 bg-[#100b07]/95 p-5 text-[#fff7df] shadow-2xl backdrop-blur-xl">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl" aria-hidden="true">{dialogue.npc.icon}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-cinzel text-xs uppercase tracking-[0.22em] text-[#c9a84c]">
+                  {dialogue.npc.name} · {dialogue.npc.role}
+                </p>
+                <p className="mt-2 font-cormorant text-lg leading-7">“{dialogue.text}”</p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              {dialogue.npc.isBen && (
+                <button
+                  type="button"
+                  onClick={() => router.push("/chat")}
+                  className="rounded-xl bg-[#c9a84c] px-4 py-2 font-bold text-[#1a0f0a]"
+                >
+                  Ask Ben{!isMobile ? " · C" : ""}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setDialogue(null)}
+                className="rounded-xl border border-[#c9a84c]/35 px-4 py-2 font-bold text-[#f4d675]"
+              >
+                Farewell{!isMobile ? " · E" : ""}
+              </button>
+            </div>
+          </section>
         </div>
       )}
 
@@ -296,10 +429,13 @@ function Scene({
   isMobile,
   nearId,
   onNear,
+  onNearNpc,
   onLock,
   onControlsReady,
   others,
   broadcast,
+  weather,
+  entryCelebration,
 }: {
   locked: boolean;
   moveRef: React.MutableRefObject<{ f: number; r: number }>;
@@ -307,16 +443,24 @@ function Scene({
   isMobile: boolean;
   nearId: string | null;
   onNear: (b: BuildingDef | null) => void;
+  onNearNpc: (npc: TownNpc | null) => void;
   onLock: (v: boolean) => void;
   onControlsReady: (controls: any) => void;
   others: Record<string, PlayerState>;
   broadcast: (x: number, z: number, yaw: number) => void;
+  weather: WeatherMode;
+  entryCelebration: number;
 }) {
   const controlsRef = useRef<any>(null);
   const nearestRef = useRef<BuildingDef | null>(null);
+  const nearestNpcRef = useRef<TownNpc | null>(null);
   const introDone = useRef(false);
+  const pendingEntryCelebration = useRef(false);
+  const previousLevel = useRef<number | null>(null);
   const { camera } = useThree();
   const [playerLevel, setPlayerLevel] = useState(1);
+  const [celebration, setCelebration] = useState(0);
+  const [timeMode, setTimeMode] = useState<TimeMode>(() => getTimeMode());
   const unlockedProps = useMemo(() => getUnlockedProps(playerLevel), [playerLevel]);
 
   const isBlocked = useCallback((x: number, z: number) => {
@@ -330,16 +474,59 @@ function Scene({
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
+    let active = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let pollTimer: number | null = null;
+
+    const applyLevel = (rawLevel: unknown, celebrate: boolean) => {
+      const nextLevel = Math.max(1, Number(rawLevel ?? 1));
+      if (!active) return;
+      if (celebrate && previousLevel.current !== null && nextLevel > previousLevel.current) {
+        setCelebration((value) => value + 1);
+      }
+      previousLevel.current = nextLevel;
+      setPlayerLevel(nextLevel);
+    };
+
     void (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("level")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      setPlayerLevel(Math.max(1, Number(data?.level ?? 1)));
+      const loadLevel = async (celebrate: boolean) => {
+        const { data } = await supabase
+          .from("profiles")
+          .select("level")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        applyLevel(data?.level, celebrate);
+      };
+
+      await loadLevel(false);
+      pollTimer = window.setInterval(() => void loadLevel(true), 15_000);
+
+      channel = supabase
+        .channel(`world-level-${user.id}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
+          (payload) => applyLevel(payload.new?.level, true),
+        )
+        .subscribe();
     })();
+
+    return () => {
+      active = false;
+      if (pollTimer !== null) window.clearInterval(pollTimer);
+      if (channel) void supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (entryCelebration > 0) pendingEntryCelebration.current = true;
+  }, [entryCelebration]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTimeMode(getTimeMode()), 60_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -394,6 +581,10 @@ function Scene({
       if (cam.position.distanceTo(target) < 0.2) {
         introDone.current = true;
         cam.position.set(...FIRST_PERSON_POS);
+        if (pendingEntryCelebration.current) {
+          pendingEntryCelebration.current = false;
+          setCelebration((value) => value + 1);
+        }
       }
       return;
     }
@@ -456,30 +647,27 @@ function Scene({
       nearestRef.current = found;
       onNear(found);
     }
+
+    let foundNpc: TownNpc | null = null;
+    let nearestNpcDistance = NPC_INTERACTION_DISTANCE;
+    for (const npc of TOWN_NPCS) {
+      const position = getNpcPosition(npc, state.clock.elapsedTime);
+      const distance = Math.hypot(cam.position.x - position.x, cam.position.z - position.z);
+      if (distance < nearestNpcDistance) {
+        foundNpc = npc;
+        nearestNpcDistance = distance;
+      }
+    }
+    if (nearestNpcRef.current?.id !== foundNpc?.id) {
+      nearestNpcRef.current = foundNpc;
+      onNearNpc(foundNpc);
+    }
   });
 
   return (
     <>
-      <Sky distance={4500} sunPosition={[80, 60, -100]} inclination={0.45} azimuth={0.9} turbidity={6} rayleigh={0.8} mieCoefficient={0.005} />
-      <Environment preset="sunset" background={false} />
-      <fog attach="fog" args={["#1a0f06", 60, 360]} />
-
-      <ambientLight intensity={1.8} color="#ffe0b0" />
-      <directionalLight
-        position={[50, 80, -60]}
-        intensity={4.2}
-        color="#ffcc88"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-near={1}
-        shadow-camera-far={240}
-        shadow-camera-left={-80}
-        shadow-camera-right={80}
-        shadow-camera-top={80}
-        shadow-camera-bottom={-80}
-        shadow-bias={-0.001}
-      />
-      <hemisphereLight args={["#6a4a2a", "#1a1008", 1.8]} />
+      <WorldLighting weather={weather} mode={timeMode} isMobile={isMobile} />
+      {weather === "rain" && <LightRain isMobile={isMobile} />}
 
       <Sparkles count={100} scale={[72, 12, 96]} position={[0, 2, 0]} size={1.5} speed={0.3} color="#fbbf24" opacity={0.38} />
 
@@ -494,13 +682,12 @@ function Scene({
 
       {[-22, -14, -6, 2, 10, 18, 26].map((z) => (
         <group key={`lantern-row-${z}`}>
-          <LanternPost position={[-3.8, 0, z]} />
-          <LanternPost position={[3.8, 0, z]} />
+          <LanternPost position={[-3.8, 0, z]} intensity={TIME_LIGHTING[timeMode].lantern} />
+          <LanternPost position={[3.8, 0, z]} intensity={TIME_LIGHTING[timeMode].lantern} />
         </group>
       ))}
 
       <Fountain />
-      <BenNPC position={[0, 0, 4]} />
       <TownLife />
       <Trees />
 
@@ -517,7 +704,200 @@ function Scene({
         <OtherPlayer key={id} x={p.x} z={p.z} yaw={p.yaw} avatarIdx={p.avatarIdx ?? 0} name={p.username ?? "Colonist"} />
       ))}
 
+      {celebration > 0 && (
+        <CelebrationParticles
+          key={celebration}
+          isMobile={isMobile}
+          onDone={() => setCelebration(0)}
+        />
+      )}
+
       {!isMobile && <PointerLockControls ref={controlsRef} />}
+    </>
+  );
+}
+
+function WorldLighting({
+  weather,
+  mode,
+  isMobile,
+}: {
+  weather: WeatherMode;
+  mode: TimeMode;
+  isMobile: boolean;
+}) {
+  const lighting = TIME_LIGHTING[mode];
+  const fogNear = weather === "fog" ? 18 : weather === "rain" ? 42 : 68;
+  const fogFar = weather === "fog" ? 145 : weather === "rain" ? 245 : 360;
+  const skySun = mode === "night" ? [0, -15, -20] as [number, number, number] : lighting.sunPosition;
+
+  return (
+    <>
+      <color attach="background" args={[lighting.sky]} />
+      <Sky
+        distance={4500}
+        sunPosition={skySun}
+        turbidity={mode === "night" ? 10 : weather === "fog" ? 12 : 6}
+        rayleigh={mode === "midday" ? 1.5 : 0.75}
+        mieCoefficient={weather === "fog" ? 0.02 : 0.006}
+      />
+      <fog attach="fog" args={[lighting.fog, fogNear, fogFar]} />
+      <ambientLight intensity={lighting.ambientIntensity} color={lighting.ambient} />
+      <directionalLight
+        position={lighting.sunPosition}
+        intensity={lighting.sunIntensity}
+        color={lighting.sun}
+        castShadow={!isMobile}
+        shadow-mapSize={[isMobile ? 512 : 2048, isMobile ? 512 : 2048]}
+        shadow-camera-near={1}
+        shadow-camera-far={240}
+        shadow-camera-left={-80}
+        shadow-camera-right={80}
+        shadow-camera-top={80}
+        shadow-camera-bottom={-80}
+        shadow-bias={-0.001}
+      />
+      <hemisphereLight args={lighting.hemisphere} />
+    </>
+  );
+}
+
+function LightRain({ isMobile }: { isMobile: boolean }) {
+  const rain = useRef<THREE.Points>(null);
+  const count = isMobile ? 90 : 180;
+  const positions = useMemo(() => {
+    const data = new Float32Array(count * 3);
+    for (let index = 0; index < count; index += 1) {
+      data[index * 3] = (Math.random() - 0.5) * 42;
+      data[index * 3 + 1] = Math.random() * 24;
+      data[index * 3 + 2] = (Math.random() - 0.5) * 42;
+    }
+    return data;
+  }, [count]);
+
+  useFrame(({ camera }, delta) => {
+    if (!rain.current) return;
+    rain.current.position.x = camera.position.x;
+    rain.current.position.z = camera.position.z;
+    const attribute = rain.current.geometry.attributes.position as THREE.BufferAttribute;
+    for (let index = 0; index < count; index += 1) {
+      const yIndex = index * 3 + 1;
+      attribute.array[yIndex] = Number(attribute.array[yIndex]) - delta * 13;
+      if (Number(attribute.array[yIndex]) < 0) attribute.array[yIndex] = 24;
+    }
+    attribute.needsUpdate = true;
+  });
+
+  return (
+    <points ref={rain} frustumCulled={false} position={[0, 0, 0]}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      <pointsMaterial color="#b9d8e8" size={0.075} transparent opacity={0.58} depthWrite={false} />
+    </points>
+  );
+}
+
+type CelebrationParticle = {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  rotation: number;
+  spin: number;
+};
+
+function CelebrationParticles({ isMobile, onDone }: { isMobile: boolean; onDone: () => void }) {
+  const bills = useRef<THREE.InstancedMesh>(null);
+  const coins = useRef<THREE.InstancedMesh>(null);
+  const startedAt = useRef<number | null>(null);
+  const finished = useRef(false);
+  const origin = useRef(new THREE.Vector3());
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+  const count = isMobile ? 14 : 24;
+  const billTexture = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 64;
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.fillStyle = "#3f9b55";
+    context.fillRect(0, 0, 128, 64);
+    context.strokeStyle = "#c9efb4";
+    context.lineWidth = 5;
+    context.strokeRect(5, 5, 118, 54);
+    context.fillStyle = "#e9ffd8";
+    context.font = "bold 38px Georgia";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText("$", 64, 34);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  }, []);
+  const makeParticles = useCallback((): CelebrationParticle[] => (
+    Array.from({ length: count }, () => ({
+      x: (Math.random() - 0.5) * 8,
+      y: 3.5 + Math.random() * 5,
+      z: -2.5 - Math.random() * 5,
+      vx: (Math.random() - 0.5) * 0.7,
+      vy: -1.4 - Math.random() * 1.5,
+      vz: (Math.random() - 0.5) * 0.35,
+      rotation: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 5,
+    }))
+  ), [count]);
+  const billParticles = useMemo(makeParticles, [makeParticles]);
+  const coinParticles = useMemo(makeParticles, [makeParticles]);
+
+  useEffect(() => () => billTexture?.dispose(), [billTexture]);
+
+  useFrame(({ camera, clock }) => {
+    if (!bills.current || !coins.current || finished.current) return;
+    if (startedAt.current === null) {
+      startedAt.current = clock.elapsedTime;
+      origin.current.copy(camera.position);
+    }
+    const elapsed = clock.elapsedTime - startedAt.current;
+    if (elapsed > 2.8) {
+      finished.current = true;
+      onDone();
+      return;
+    }
+
+    const update = (mesh: THREE.InstancedMesh, particle: CelebrationParticle, index: number, coin: boolean) => {
+      dummy.position.set(
+        origin.current.x + particle.x + particle.vx * elapsed + Math.sin(elapsed * 3 + index) * 0.15,
+        origin.current.y + particle.y + particle.vy * elapsed,
+        origin.current.z + particle.z + particle.vz * elapsed,
+      );
+      dummy.quaternion.copy(camera.quaternion);
+      dummy.rotateZ(particle.rotation + particle.spin * elapsed);
+      const pulse = coin ? 0.72 + Math.abs(Math.sin(elapsed * 7 + index)) * 0.38 : 1;
+      dummy.scale.setScalar(pulse);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(index, dummy.matrix);
+    };
+
+    billParticles.forEach((particle, index) => update(bills.current!, particle, index, false));
+    coinParticles.forEach((particle, index) => update(coins.current!, particle, index, true));
+    bills.current.instanceMatrix.needsUpdate = true;
+    coins.current.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <>
+      <instancedMesh ref={bills} args={[undefined, undefined, count]} frustumCulled={false}>
+        <planeGeometry args={[0.72, 0.34]} />
+        <meshBasicMaterial map={billTexture} color="#ffffff" side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
+      </instancedMesh>
+      <instancedMesh ref={coins} args={[undefined, undefined, count]} frustumCulled={false}>
+        <circleGeometry args={[0.2, 12]} />
+        <meshBasicMaterial color="#fbbf24" side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
+      </instancedMesh>
     </>
   );
 }
@@ -842,9 +1222,15 @@ function UnlockedCottage({ position }: { position: [number, number, number] }) {
         <boxGeometry args={[7, 4.1, 6]} />
         <meshStandardMaterial color="#8a6742" roughness={0.92} />
       </mesh>
-      <mesh position={[0, 5.6, 0]} rotation={[0, Math.PI / 4, 0]} castShadow>
-        <coneGeometry args={[5.35, 3.1, 4]} />
-        <meshStandardMaterial color="#3c2115" roughness={0.98} />
+      {([-1, 1] as const).map((side) => (
+        <mesh key={`cottage-roof-${side}`} position={[side * 2.08, 5.7, 0]} rotation={[0, 0, -side * 0.59]} castShadow>
+          <boxGeometry args={[5, 0.28, 7]} />
+          <meshStandardMaterial color="#3c2115" roughness={0.96} />
+        </mesh>
+      ))}
+      <mesh position={[0, 7.1, 0]} castShadow>
+        <boxGeometry args={[0.24, 0.24, 7.12]} />
+        <meshStandardMaterial color="#21120c" roughness={0.96} />
       </mesh>
       <mesh position={[-2.25, 6.2, -0.9]} castShadow>
         <boxGeometry args={[0.62, 2.5, 0.62]} />
@@ -912,6 +1298,10 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
   const frontZ = fz + fDir * 0.08;
   const lowerWindows = large ? [-w * 0.34, 0, w * 0.34] : [-w * 0.3, w * 0.3];
   const upperWindows = large ? [-w * 0.28, w * 0.28] : [0];
+  const roofHeight = large ? 2.7 : 2.15;
+  const roofHalfRun = w / 2 + 0.65;
+  const roofSlope = Math.sqrt(roofHalfRun * roofHalfRun + roofHeight * roofHeight);
+  const roofAngle = Math.atan2(roofHeight, roofHalfRun);
   // Street sign position — just outside the building toward street (between building and curb)
   const signPostX = left ? x + d / 2 + 1.8 : x - d / 2 - 1.8;
 
@@ -929,16 +1319,58 @@ function Building({ def, active }: { def: BuildingDef; active: boolean }) {
         <meshStandardMaterial color={brick} roughness={0.82} metalness={0.02} />
       </mesh>
 
+      {/* Dark timber framing gives the façades the illustrated colonial character. */}
+      {[-w / 2 + 0.16, w / 2 - 0.16].map((beamX) => (
+        <mesh key={`corner-${beamX}`} position={[beamX, h / 2 + 0.46, fz + fDir * 0.09]} castShadow>
+          <boxGeometry args={[0.3, h, 0.22]} />
+          <meshStandardMaterial color="#2a170d" roughness={0.9} />
+        </mesh>
+      ))}
+      {[h * 0.35, h * 0.68].map((beamY) => (
+        <mesh key={`cross-${beamY}`} position={[0, beamY + 0.44, fz + fDir * 0.1]} castShadow>
+          <boxGeometry args={[w, 0.25, 0.22]} />
+          <meshStandardMaterial color="#321b0e" roughness={0.9} />
+        </mesh>
+      ))}
+
       {/* Roof overhang */}
       <mesh position={[0, h + 0.44, 0]} castShadow>
         <boxGeometry args={[w + 1.1, 0.22, d + 1.1]} />
         <meshStandardMaterial color={roof} roughness={0.95} />
       </mesh>
 
-      {/* Roof cone */}
-      <mesh position={[0, h + 0.44 + (large ? 2.5 : 2.0), 0]} castShadow>
-        <coneGeometry args={[Math.max(w, d) * 0.8, large ? 5.0 : 4.0, 4]} />
-        <meshStandardMaterial color={roof} roughness={0.96} metalness={0.04} />
+      {/* True two-plane gable roof: no rotated pyramid corners or wall gaps. */}
+      {([-1, 1] as const).map((side) => (
+        <group key={`roof-${side}`}>
+          <mesh
+            position={[side * roofHalfRun * 0.5, h + 0.44 + roofHeight * 0.5, 0]}
+            rotation={[0, 0, -side * roofAngle]}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[roofSlope, 0.3, d + 1.3]} />
+            <meshStandardMaterial color={roof} roughness={0.92} metalness={0.03} />
+          </mesh>
+          {Array.from({ length: 5 }, (_, index) => (
+            <mesh
+              key={`shingle-${side}-${index}`}
+              position={[
+                side * (roofHalfRun * 0.12 + index * roofHalfRun * 0.18),
+                h + 0.6 + index * roofHeight * 0.18,
+                0,
+              ]}
+              rotation={[0, 0, -side * roofAngle]}
+              castShadow
+            >
+              <boxGeometry args={[0.09, 0.08, d + 1.38]} />
+              <meshStandardMaterial color="#17100c" roughness={0.96} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+      <mesh position={[0, h + 0.44 + roofHeight, 0]} castShadow>
+        <boxGeometry args={[0.28, 0.28, d + 1.48]} />
+        <meshStandardMaterial color="#130d09" roughness={0.94} />
       </mesh>
 
       <Chimney position={[-w * 0.28, h + 0.44, -d * 0.18]} large={large} roof={roof} />
@@ -1199,7 +1631,7 @@ function Chimney({ position, large, roof }: { position: [number, number, number]
   );
 }
 
-function LanternPost({ position }: { position: [number, number, number] }) {
+function LanternPost({ position, intensity }: { position: [number, number, number]; intensity: number }) {
   return (
     <group position={position}>
       <mesh position={[0, 2.8, 0]} castShadow>
@@ -1209,12 +1641,16 @@ function LanternPost({ position }: { position: [number, number, number] }) {
       <group position={[0.62, 5.35, 0]}>
         <mesh>
           <boxGeometry args={[0.32, 0.44, 0.32]} />
-          <meshStandardMaterial color="#c9a84c" emissive="#c9a84c" emissiveIntensity={0.9} transparent opacity={0.82} />
+          <meshStandardMaterial color="#c9a84c" emissive="#c9a84c" emissiveIntensity={Math.max(0.7, intensity * 0.16)} transparent opacity={0.82} />
         </mesh>
-        <pointLight intensity={5} distance={16} color="#fbbf24" decay={2} />
+        <pointLight intensity={intensity} distance={modeledLanternDistance(intensity)} color="#fbbf24" decay={2} />
       </group>
     </group>
   );
+}
+
+function modeledLanternDistance(intensity: number) {
+  return intensity >= 8 ? 20 : intensity >= 5 ? 17 : 12;
 }
 
 function Fountain() {
@@ -1446,64 +1882,50 @@ function HumanFigure({
   );
 }
 
-// Ben NPC — distinguished gold-accented coat
-function BenNPC({ position }: { position: [number, number, number] }) {
+function CharacterBillboard({ npc }: { npc: TownNpc }) {
   const groupRef = useRef<THREE.Group>(null);
+  const artRef = useRef<THREE.Group>(null);
+  const texture = useTexture(npc.sprite);
+  const aspect = 262 / 591;
+  const height = 3.05 * npc.scale;
+  const width = height * aspect;
 
-  useFrame(({ clock }) => {
-    if (!groupRef.current) return;
-    groupRef.current.rotation.y = Math.sin(clock.elapsedTime * 0.4) * 0.55;
+  useEffect(() => {
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 2;
+    texture.needsUpdate = true;
+  }, [texture]);
+
+  useFrame(({ camera, clock }) => {
+    if (!groupRef.current || !artRef.current) return;
+    const position = getNpcPosition(npc, clock.elapsedTime);
+    groupRef.current.position.x = position.x;
+    groupRef.current.position.z = position.z;
+    groupRef.current.lookAt(camera.position.x, groupRef.current.position.y + height * 0.48, camera.position.z);
+    artRef.current.position.y = Math.sin(clock.elapsedTime * 2.1 + npc.phase) * 0.035;
+    artRef.current.rotation.z = npc.tilt + Math.sin(clock.elapsedTime * 1.2 + npc.phase) * 0.006;
   });
 
   return (
-    <group ref={groupRef} position={position}>
-      <HumanFigure
-        coatColor="#087f68"
-        skinColor="#d4a876"
-        hatColor="#17130f"
-        waistcoatColor="#6b351f"
-        hairColor="#cbc3ad"
-        name="Ben Franklin"
-        nameColor="#fbbf24"
-        distanceFactor={5}
-      />
-    </group>
-  );
-}
-
-// Town NPC citizens with walking animation
-function Citizen({ name, position, color, skin = "#d4a876", vest = "#6b351f", hair = "#d8d0bc", walkRadius = 0, walkSpeed = 1 }: {
-  name: string;
-  position: [number, number, number];
-  color: string;
-  skin?: string;
-  vest?: string;
-  hair?: string;
-  walkRadius?: number;
-  walkSpeed?: number;
-}) {
-  const groupRef = useRef<THREE.Group>(null);
-  const timeOffset = useRef(Math.random() * Math.PI * 2);
-
-  useFrame(({ clock }) => {
-    if (!groupRef.current || walkRadius === 0) return;
-    const t = clock.elapsedTime * walkSpeed + timeOffset.current;
-    groupRef.current.position.x = position[0] + Math.cos(t) * walkRadius;
-    groupRef.current.position.z = position[2] + Math.sin(t) * walkRadius;
-    groupRef.current.rotation.y = -t + Math.PI / 2;
-  });
-
-  return (
-    <group ref={groupRef} position={position}>
-      <HumanFigure
-        coatColor={color}
-        skinColor={skin}
-        hatColor="#1a1208"
-        waistcoatColor={vest}
-        hairColor={hair}
-        name={name}
-        distanceFactor={7}
-      />
+    <group ref={groupRef} position={npc.position}>
+      <group ref={artRef} scale={[npc.flip ? -1 : 1, 1, 1]}>
+        <mesh position={[0, height / 2, 0]} renderOrder={3}>
+          <planeGeometry args={[width, height]} />
+          <meshBasicMaterial
+            map={texture}
+            transparent
+            alphaTest={0.12}
+            depthWrite
+            side={THREE.DoubleSide}
+            toneMapped={false}
+          />
+        </mesh>
+      </group>
+      <Html position={[0, height + 0.28, 0]} center distanceFactor={npc.isBen ? 5 : 7} style={{ pointerEvents: "none" }}>
+        <div style={{ background: "rgba(8,5,3,0.86)", color: npc.isBen ? "#fbbf24" : "#f5e6c8", padding: "4px 10px", borderRadius: 8, fontSize: 11, fontFamily: "EB Garamond, serif", whiteSpace: "nowrap", border: "1px solid rgba(201,168,76,0.55)", boxShadow: "0 5px 16px rgba(0,0,0,.45)" }}>
+          {npc.icon} {npc.name}
+        </div>
+      </Html>
     </group>
   );
 }
@@ -1511,11 +1933,7 @@ function Citizen({ name, position, color, skin = "#d4a876", vest = "#6b351f", ha
 function TownLife() {
   return (
     <>
-      <Citizen name="Merchant" position={[-2.5, 0, -1.6]} color="#8a3f2d" skin="#c49060" vest="#d1a24a" hair="#31231b" walkRadius={1.2} walkSpeed={0.35} />
-      <Citizen name="Postmaster" position={[-3.2, 0, 5]} color="#24558a" vest="#7c3f26" hair="#d7d0c2" walkRadius={0.8} walkSpeed={0.28} />
-      <Citizen name="Blacksmith" position={[3.2, 0, 13]} color="#3f4b50" skin="#a87040" vest="#70402c" hair="#211914" walkRadius={1.0} walkSpeed={0.4} />
-      <Citizen name="Farmer" position={[22, 0, 8]} color="#55733b" vest="#8a6535" hair="#8a6848" walkRadius={2.0} walkSpeed={0.22} />
-      <Citizen name="Sailor" position={[-20, 0, -28]} color="#176b72" vest="#70402c" hair="#d7d0c2" walkRadius={1.5} walkSpeed={0.32} />
+      {TOWN_NPCS.map((npc) => <CharacterBillboard key={npc.id} npc={npc} />)}
       <Wagon position={[2.8, 0, -2]} rotation={[0, -0.45, 0]} />
       <Horse position={[1.5, 0, -3.2]} rotation={[0, -0.45, 0]} />
     </>
