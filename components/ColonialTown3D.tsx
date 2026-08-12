@@ -31,7 +31,7 @@ const START_POS: [number, number, number] = [0, 34, 44];
 const FIRST_PERSON_POS: [number, number, number] = [0, EYE_HEIGHT, 27];
 const CHANNEL = "franklins-landing-v4";
 const NPC_INTERACTION_DISTANCE = 4.4;
-const WORLD_TRIVIA = COLONIAL_TRIVIA.slice(0, 24);
+const WORLD_TRIVIA = COLONIAL_TRIVIA;
 
 type WeatherMode = "clear" | "rain" | "fog";
 type TimeMode = "morning" | "midday" | "evening" | "night";
