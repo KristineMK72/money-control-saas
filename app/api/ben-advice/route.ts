@@ -1,73 +1,98 @@
 import { NextRequest } from "next/server";
+import {
+  AI_MAX_CONTEXT_CHARS,
+  AI_MAX_FINANCIAL_SUMMARY_CHARS,
+  boundedText,
+  buildBenSystemPrompt,
+} from "@/lib/ai/benCore";
+import {
+  aiErrorResponse,
+  prepareBenRequest,
+  readBoundedJson,
+} from "@/lib/ai/server";
 
 export const runtime = "edge";
 
-const SYSTEM_PROMPT = `You are Benjamin Franklin — wise founder of Franklin's Landing, a personal finance app. You speak with warmth, wit, and colonial-era gravitas, but your advice is modern, specific, and practical. You always reference the user's EXACT dollar amounts.
-
-Structure every response with EXACTLY these four labeled sections (use the labels as shown):
-
-**TOP PRIORITY** — The single most important action the user should take this week, with a specific dollar amount and deadline.
-
-**BIGGEST RISK** — The one financial danger hiding in their numbers. Be direct. Name the specific account or habit causing it.
-
-**WHAT IF SCENARIO** — Pick their highest-APR debt (or biggest bill if no debt). Calculate: if they paid $75 extra/month, how many fewer months would it take to pay off? Give the exact months saved and interest avoided.
-
-**THREE ACTIONS** — Three numbered, specific steps they can take TODAY, each with a dollar amount or concrete target.
-
-Keep the total response under 350 words. Write in Ben's voice — wise, a bit formal, but genuinely helpful. Never be vague.`;
+type AdviceBody = {
+  financialContext?: unknown;
+  question?: unknown;
+  stressScore?: unknown;
+};
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.OPENAI_API_KEY;
-
-  if (!apiKey) {
-    return new Response(
-      JSON.stringify({ error: "OPENAI_API_KEY is not set in environment variables." }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
-  let body: { financialContext?: string; question?: string };
   try {
-    body = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON body." }), { status: 400 });
-  }
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return Response.json(
+        { error: "AskBen is not configured." },
+        { status: 503 }
+      );
+    }
 
-  const userContent = body.question
-    ? `${body.financialContext ?? ""}\n\nFollow-up question from the user: ${body.question}`
-    : body.financialContext ?? "No financial data provided.";
-
-  const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      stream: true,
-      max_tokens: 900,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user",   content: userContent },
-      ],
-    }),
-  });
-
-  if (!openaiResponse.ok) {
-    const errText = await openaiResponse.text();
-    return new Response(
-      JSON.stringify({ error: `OpenAI error: ${openaiResponse.status} — ${errText}` }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
+    const requestContext = await prepareBenRequest();
+    const body = (await readBoundedJson(req)) as AdviceBody;
+    const financialContext = boundedText(
+      body.financialContext,
+      AI_MAX_FINANCIAL_SUMMARY_CHARS
     );
-  }
+    const question = boundedText(body.question, AI_MAX_CONTEXT_CHARS);
+    const stressScore = Number.isFinite(Number(body.stressScore))
+      ? Number(body.stressScore)
+      : undefined;
 
-  // Pipe the OpenAI SSE stream straight through
-  return new Response(openaiResponse.body, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+    const systemPrompt = buildBenSystemPrompt({
+      personaId: requestContext.personaId,
+      financialSummary: financialContext,
+      context: "AskBen dashboard financial briefing.",
+      stressScore,
+      mode: "briefing",
+    });
+
+    const openaiResponse = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          stream: true,
+          max_tokens: 900,
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content:
+                question || "Provide my current financial briefing.",
+            },
+          ],
+        }),
+      }
+    );
+
+    if (!openaiResponse.ok || !openaiResponse.body) {
+      console.error(
+        "AskBen streaming provider request failed:",
+        openaiResponse.status
+      );
+      return Response.json(
+        { error: "Ben could not answer right now." },
+        { status: 502 }
+      );
+    }
+
+    // Preserve the existing raw OpenAI SSE contract consumed by Dashboard AiAdvisor.
+    return new Response(openaiResponse.body, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-store",
+        Connection: "keep-alive",
+        ...requestContext.rateLimitHeaders,
+      },
+    });
+  } catch (error) {
+    return aiErrorResponse(error);
+  }
 }
