@@ -120,6 +120,11 @@ export default function SettingsPage() {
   const [xp, setXp] = useState(0);
   const [level, setLevel] = useState(1);
   const [reputation, setReputation] = useState(0);
+  const [exportingData, setExportingData] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteEmail, setDeleteEmail] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     void loadSettings();
@@ -223,6 +228,89 @@ export default function SettingsPage() {
   async function signOut() {
     await supabase.auth.signOut();
     window.location.href = "/login";
+  }
+
+  async function exportAccountData() {
+    setExportingData(true);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/account/export", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(data.error || "Data export failed.");
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      const filename = filenameMatch?.[1] ?? "askben-data.json";
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+
+      setMessage("Your complete AskBen data export has been downloaded.");
+      setMsgType("ok");
+    } catch (error) {
+      playError();
+      setMessage(
+        error instanceof Error ? error.message : "Data export failed."
+      );
+      setMsgType("err");
+    } finally {
+      setExportingData(false);
+    }
+  }
+
+  async function deleteAccount() {
+    if (!deletePassword || deleteEmail.trim().toLowerCase() !== email.toLowerCase()) {
+      setMessage("Enter your current password and exact email address.");
+      setMsgType("err");
+      return;
+    }
+
+    setDeletingAccount(true);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/account", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: deletePassword,
+          emailConfirmation: deleteEmail,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Account deletion failed.");
+      }
+
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+      window.location.replace("/?account=deleted");
+    } catch (error) {
+      playError();
+      setMessage(
+        error instanceof Error ? error.message : "Account deletion failed."
+      );
+      setMsgType("err");
+      setDeletingAccount(false);
+    }
   }
 
   const rank = getColonialRank(reputation);
@@ -361,6 +449,108 @@ export default function SettingsPage() {
               >
                 {isPremium ? "Manage Plan" : "✦ Upgrade to Pro"}
               </Link>
+            </div>
+
+            <div
+              className="rounded-2xl p-4 md:col-span-2"
+              style={{
+                border: "1px solid rgba(248,113,113,.35)",
+                background: "rgba(69,10,10,.24)",
+              }}
+            >
+              <h2 className="font-cinzel text-lg font-bold text-[#fca5a5]">
+                Privacy &amp; Account Data
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-[#d6c09a]">
+                Download a JSON copy of your profile, ledger, progress, and account activity. Account deletion is permanent and immediately cancels any active AskBen subscription before removing your data.
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => void exportAccountData()}
+                  disabled={exportingData || deletingAccount}
+                  className="rounded-xl px-5 py-3 font-cinzel font-bold disabled:opacity-50"
+                  style={{
+                    color: "#f5e6c8",
+                    border: "1px solid rgba(201,168,76,.45)",
+                    background: "rgba(201,168,76,.12)",
+                  }}
+                >
+                  {exportingData ? "Preparing Export…" : "⇩ Export My Data"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteAccount((visible) => !visible)}
+                  disabled={deletingAccount}
+                  className="rounded-xl px-5 py-3 font-cinzel font-bold text-[#fecaca] disabled:opacity-50"
+                  style={{
+                    border: "1px solid rgba(248,113,113,.5)",
+                    background: "rgba(127,29,29,.32)",
+                  }}
+                >
+                  {showDeleteAccount ? "Cancel Deletion" : "Delete My Account"}
+                </button>
+              </div>
+
+              {showDeleteAccount ? (
+                <div
+                  className="mt-4 rounded-xl p-4"
+                  style={{
+                    border: "1px solid rgba(248,113,113,.45)",
+                    background: "rgba(0,0,0,.45)",
+                  }}
+                >
+                  <p className="font-cinzel font-bold text-[#fca5a5]">
+                    This cannot be undone.
+                  </p>
+                  <p className="mt-1 text-sm text-[#d6c09a]">
+                    Export your data first. Then enter your email and current password to verify this permanent request.
+                  </p>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label>
+                      <Label>Confirm Email</Label>
+                      <input
+                        type="email"
+                        value={deleteEmail}
+                        onChange={(event) => setDeleteEmail(event.target.value)}
+                        autoComplete="email"
+                        placeholder={email}
+                        disabled={deletingAccount}
+                        style={INPUT}
+                      />
+                    </label>
+                    <label>
+                      <Label>Current Password</Label>
+                      <input
+                        type="password"
+                        value={deletePassword}
+                        onChange={(event) => setDeletePassword(event.target.value)}
+                        autoComplete="current-password"
+                        disabled={deletingAccount}
+                        style={INPUT}
+                      />
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void deleteAccount()}
+                    disabled={deletingAccount}
+                    className="mt-4 w-full rounded-xl px-5 py-3 font-cinzel font-bold text-white disabled:opacity-50"
+                    style={{
+                      border: "1px solid #f87171",
+                      background: "#991b1b",
+                    }}
+                  >
+                    {deletingAccount
+                      ? "Canceling Subscription & Deleting…"
+                      : "Permanently Delete Account"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
 
