@@ -5,7 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BEN_PERSONAS } from "@/lib/ben/personas";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { playCoins, playError, playBell, setSoundEnabled } from "@/lib/sounds";
+import {
+  getSoundPreferences,
+  initAudio,
+  playCoins,
+  playError,
+  playBell,
+  setSoundEnabled,
+  setSoundVolume,
+} from "@/lib/sounds";
 
 const SMITHY_BG = "/055F883D-453E-4D8A-8A8A-9DE9A309F58B.png";
 
@@ -72,13 +80,23 @@ function MiniStat({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({
+  label,
+  checked,
+  onChange,
+  playFeedback = true,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  playFeedback?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={() => {
-        playBell();
         onChange(!checked);
+        if (playFeedback) playBell();
       }}
       className="flex w-full items-center justify-between rounded-xl px-4 py-3"
       style={{ background: "rgba(107,68,35,.14)", border: "1px solid rgba(201,168,76,.22)" }}
@@ -114,6 +132,7 @@ export default function SettingsPage() {
   const [benAvatar, setBenAvatar] = useState("female_classic");
   const [darkMode, setDarkMode] = useState(false);
   const [soundEffects, setSoundEffects] = useState(true);
+  const [soundVolume, setSoundVolumeState] = useState(70);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [premiumStatus, setPremiumStatus] = useState("free");
@@ -122,6 +141,8 @@ export default function SettingsPage() {
   const [reputation, setReputation] = useState(0);
 
   useEffect(() => {
+    const preferences = getSoundPreferences();
+    setSoundVolumeState(Math.round(preferences.volume * 100));
     void loadSettings();
   }, []);
 
@@ -336,11 +357,52 @@ export default function SettingsPage() {
                 <Toggle
                   label="Sound Effects"
                   checked={soundEffects}
+                  playFeedback={false}
                   onChange={(on) => {
                     setSoundEffects(on);
                     setSoundEnabled(on);
+                    if (on) {
+                      void initAudio().then((ready) => {
+                        if (ready) playBell();
+                      });
+                    }
                   }}
                 />
+                <label className="block rounded-xl px-4 py-3" style={{ background: "rgba(107,68,35,.14)", border: "1px solid rgba(201,168,76,.22)" }}>
+                  <span className="flex items-center justify-between font-cinzel text-sm font-bold text-[#f5e6c8]">
+                    <span>Sound Volume</span>
+                    <span className="text-[#c9a84c]">{soundVolume}%</span>
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={soundVolume}
+                    disabled={!soundEffects}
+                    aria-label="Sound volume"
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      setSoundVolumeState(next);
+                      setSoundVolume(next / 100);
+                    }}
+                    onPointerUp={() => playBell()}
+                    className="mt-3 w-full accent-[#c9a84c] disabled:opacity-40"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={!soundEffects}
+                  onClick={() => {
+                    void initAudio().then((ready) => {
+                      if (ready) playCoins();
+                    });
+                  }}
+                  className="w-full rounded-xl px-4 py-3 font-cinzel text-sm font-bold text-[#c9a84c] disabled:opacity-40"
+                  style={{ background: "rgba(201,168,76,.1)", border: "1px solid rgba(201,168,76,.3)" }}
+                >
+                  ♪ Test Town Sounds
+                </button>
                 <Toggle label="Reduced Motion" checked={reducedMotion} onChange={setReducedMotion} />
               </div>
             </div>

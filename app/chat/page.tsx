@@ -15,6 +15,7 @@ import {
   type PriorityInput,
 } from "@/lib/money/priorityV2";
 import { trackEvent } from "@/lib/admin/trackEvent";
+import { speakBen } from "@/lib/sounds";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -201,6 +202,16 @@ export default function ChatPage() {
                   }`}
                 >
                   {msg.content}
+                  {msg.role === "assistant" && (
+                    <button
+                      type="button"
+                      onClick={() => speakBen(msg.content)}
+                      className="mt-3 block rounded-full border border-amber-700/25 bg-amber-100 px-3 py-1 text-xs font-black text-amber-900"
+                      aria-label="Read Ben's response aloud"
+                    >
+                      🔊 Hear Ben
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

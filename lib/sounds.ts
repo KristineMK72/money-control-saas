@@ -4,6 +4,12 @@ let ambient: { nodes: AudioScheduledSourceNode[]; gain: GainNode } | null = null
 let enabled = true;
 let volume = 0.7;
 let preferencesLoaded = false;
+let unlockPromise: Promise<boolean> | null = null;
+
+export type SoundPreferences = {
+  enabled: boolean;
+  volume: number;
+};
 
 function loadPreferences() {
   if (preferencesLoaded || typeof window === "undefined") return;
@@ -24,7 +30,6 @@ function ctx(): AudioContext | null {
     masterGain.connect(audioContext.destination);
   }
   if (masterGain) masterGain.gain.value = enabled ? volume : 0;
-  if (audioContext.state === "suspended") void audioContext.resume().catch(() => {});
   return audioContext;
 }
 
@@ -36,9 +41,46 @@ function output(c: AudioContext) {
   return masterGain;
 }
 
-export function initAudio() {
+function announceAudioUnlocked() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("askben:audio-unlocked"));
+}
+
+export function getSoundPreferences(): SoundPreferences {
+  loadPreferences();
+  return { enabled, volume };
+}
+
+export function isAudioReady() {
+  return audioContext?.state === "running";
+}
+
+export async function initAudio(): Promise<boolean> {
   const c = ctx();
-  if (c?.state === "suspended") void c.resume().catch(() => {});
+  if (!c) return false;
+  if (c.state === "running") return true;
+  if (unlockPromise) return unlockPromise;
+
+  unlockPromise = c
+    .resume()
+    .then(() => {
+      if (c.state !== "running") return false;
+
+      // A one-frame silent source completes Web Audio activation on iOS Safari.
+      const buffer = c.createBuffer(1, 1, c.sampleRate);
+      const source = c.createBufferSource();
+      source.buffer = buffer;
+      source.connect(output(c));
+      source.start(0);
+      announceAudioUnlocked();
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => {
+      unlockPromise = null;
+    });
+
+  return unlockPromise;
 }
 
 export function setSoundEnabled(on: boolean) {
@@ -48,6 +90,7 @@ export function setSoundEnabled(on: boolean) {
   if (masterGain && audioContext) {
     masterGain.gain.setTargetAtTime(on ? volume : 0, audioContext.currentTime, 0.03);
   }
+  if (on) void initAudio();
 }
 
 export function setSoundVolume(nextVolume: number) {
@@ -56,6 +99,47 @@ export function setSoundVolume(nextVolume: number) {
   if (typeof window !== "undefined") window.localStorage.setItem("askben:sound-volume", String(volume));
   if (masterGain && audioContext && enabled) {
     masterGain.gain.setTargetAtTime(volume, audioContext.currentTime, 0.03);
+  }
+}
+
+export function speakBen(text: string): boolean {
+  loadPreferences();
+  if (
+    !enabled ||
+    typeof window === "undefined" ||
+    !("speechSynthesis" in window) ||
+    typeof SpeechSynthesisUtterance === "undefined"
+  ) {
+    return false;
+  }
+
+  const cleanText = text
+    .replace(/[*_`#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 2_000);
+  if (!cleanText) return false;
+
+  const utterance = new SpeechSynthesisUtterance(cleanText);
+  utterance.rate = 0.92;
+  utterance.pitch = 0.86;
+  utterance.volume = volume;
+  const voices = window.speechSynthesis.getVoices();
+  utterance.voice =
+    voices.find(
+      (voice) =>
+        /^en(-|_)/i.test(voice.lang) &&
+        /daniel|arthur|alex|fred|guy|david|male/i.test(voice.name)
+    ) ?? voices.find((voice) => /^en(-|_)/i.test(voice.lang)) ?? null;
+
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+  return true;
+}
+
+export function stopBenVoice() {
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
   }
 }
 
