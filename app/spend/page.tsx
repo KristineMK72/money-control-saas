@@ -332,13 +332,20 @@ export default function SpendPage() {
     setSaving(false);
   }
 
-  async function findDeals(key: string, dealCategory: SpendCategory, dealMerchant?: string, dealAmount?: number) {
-    if (!navigator.geolocation) {
-      showMsg("Location is not available in this browser.");
-      return;
-    }
-    setDealsBusyKey(key);
-    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+async function findDeals(
+  key: string,
+  dealCategory: SpendCategory,
+  dealMerchant?: string,
+  dealAmount?: number,
+  dealQuery?: string
+) {
+  if (!navigator.geolocation) {
+    showMsg("Location is not available in this browser.");
+    return;
+  }
+  setDealsBusyKey(key);
+  navigator.geolocation.getCurrentPosition(
+    async ({ coords }) => {
       try {
         const response = await fetch("/api/local-deals", {
           method: "POST",
@@ -349,21 +356,34 @@ export default function SpendPage() {
             category: dealCategory,
             merchant: dealMerchant,
             amount: dealAmount,
+            query: dealQuery || dealMerchant || undefined,
           }),
         });
-        const result = await response.json() as { alternatives?: LocalAlternative[]; message?: string };
+        const result = (await response.json()) as {
+          alternatives?: LocalAlternative[];
+          message?: string;
+        };
         setDeals((current) => ({ ...current, [key]: result.alternatives || [] }));
-        setDealMessages((current) => ({ ...current, [key]: result.message || "Nearby options" }));
+        setDealMessages((current) => ({
+          ...current,
+          [key]: result.message || "Nearby options",
+        }));
       } catch {
-        setDealMessages((current) => ({ ...current, [key]: "Nearby options are temporarily unavailable" }));
+        setDealMessages((current) => ({
+          ...current,
+          [key]: "Nearby options are temporarily unavailable",
+        }));
       } finally {
         setDealsBusyKey(null);
       }
-    }, () => {
+    },
+    () => {
       setDealsBusyKey(null);
       showMsg("Location permission is needed to find nearby options.");
-    }, { enableHighAccuracy: false, timeout: 10000 });
-  }
+    },
+    { enableHighAccuracy: false, timeout: 10000 }
+  );
+}
 
   async function handleOCR() {
     if (!imageFile) return;
@@ -657,7 +677,15 @@ export default function SpendPage() {
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => void findDeals(need.id, need.category || "misc", undefined, Number(need.estimated_amount || 0))}
+                        onClick={() =>
+                            void findDeals(
+                              need.id,
+                              need.category || "misc",
+                              undefined,
+                              Number(need.estimated_amount || 0),
+                              need.title
+                            )
+                          }
                         disabled={dealsBusyKey === need.id}
                         className="rounded-lg border border-[#c9a84c]/50 px-3 py-2 text-sm text-[#c9a84c] disabled:opacity-50"
                       >
