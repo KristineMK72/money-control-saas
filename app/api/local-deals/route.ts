@@ -6,6 +6,8 @@ const CATEGORY_TYPES: Record<string, string[]> = {
   eating_out: ["cafe", "restaurant"],
   kids: ["supermarket"],
   self_care: ["pharmacy"],
+  bills: ["bank", "post_office"],
+  business: ["store"],
 };
 
 type GooglePlace = {
@@ -52,7 +54,8 @@ function mapPlaces(
     .filter((place): place is NonNullable<typeof place> => !!place)
     .filter(
       (place) =>
-        !currentMerchant || place.name.toLowerCase() !== currentMerchant.toLowerCase()
+        !currentMerchant ||
+        place.name.toLowerCase() !== currentMerchant.toLowerCase()
     )
     .slice(0, 5);
 }
@@ -95,11 +98,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const query = body.query?.trim();
+  const query = body.query?.trim() || body.merchant?.trim();
   const currentMerchant = body.merchant?.trim();
 
   try {
-    // Prefer text search when the user has a specific need title
     if (query) {
       const response = await fetch(
         "https://places.googleapis.com/v1/places:searchText",
@@ -144,7 +146,6 @@ export async function POST(request: Request) {
       });
     }
 
-    // Fallback: category-based nearby search
     const includedTypes = CATEGORY_TYPES[body.category || ""] || ["store"];
 
     const response = await fetch(

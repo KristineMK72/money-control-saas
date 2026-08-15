@@ -1,6 +1,11 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import type { AiRequestBody } from "@/lib/ai/types";
+import { requireUser } from "@/lib/api/requireUser";
+import { rateLimit } from "@/lib/api/rateLimit";
+
+const MAX_BODY_CHARS = 80_000;
+const MAX_MESSAGES = 40;
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -202,14 +207,47 @@ Return valid JSON only with this exact shape:
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as AiRequestBody;
+    const auth = await requireUser();
+    if (auth.error) return auth.error;
 
-    const messages = body.messages ?? [];
+    const limited = rateLimit(`ai:${auth.user.id}`, 30, 60_000);
+    if (!limited.ok) {
+      return NextResponse.json(
+        { error: "Too many requests. Please wait a moment." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(limited.retryAfterSec) },
+        }
+      );
+    }
+
+    const rawText = await req.text();
+    if (rawText.length > MAX_BODY_CHARS) {
+      return NextResponse.json(
+        { error: "Request too large." },
+        { status: 413 }
+      );
+    }
+
+    let body: AiRequestBody;
+    try {
+      body = JSON.parse(rawText) as AiRequestBody;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    }
+
+    const messages = (body.messages ?? []).slice(-MAX_MESSAGES);
     const context = body.context?.trim() ?? "";
     const financialSummary = body.financialSummary?.trim() ?? "";
     const stressScore = body.stressScore;
 
-    console.log("ASKBEN financialSummary sent to AI:", financialSummary);
+    // Never log financial summaries or message content in production.
+    console.log("ASKBEN AI request", {
+      userId: auth.user.id,
+      messageCount: messages.length,
+      hasSummary: financialSummary.length > 0,
+      hasContext: context.length > 0,
+    });
 
     const fullSystemPrompt = buildSystemPrompt({
       financialSummary,
@@ -241,7 +279,7 @@ export async function POST(req: Request) {
       action: parsed.action,
     });
   } catch (error) {
-    console.error("AI route error:", error);
+    console.error("AI route error:", error instanceof Error ? error.message : "unknown");
 
     return NextResponse.json(
       {

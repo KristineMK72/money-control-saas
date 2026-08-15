@@ -1,6 +1,10 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/api/requireUser";
+import { rateLimit } from "@/lib/api/rateLimit";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+
+const MAX_BODY_CHARS = 40_000;
 
 const SYSTEM_PROMPT = `You are Benjamin Franklin — wise founder of Franklin's Landing, a personal finance app. You speak with warmth, wit, and colonial-era gravitas, but your advice is modern, specific, and practical. You always reference the user's EXACT dollar amounts.
 
@@ -17,21 +21,46 @@ Structure every response with EXACTLY these four labeled sections (use the label
 Keep the total response under 350 words. Write in Ben's voice — wise, a bit formal, but genuinely helpful. Never be vague.`;
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUser();
+  if (auth.error) return auth.error;
+
+  const limited = rateLimit(`ben-advice:${auth.user.id}`, 20, 60_000);
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a moment." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(limited.retryAfterSec) },
+      }
+    );
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
-    return new Response(
-      JSON.stringify({ error: "OPENAI_API_KEY is not set in environment variables." }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+    return NextResponse.json(
+      { error: "OPENAI_API_KEY is not set in environment variables." },
+      { status: 500 }
     );
+  }
+
+  const rawText = await req.text();
+  if (rawText.length > MAX_BODY_CHARS) {
+    return NextResponse.json({ error: "Request too large." }, { status: 413 });
   }
 
   let body: { financialContext?: string; question?: string };
   try {
-    body = await req.json();
+    body = JSON.parse(rawText) as { financialContext?: string; question?: string };
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON body." }), { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
+
+  console.log("ASKBEN ben-advice request", {
+    userId: auth.user.id,
+    hasContext: Boolean(body.financialContext?.trim()),
+    hasQuestion: Boolean(body.question?.trim()),
+  });
 
   const userContent = body.question
     ? `${body.financialContext ?? ""}\n\nFollow-up question from the user: ${body.question}`
@@ -49,20 +78,19 @@ export async function POST(req: NextRequest) {
       max_tokens: 900,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user",   content: userContent },
+        { role: "user", content: userContent },
       ],
     }),
   });
 
   if (!openaiResponse.ok) {
-    const errText = await openaiResponse.text();
-    return new Response(
-      JSON.stringify({ error: `OpenAI error: ${openaiResponse.status} — ${errText}` }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
+    console.error("OpenAI ben-advice error", openaiResponse.status);
+    return NextResponse.json(
+      { error: "Upstream AI service error." },
+      { status: 502 }
     );
   }
 
-  // Pipe the OpenAI SSE stream straight through
   return new Response(openaiResponse.body, {
     headers: {
       "Content-Type": "text/event-stream",
