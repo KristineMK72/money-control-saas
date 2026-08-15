@@ -15,8 +15,13 @@ function loadPreferences() {
   if (preferencesLoaded || typeof window === "undefined") return;
   preferencesLoaded = true;
   enabled = window.localStorage.getItem("askben:sound-enabled") !== "false";
-  const savedVolume = Number(window.localStorage.getItem("askben:sound-volume"));
-  if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1) volume = savedVolume;
+  const storedVolume = window.localStorage.getItem("askben:sound-volume");
+  if (storedVolume !== null) {
+    const savedVolume = Number(storedVolume);
+    if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1) {
+      volume = savedVolume;
+    }
+  }
 }
 
 function ctx(): AudioContext | null {
