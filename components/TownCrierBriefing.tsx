@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { getBenPersona, getTownCrierMessage } from "@/lib/ben/personas";
 import { daysUntil, nextDateFromDueDay } from "@/lib/money/dates";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { speakBen } from "@/lib/sounds";
 
 type DueRow = {
   id: string;
@@ -202,13 +203,20 @@ export default function TownCrierBriefing() {
           </div>
         )}
 
-        <div className="mt-7 grid gap-3 sm:grid-cols-2">
+        <div className="mt-7 grid gap-3 sm:grid-cols-3">
           <button
             type="button"
             onClick={close}
             className="rounded-xl border border-[#c9a84c]/35 px-5 py-3 font-cinzel font-bold text-[#d6c09a]"
           >
             Dismiss
+          </button>
+          <button
+            type="button"
+            onClick={() => speakBen(message)}
+            className="rounded-xl border border-[#c9a84c]/35 px-5 py-3 font-cinzel font-bold text-[#f5e6c8]"
+          >
+            🔊 Hear Ben
           </button>
           <button
             type="button"

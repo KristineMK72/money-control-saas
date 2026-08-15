@@ -3,7 +3,12 @@
 import { useEffect } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useMoneyStore } from "@/lib/money/store";
-import { initAudio, playClick } from "@/lib/sounds";
+import {
+  initAudio,
+  isAudioReady,
+  playClick,
+  setSoundEnabled,
+} from "@/lib/sounds";
 
 export default function AppInitializer({
   children,
@@ -25,13 +30,22 @@ export default function AppInitializer({
         return;
       }
 
-      const [bills, debts, income, spend, payments] = await Promise.all([
+      const [bills, debts, income, spend, payments, profile] = await Promise.all([
         supabase.from("bills").select("*").eq("user_id", user.id),
         supabase.from("debts").select("*").eq("user_id", user.id),
         supabase.from("income_entries").select("*").eq("user_id", user.id),
         supabase.from("spend_entries").select("*").eq("user_id", user.id),
         supabase.from("payments").select("*").eq("user_id", user.id),
+        supabase
+          .from("profiles")
+          .select("sound_effects")
+          .eq("user_id", user.id)
+          .maybeSingle(),
       ]);
+
+      if (!profile.error) {
+        setSoundEnabled(profile.data?.sound_effects ?? true);
+      }
 
       setAll({
         buckets: bills.data ?? [],
@@ -56,17 +70,37 @@ export default function AppInitializer({
   }, [supabase, setAll, reset]);
 
   useEffect(() => {
-    const unlock = () => initAudio();
+    let active = true;
+
+    const removeUnlockListeners = () => {
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("touchend", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+    };
+    const unlock = () => {
+      void initAudio().then((ready) => {
+        if (active && ready) removeUnlockListeners();
+      });
+    };
     const click = (event: MouseEvent) => {
       const target = event.target as Element | null;
       if (target?.closest("button, a")) playClick();
     };
-    window.addEventListener("pointerdown", unlock, { capture: true, once: true });
-    window.addEventListener("keydown", unlock, { capture: true, once: true });
+    const restore = () => {
+      if (document.visibilityState === "visible" && !isAudioReady()) unlock();
+    };
+
+    window.addEventListener("pointerdown", unlock, true);
+    window.addEventListener("touchend", unlock, true);
+    window.addEventListener("keydown", unlock, true);
+    window.addEventListener("pageshow", restore);
+    document.addEventListener("visibilitychange", restore);
     document.addEventListener("click", click);
     return () => {
-      window.removeEventListener("pointerdown", unlock, { capture: true });
-      window.removeEventListener("keydown", unlock, { capture: true });
+      active = false;
+      removeUnlockListeners();
+      window.removeEventListener("pageshow", restore);
+      document.removeEventListener("visibilitychange", restore);
       document.removeEventListener("click", click);
     };
   }, []);
