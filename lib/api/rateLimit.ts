@@ -7,11 +7,15 @@ type Bucket = { count: number; resetAt: number };
 
 const buckets = new Map<string, Bucket>();
 
+export type RateLimitResult =
+  | { ok: true; retryAfterSec?: undefined }
+  | { ok: false; retryAfterSec: number };
+
 export function rateLimit(
   key: string,
   limit: number,
   windowMs: number
-): { ok: true } | { ok: false; retryAfterSec: number } {
+): RateLimitResult {
   const now = Date.now();
   const existing = buckets.get(key);
 

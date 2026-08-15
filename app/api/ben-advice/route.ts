@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   if (auth.error) return auth.error;
 
   const limited = rateLimit(`ben-advice:${auth.user.id}`, 20, 60_000);
-  if (!limited.ok) {
+  if (limited.ok === false) {
     return NextResponse.json(
       { error: "Too many requests. Please wait a moment." },
       {
