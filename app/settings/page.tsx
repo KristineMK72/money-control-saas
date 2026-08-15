@@ -126,6 +126,8 @@ export default function SettingsPage() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [msgType, setMsgType] = useState<"ok" | "err">("ok");
+  const [exporting, setExporting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [benVoice, setBenVoice] = useState("encouraging");
@@ -238,6 +240,65 @@ export default function SettingsPage() {
     } else {
       setMessage("Password reset dispatched to thy inbox.");
       setMsgType("ok");
+    }
+  }
+
+  async function exportData() {
+    setExporting(true);
+    setMessage("");
+    try {
+      const res = await fetch("/api/account/export");
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || "Export failed");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `askben-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMessage("Thy data export is ready.");
+      setMsgType("ok");
+      playCoins();
+    } catch (err) {
+      playError();
+      setMessage(err instanceof Error ? err.message : "Export failed");
+      setMsgType("err");
+    }
+    setExporting(false);
+  }
+
+  async function deleteAccount() {
+    const confirmed = window.confirm(
+      "Permanently delete your AskBen account and financial data? This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    const typed = window.prompt('Type DELETE to confirm account deletion');
+    if (typed !== "DELETE") {
+      setMessage("Deletion cancelled.");
+      setMsgType("err");
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/account/delete", { method: "POST" });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+      };
+      if (!res.ok) throw new Error(body.error || "Delete failed");
+      window.location.href = "/login";
+    } catch (err) {
+      playError();
+      setMessage(err instanceof Error ? err.message : "Delete failed");
+      setMsgType("err");
+      setDeleting(false);
     }
   }
 
@@ -423,6 +484,36 @@ export default function SettingsPage() {
               >
                 {isPremium ? "Manage Plan" : "✦ Upgrade to Pro"}
               </Link>
+            </div>
+
+            <div className="rounded-2xl p-4 md:col-span-2" style={{ border: "1px solid rgba(201,168,76,.28)", background: "rgba(0,0,0,.45)" }}>
+              <h2 className="mb-2 font-cinzel text-lg font-bold text-[#c9a84c]">Privacy & Data</h2>
+              <p className="mb-4 text-sm text-[#d6c09a]">
+                Export a copy of thy financial records, or permanently delete thy account data.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => void exportData()}
+                  disabled={exporting}
+                  className="rounded-xl px-5 py-3 font-cinzel font-bold text-[#c9a84c] disabled:opacity-50"
+                  style={{ background: "rgba(107,68,35,.18)", border: "1px solid rgba(201,168,76,.35)" }}
+                >
+                  {exporting ? "Preparing export…" : "⬇ Export My Data"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void deleteAccount()}
+                  disabled={deleting}
+                  className="rounded-xl px-5 py-3 font-cinzel font-bold text-[#f87171] disabled:opacity-50"
+                  style={{ background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.35)" }}
+                >
+                  {deleting ? "Deleting…" : "🗑 Delete Account"}
+                </button>
+              </div>
+              <p className="mt-3 text-xs italic text-[#9a7d5a]">
+                Deletion requires typing DELETE. Advice is educational, not professional financial advice.
+              </p>
             </div>
           </div>
 
