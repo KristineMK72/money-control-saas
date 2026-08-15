@@ -107,6 +107,10 @@ global.window = {
 const sounds = require("../lib/sounds.ts");
 
 test("audio unlock resumes one shared context", async () => {
+  assert.deepEqual(sounds.getSoundPreferences(), {
+    enabled: true,
+    volume: 0.7,
+  });
   assert.equal(sounds.isAudioReady(), false);
   assert.equal(await sounds.initAudio(), true);
   assert.equal(sounds.isAudioReady(), true);
