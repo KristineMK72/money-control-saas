@@ -16,19 +16,28 @@ type ProfileSlice = {
   reputation?: number | null;
 };
 
-type QueryError = { message: string } | null;
+type DbError = { message: string } | null;
 
-/** Minimal chainable client shape (browser or service-role Supabase). */
-type ProfileQuery = {
-  select: (columns: string) => ProfileQuery;
-  update: (values: Record<string, number>) => ProfileQuery;
-  eq: (column: string, value: string) => ProfileQuery;
-  maybeSingle: () => Promise<{ data: ProfileSlice | null; error: QueryError }>;
-  then?: unknown;
+type ProfilesTable = {
+  select: (columns: string) => {
+    eq: (
+      column: string,
+      value: string
+    ) => {
+      maybeSingle: () => Promise<{ data: ProfileSlice | null; error: DbError }>;
+    };
+  };
+  update: (values: {
+    xp: number;
+    level: number;
+    reputation: number;
+  }) => {
+    eq: (column: string, value: string) => PromiseLike<{ error: DbError }>;
+  };
 };
 
 type AwardSupabase = {
-  from: (table: string) => ProfileQuery;
+  from: (table: string) => ProfilesTable;
 };
 
 /** XP granted when a payment is recorded. Debt payments earn a bit more. */
@@ -71,7 +80,7 @@ export async function awardXpForPayment(
     };
   }
 
-  const row = (profile || {}) as ProfileSlice;
+  const row = profile || {};
   const currentXp = Number(row.xp ?? 0) || 0;
   const currentRep = Number(row.reputation ?? 0) || 0;
   const previousLevel =
@@ -82,12 +91,10 @@ export async function awardXpForPayment(
   const { xp, level } = addXp(currentXp, amount);
   const reputation = currentRep + repGain;
 
-  const writeResult = (await supabase
+  const { error: writeError } = await supabase
     .from("profiles")
     .update({ xp, level, reputation })
-    .eq("user_id", userId)) as { error?: QueryError };
-
-  const writeError = writeResult?.error ?? null;
+    .eq("user_id", userId);
 
   if (writeError) {
     return {
