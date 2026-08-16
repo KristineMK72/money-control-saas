@@ -19,9 +19,8 @@ type ProfileSlice = {
 type DbError = { message: string } | null;
 
 /**
- * Duck-typed client used only inside this module.
- * Accepting the full SupabaseClient at the call site causes
- * "Type instantiation is excessively deep" errors.
+ * Duck-typed client. Callers pass browser or service-role clients as `unknown`
+ * so Supabase generics do not explode TypeScript.
  */
 type AwardClient = {
   from: (table: string) => {
@@ -36,20 +35,20 @@ type AwardClient = {
         }>;
       };
     };
-    update: (values: {
-      xp: number;
-      level: number;
-      reputation: number;
-    }) => {
-      eq: (
-        column: string,
-        value: string
-      ) => PromiseLike<{ error: DbError }>;
+    update: (values: Record<string, number>) => {
+      eq: (column: string, value: string) => {
+        select: (columns: string) => {
+          maybeSingle: () => Promise<{
+            data: ProfileSlice | null;
+            error: DbError;
+          }>;
+        };
+      };
     };
+    insert: (values: Record<string, unknown>) => PromiseLike<{ error: DbError }>;
   };
 };
 
-/** XP granted when a payment is recorded. Debt payments earn a bit more. */
 export function paymentXpAmount(isDebt: boolean) {
   return isDebt ? 35 : 25;
 }
@@ -58,14 +57,6 @@ export function paymentReputationAmount(isDebt: boolean) {
   return isDebt ? 8 : 5;
 }
 
-/**
- * Award XP + reputation on profiles after a successful payment insert.
- * Works with browser or service-role Supabase clients (RLS / service role must allow updates).
- *
- * `supabaseClient` is typed as `unknown` on purpose so callers can pass
- * either the browser client or the service-role admin client without
- * triggering infinite TypeScript instantiation on Supabase generics.
- */
 export async function awardXpForPayment(
   supabaseClient: unknown,
   userId: string,
@@ -83,15 +74,23 @@ export async function awardXpForPayment(
     .maybeSingle();
 
   if (readError) {
-    return {
+    return fail(amount, readError.message);
+  }
+
+  // No profile row yet — create a minimal one so XP has somewhere to land.
+  if (!profile) {
+    const { error: insertError } = await supabase.from("profiles").insert({
+      user_id: userId,
       xp: 0,
       level: 1,
-      previousLevel: 1,
-      leveledUp: false,
-      amount,
       reputation: 0,
-      error: readError.message,
-    };
+    });
+    if (insertError) {
+      return fail(
+        amount,
+        `No profile to award XP (${insertError.message}). Add xp/level/reputation columns if missing.`
+      );
+    }
   }
 
   const row = profile || {};
@@ -105,10 +104,12 @@ export async function awardXpForPayment(
   const { xp, level } = addXp(currentXp, amount);
   const reputation = currentRep + repGain;
 
-  const { error: writeError } = await supabase
+  const { data: updated, error: writeError } = await supabase
     .from("profiles")
     .update({ xp, level, reputation })
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .select("xp, level, reputation")
+    .maybeSingle();
 
   if (writeError) {
     return {
@@ -122,13 +123,32 @@ export async function awardXpForPayment(
     };
   }
 
+  if (!updated) {
+    return fail(
+      amount,
+      "Profile update matched 0 rows. Check profiles.user_id and that xp/level/reputation columns exist."
+    );
+  }
+
   return {
-    xp,
-    level,
+    xp: Number(updated.xp ?? xp),
+    level: Number(updated.level ?? level),
     previousLevel,
-    leveledUp: level > previousLevel,
+    leveledUp: Number(updated.level ?? level) > previousLevel,
     amount,
-    reputation,
+    reputation: Number(updated.reputation ?? reputation),
     error: null,
+  };
+}
+
+function fail(amount: number, error: string): AwardXpResult {
+  return {
+    xp: 0,
+    level: 1,
+    previousLevel: 1,
+    leveledUp: false,
+    amount,
+    reputation: 0,
+    error,
   };
 }
