@@ -18,26 +18,35 @@ type ProfileSlice = {
 
 type DbError = { message: string } | null;
 
-type ProfilesTable = {
-  select: (columns: string) => {
-    eq: (
-      column: string,
-      value: string
-    ) => {
-      maybeSingle: () => Promise<{ data: ProfileSlice | null; error: DbError }>;
+/**
+ * Duck-typed client used only inside this module.
+ * Accepting the full SupabaseClient at the call site causes
+ * "Type instantiation is excessively deep" errors.
+ */
+type AwardClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (
+        column: string,
+        value: string
+      ) => {
+        maybeSingle: () => Promise<{
+          data: ProfileSlice | null;
+          error: DbError;
+        }>;
+      };
+    };
+    update: (values: {
+      xp: number;
+      level: number;
+      reputation: number;
+    }) => {
+      eq: (
+        column: string,
+        value: string
+      ) => PromiseLike<{ error: DbError }>;
     };
   };
-  update: (values: {
-    xp: number;
-    level: number;
-    reputation: number;
-  }) => {
-    eq: (column: string, value: string) => PromiseLike<{ error: DbError }>;
-  };
-};
-
-type AwardSupabase = {
-  from: (table: string) => ProfilesTable;
 };
 
 /** XP granted when a payment is recorded. Debt payments earn a bit more. */
@@ -51,13 +60,18 @@ export function paymentReputationAmount(isDebt: boolean) {
 
 /**
  * Award XP + reputation on profiles after a successful payment insert.
- * Works with browser or service-role Supabase clients (must be allowed by RLS / service role).
+ * Works with browser or service-role Supabase clients (RLS / service role must allow updates).
+ *
+ * `supabaseClient` is typed as `unknown` on purpose so callers can pass
+ * either the browser client or the service-role admin client without
+ * triggering infinite TypeScript instantiation on Supabase generics.
  */
 export async function awardXpForPayment(
-  supabase: AwardSupabase,
+  supabaseClient: unknown,
   userId: string,
   options: { isDebt?: boolean } = {}
 ): Promise<AwardXpResult> {
+  const supabase = supabaseClient as AwardClient;
   const isDebt = Boolean(options.isDebt);
   const amount = paymentXpAmount(isDebt);
   const repGain = paymentReputationAmount(isDebt);
