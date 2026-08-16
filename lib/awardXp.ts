@@ -16,6 +16,21 @@ type ProfileSlice = {
   reputation?: number | null;
 };
 
+type QueryError = { message: string } | null;
+
+/** Minimal chainable client shape (browser or service-role Supabase). */
+type ProfileQuery = {
+  select: (columns: string) => ProfileQuery;
+  update: (values: Record<string, number>) => ProfileQuery;
+  eq: (column: string, value: string) => ProfileQuery;
+  maybeSingle: () => Promise<{ data: ProfileSlice | null; error: QueryError }>;
+  then?: unknown;
+};
+
+type AwardSupabase = {
+  from: (table: string) => ProfileQuery;
+};
+
 /** XP granted when a payment is recorded. Debt payments earn a bit more. */
 export function paymentXpAmount(isDebt: boolean) {
   return isDebt ? 35 : 25;
@@ -30,8 +45,7 @@ export function paymentReputationAmount(isDebt: boolean) {
  * Works with browser or service-role Supabase clients (must be allowed by RLS / service role).
  */
 export async function awardXpForPayment(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: { from: (table: string) => any },
+  supabase: AwardSupabase,
   userId: string,
   options: { isDebt?: boolean } = {}
 ): Promise<AwardXpResult> {
@@ -68,10 +82,12 @@ export async function awardXpForPayment(
   const { xp, level } = addXp(currentXp, amount);
   const reputation = currentRep + repGain;
 
-  const { error: writeError } = await supabase
+  const writeResult = (await supabase
     .from("profiles")
     .update({ xp, level, reputation })
-    .eq("user_id", userId);
+    .eq("user_id", userId)) as { error?: QueryError };
+
+  const writeError = writeResult?.error ?? null;
 
   if (writeError) {
     return {
