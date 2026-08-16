@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { awardXpForPayment } from "@/lib/awardXp";
 
 type FinanceActionRequest =
   | {
@@ -214,10 +215,15 @@ async function handleAddPayment(
 
   if (error) throw error;
 
+  const xp = await awardXpForPayment(admin, userId, {
+    isDebt: Boolean(debtId),
+  });
+
   return {
     ok: true,
     action: "add_payment",
     record: data,
+    xp,
   };
 }
 
