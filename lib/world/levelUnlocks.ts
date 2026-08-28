@@ -65,8 +65,43 @@ export const LEVEL_UNLOCKS: LevelUnlock[] = [
   },
 ];
 
+const ENDLESS_TYPES: UnlockPropType[] = [
+  "Crate",
+  "Barrel",
+  "PineTree",
+  "Chicken",
+  "Sheep",
+  "MarketStall",
+  "Cottage",
+];
+
+/** Keep the GPU from drowning if someone lives here for years. */
+export const MAX_PROCEDURAL_PROPS = 48;
+
+function proceduralProp(level: number): {
+  type: UnlockPropType;
+  position: [number, number, number];
+} {
+  const ring = 18 + ((level * 3) % 32);
+  const angle = (level * 2.399) % (Math.PI * 2);
+  const x = Math.round(Math.cos(angle) * ring * 10) / 10;
+  const z = Math.round(Math.sin(angle) * ring * 10) / 10;
+  const type = ENDLESS_TYPES[level % ENDLESS_TYPES.length]!;
+  return { type, position: [x, 0, z] };
+}
+
 export function getUnlockedProps(level: number) {
-  return LEVEL_UNLOCKS
-    .filter((unlock) => level >= unlock.level)
-    .flatMap((unlock) => unlock.props);
+  const scripted = LEVEL_UNLOCKS.filter((unlock) => level >= unlock.level).flatMap(
+    (unlock) => unlock.props
+  );
+
+  const extraLevels = Math.min(
+    MAX_PROCEDURAL_PROPS,
+    Math.max(0, Math.floor(level) - 8)
+  );
+  const extras = Array.from({ length: extraLevels }, (_, i) =>
+    proceduralProp(9 + i)
+  );
+
+  return [...scripted, ...extras];
 }

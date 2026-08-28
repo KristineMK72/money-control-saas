@@ -2,25 +2,41 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { toRoman } from "@/lib/progression";
+
+const NAMED_RANKS: Array<{ needed: number; name: string }> = [
+  { needed: 0, name: "Apprentice Clerk" },
+  { needed: 100, name: "Ledger Keeper" },
+  { needed: 250, name: "Treasury Keeper" },
+  { needed: 500, name: "Revenue Collector" },
+  { needed: 1000, name: "Colonial Treasurer" },
+  { needed: 2000, name: "Governor" },
+  { needed: 5000, name: "Founder of the Republic" },
+];
+
+const ENDLESS_STEP = 2500;
+const ENDLESS_START = 5000;
 
 function getRank(rep: number) {
-  if (rep >= 5000) return "Founder of the Republic";
-  if (rep >= 2000) return "Governor";
-  if (rep >= 1000) return "Colonial Treasurer";
-  if (rep >= 500) return "Revenue Collector";
-  if (rep >= 250) return "Treasury Keeper";
-  if (rep >= 100) return "Ledger Keeper";
-  return "Apprentice Clerk";
+  let current = NAMED_RANKS[0]!.name;
+  for (const rank of NAMED_RANKS) {
+    if (rep >= rank.needed) current = rank.name;
+  }
+  if (rep < ENDLESS_START + ENDLESS_STEP) return current;
+
+  const generation = Math.floor((rep - ENDLESS_START) / ENDLESS_STEP);
+  return `Founder of the Republic ${toRoman(generation + 1)}`;
 }
 
-function getNextRank(rep: number) {
-  if (rep < 100) return { name: "Ledger Keeper", needed: 100 };
-  if (rep < 250) return { name: "Treasury Keeper", needed: 250 };
-  if (rep < 500) return { name: "Revenue Collector", needed: 500 };
-  if (rep < 1000) return { name: "Colonial Treasurer", needed: 1000 };
-  if (rep < 2000) return { name: "Governor", needed: 2000 };
-  if (rep < 5000) return { name: "Founder of the Republic", needed: 5000 };
-  return null;
+function getNextRank(rep: number): { name: string; needed: number } {
+  const named = NAMED_RANKS.find((rank) => rep < rank.needed);
+  if (named) return named;
+
+  const generation = Math.max(1, Math.floor((rep - ENDLESS_START) / ENDLESS_STEP) + 1);
+  return {
+    name: `Founder of the Republic ${toRoman(generation + 1)}`,
+    needed: ENDLESS_START + generation * ENDLESS_STEP,
+  };
 }
 
 export default function GovernorHeader() {
@@ -56,9 +72,11 @@ export default function GovernorHeader() {
 
   const rank = getRank(reputation);
   const nextRank = getNextRank(reputation);
-  const progress = nextRank
-    ? Math.min((reputation / nextRank.needed) * 100, 100)
-    : 100;
+  const previousNeeded =
+    NAMED_RANKS.filter((rank) => rank.needed <= reputation).at(-1)?.needed ?? 0;
+  const span = Math.max(1, nextRank.needed - previousNeeded);
+  const earned = Math.max(0, reputation - previousNeeded);
+  const progress = Math.min(100, (earned / span) * 100);
 
   return (
     <section
@@ -118,7 +136,7 @@ export default function GovernorHeader() {
 
             <div style={{ fontSize: 13, fontWeight: 800, color: "#52525b" }}>
               {reputation.toLocaleString()} Reputation
-              {nextRank ? ` • ${nextRank.needed - reputation} to ${nextRank.name}` : ""}
+              {` • ${Math.max(0, nextRank.needed - reputation)} to ${nextRank.name}`}
             </div>
           </div>
 
