@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { AiRequestBody } from "@/lib/ai/types";
 import { requireUser } from "@/lib/api/requireUser";
 import { rateLimit } from "@/lib/api/rateLimit";
+import { EMPTY_LEDGER_REPLY, isEmptyLedgerSummary } from "@/lib/ben/emptyLedger";
 
 const MAX_BODY_CHARS = 80_000;
 const MAX_MESSAGES = 40;
@@ -139,30 +140,20 @@ You are AskBen: Benjamin Franklin serving as a modern financial triage advisor.
 VOICE:
 - Sound wise, practical, calm, and intelligent.
 - Use light Benjamin Franklin / colonial flavor only occasionally.
-- Good phrases: "good friend", "thy", "pray tell", "verily", "hath".
 - Do not sound like Shakespeare.
-- Do not overdo old-fashioned language.
 - Prioritize clear financial advice over roleplay.
 
 MISSION:
 - Reduce the user's financial stress.
 - Help them decide what to pay first.
-- Give practical short-term plans.
-- Protect essentials first: housing, utilities, food, transportation, insurance, minimum debt payments.
+- Give one next move.
 - Never shame the user.
 - Never invent numbers, due dates, bills, debts, or income.
+- If the ledger is empty, tell them to add one bill or debt and stop.
 
 ${
   typeof stressScore === "number"
-    ? `MONEY STRESS SCORE:
-${stressScore}/100
-
-Scale:
-- 80 to 100 = safe
-- 60 to 79 = stable
-- 40 to 59 = tight
-- 20 to 39 = high stress
-- 0 to 19 = critical`
+    ? `MONEY STRESS SCORE:\n${stressScore}/100`
     : ""
 }
 
@@ -171,36 +162,20 @@ ${financialSummary || "- No financial summary was sent from the app."}
 
 CRITICAL DATA RULES:
 - The APP FINANCIAL DATA above is the source of truth.
-- If bills, debts, income, spending, or payments are listed above, you must use them.
-- Do not say the ledger is empty if the APP FINANCIAL DATA lists any rows.
-- If something is missing, say exactly what is missing.
-- When asked what is due this week, use actual due dates from the APP FINANCIAL DATA.
-- When asked what to pay first, rank items by urgency: overdue, due soon, essentials, minimum debt payments, high APR debts.
-- Be specific: name the bill/debt, amount, and due date when available.
+- Do not invent balances.
+- If bills and debts are both empty, do not rank fictional bills.
+- When asked what to pay first, rank by overdue, due soon, essentials, minimum debt payments.
 
 ACTION RULES:
 - Return an action only when the user clearly asks to change data.
 - If the user is only asking for advice, action must be null.
-- If the user says they paid something, you may return add_payment.
-- If the user says add a bill, you may return add_bill.
-- If the user says delete/remove a payment, you may return delete_payment.
-- If the user says delete/remove a bill, you may return delete_bill.
-- If the user says add a debt, credit card, loan, or account, you may return add_debt.
-- If the user says delete/remove a debt, credit card, loan, or account, you may return delete_debt.
-- Prefer requiresConfirmation = true for destructive actions or ambiguity.
-- Never invent IDs.
-- If you do not know an ID, return the best identifying fields you do know.
 
 ${context ? `ADDITIONAL PAGE CONTEXT:\n${context}` : ""}
 
 Return valid JSON only with this exact shape:
 {
   "reply": "string",
-  "action": null | {
-    "type": "add_payment" | "add_bill" | "delete_payment" | "delete_bill" | "add_debt" | "delete_debt",
-    "payload": { ... },
-    "requiresConfirmation": true
-  }
+  "action": null | { "type": "add_payment" | "add_bill" | "delete_payment" | "delete_bill" | "add_debt" | "delete_debt", "payload": { ... }, "requiresConfirmation": true }
 }
 `.trim();
 }
@@ -223,10 +198,7 @@ export async function POST(req: Request) {
 
     const rawText = await req.text();
     if (rawText.length > MAX_BODY_CHARS) {
-      return NextResponse.json(
-        { error: "Request too large." },
-        { status: 413 }
-      );
+      return NextResponse.json({ error: "Request too large." }, { status: 413 });
     }
 
     let body: AiRequestBody;
@@ -241,7 +213,10 @@ export async function POST(req: Request) {
     const financialSummary = body.financialSummary?.trim() ?? "";
     const stressScore = body.stressScore;
 
-    // Never log financial summaries or message content in production.
+    if (isEmptyLedgerSummary(financialSummary)) {
+      return NextResponse.json({ reply: EMPTY_LEDGER_REPLY, action: null });
+    }
+
     console.log("ASKBEN AI request", {
       userId: auth.user.id,
       messageCount: messages.length,
@@ -270,7 +245,7 @@ export async function POST(req: Request) {
 
     const raw =
       completion.choices[0]?.message?.content?.trim() ||
-      '{"reply":"Sorry, I couldn’t generate a response.","action":null}';
+      '{"reply":"Sorry, I couldn\u2019t generate a response.","action":null}';
 
     const parsed = safeParseActionResponse(raw);
 
