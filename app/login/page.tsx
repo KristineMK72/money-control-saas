@@ -32,7 +32,7 @@ export default function LoginPage() {
     }
 
     const requested = new URLSearchParams(window.location.search).get("next");
-    const destination = requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/world";
+    const destination = requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/bills";
     window.location.assign(destination);
   }
 
