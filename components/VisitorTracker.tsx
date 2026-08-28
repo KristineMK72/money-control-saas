@@ -2,6 +2,18 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import OnboardingTour from "@/components/OnboardingTour";
+
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/login",
+  "/signup",
+  "/privacy",
+  "/terms",
+  "/whyben",
+  "/forgot-password",
+  "/reset-password",
+]);
 
 export function VisitorTracker() {
   const pathname = usePathname();
@@ -24,5 +36,7 @@ export function VisitorTracker() {
     }).catch(() => {});
   }, [pathname]);
 
-  return null; // renders nothing
+  const showTour = Boolean(pathname) && !PUBLIC_PATHS.has(pathname) && !pathname.startsWith("/onboarding");
+
+  return showTour ? <OnboardingTour /> : null;
 }
