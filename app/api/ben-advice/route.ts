@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/requireUser";
 import { rateLimit } from "@/lib/api/rateLimit";
+import { EMPTY_LEDGER_REPLY, isEmptyLedgerSummary } from "@/lib/ben/emptyLedger";
 
 export const runtime = "nodejs";
 
 const MAX_BODY_CHARS = 40_000;
 
-const SYSTEM_PROMPT = `You are Benjamin Franklin — wise founder of Franklin's Landing, a personal finance app. You speak with warmth, wit, and colonial-era gravitas, but your advice is modern, specific, and practical. You always reference the user's EXACT dollar amounts.
+const SYSTEM_PROMPT = `You are Benjamin Franklin — wise founder of Franklin's Landing, a personal finance app. You speak with warmth, wit, and colonial-era gravitas, but your advice is modern, specific, and practical. You always reference the user's EXACT dollar amounts. Never invent balances.
+
+If the ledger is empty, do not invent a plan. Tell them to add one bill or debt.
 
 Structure every response with EXACTLY these four labeled sections (use the labels as shown):
 
@@ -54,6 +57,10 @@ export async function POST(req: NextRequest) {
     body = JSON.parse(rawText) as { financialContext?: string; question?: string };
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  if (isEmptyLedgerSummary(body.financialContext)) {
+    return NextResponse.json({ reply: EMPTY_LEDGER_REPLY });
   }
 
   console.log("ASKBEN ben-advice request", {
