@@ -3,7 +3,6 @@ import StripeCheckoutButton from "@/components/StripeCheckoutButton";
 
 export default function HomePage() {
   return (
-
     <main className="public-landing-page min-h-screen bg-transparent text-white">
       <style
         dangerouslySetInnerHTML={{
@@ -88,7 +87,6 @@ export default function HomePage() {
               >
                 See Ben in Action
               </a>
-
             </div>
 
             <div className="mt-6 grid max-w-2xl gap-2 sm:grid-cols-2">
@@ -99,12 +97,11 @@ export default function HomePage() {
             </div>
 
             <p className="mt-4 max-w-xl text-sm font-semibold leading-6 text-white/75">
-              Start with the free ledger. Upgrade when you want deeper
-              forecasting, imports, and planning tools. Ben has opinions;
-              fortunately, most of them are about compound interest.
+              Start with the free ledger. Add one bill, ask Ben what to do this
+              week, then upgrade when you want deeper forecasting, imports, and
+              planning tools.
             </p>
           </div>
-
 
           <div id="product-preview" className="scroll-mt-28">
             <ProductMock />
@@ -113,16 +110,19 @@ export default function HomePage() {
 
         <div id="how-it-works" className="mt-16 grid scroll-mt-28 gap-4 md:grid-cols-3">
           <FeatureCard
-            title="Calm the chaos"
-            text="When money feels urgent, Ben ranks bills, debts, and due dates so the next move is clear."
+            step="1"
+            title="Add one bill"
+            text="Name, amount, due date. Two minutes. The ledger is the product — Ben needs something to rank."
           />
           <FeatureCard
-            title="Fine-tune what&apos;s working"
-            text="Already in a good place? Spot patterns, strengthen your plan, and give every extra dollar a better assignment."
+            step="2"
+            title="Ask Ben"
+            text="He uses what you entered, names the next useful move, and stops there. No lecture. One action."
           />
           <FeatureCard
-            title="Make progress feel like a game"
-            text="Earn XP, complete Governor’s Orders, unlock badges, and rebuild Franklin’s Landing one win at a time."
+            step="3"
+            title="Earn the town"
+            text="Franklin’s Landing is the reward loop. Visit after the ledger is useful, not before."
           />
         </div>
 
@@ -204,7 +204,23 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div id="pricing" className="mt-16 grid scroll-mt-28 gap-6 lg:grid-cols-2">
+        <div id="pricing" className="mt-16 grid scroll-mt-28 gap-6 lg:grid-cols-3">
+          <PricingCard
+            eyebrow="Free ledger"
+            price="$0"
+            suffix=""
+            text="Add bills, pick Ben’s voice, and get one next action. The town can wait."
+            href="/signup"
+            cta="Start free"
+            items={[
+              "Bills, debts, and payments you type",
+              "Ask Ben for one next move",
+              "No bank login required",
+              "Upgrade only if you want more",
+            ]}
+            free
+          />
+
           <PricingCard
             eyebrow="Pro Monthly"
             price="$5"
@@ -236,6 +252,22 @@ export default function HomePage() {
             ]}
           />
         </div>
+
+        <p className="mt-8 text-center text-sm font-semibold leading-6 text-white/65">
+          AskBen is a planning tool, not a bank or a licensed advisor. Ben’s
+          answers are informational. You decide what to pay.{" "}
+          <a href="/privacy" className="text-cyan-200 underline-offset-2 hover:underline">
+            Privacy
+          </a>
+          {" · "}
+          <a href="/terms" className="text-cyan-200 underline-offset-2 hover:underline">
+            Terms
+          </a>
+          {" · "}
+          <a href="/security" className="text-cyan-200 underline-offset-2 hover:underline">
+            Security
+          </a>
+        </p>
       </section>
     </main>
   );
@@ -347,10 +379,21 @@ function MockPanel({
   );
 }
 
-function FeatureCard({ title, text }: { title: string; text: string }) {
+function FeatureCard({
+  step,
+  title,
+  text,
+}: {
+  step: string;
+  title: string;
+  text: string;
+}) {
   return (
     <div className="rounded-2xl border border-white/80 bg-white/95 p-5 text-zinc-950 shadow-xl shadow-zinc-950/10 backdrop-blur-xl">
-      <h2 className="text-lg font-black text-zinc-950">{title}</h2>
+      <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-700">
+        Step {step}
+      </div>
+      <h2 className="mt-2 text-lg font-black text-zinc-950">{title}</h2>
       <p className="mt-2 text-sm font-semibold leading-6 text-zinc-700">
         {text}
       </p>
@@ -406,6 +449,7 @@ function PricingCard({
   cta,
   items,
   highlighted = false,
+  free = false,
 }: {
   eyebrow: string;
   price: string;
@@ -415,6 +459,7 @@ function PricingCard({
   cta: string;
   items: string[];
   highlighted?: boolean;
+  free?: boolean;
 }) {
   return (
     <div
@@ -452,21 +497,27 @@ function PricingCard({
       <div className="mt-8 flex flex-wrap gap-3">
         <a
           href={href}
-          className="inline-flex rounded-xl border border-zinc-200 bg-white px-5 py-3 font-semibold text-zinc-950 transition hover:bg-zinc-100"
-        >
-          Create account
-        </a>
-
-        <StripeCheckoutButton
-          plan={href.includes("yearly") ? "yearly" : "monthly"}
           className={
-            highlighted
-              ? "inline-flex rounded-xl bg-white px-5 py-3 font-semibold text-black transition hover:bg-zinc-100 disabled:opacity-60"
-              : "inline-flex rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black transition hover:opacity-90 disabled:opacity-60"
+            free || highlighted
+              ? "inline-flex rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black transition hover:opacity-90"
+              : "inline-flex rounded-xl border border-zinc-200 bg-white px-5 py-3 font-semibold text-zinc-950 transition hover:bg-zinc-100"
           }
         >
-          {cta}
-        </StripeCheckoutButton>
+          {free ? cta : "Create account"}
+        </a>
+
+        {!free && (
+          <StripeCheckoutButton
+            plan={href.includes("yearly") ? "yearly" : "monthly"}
+            className={
+              highlighted
+                ? "inline-flex rounded-xl bg-zinc-950 px-5 py-3 font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-60"
+                : "inline-flex rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-black transition hover:opacity-90 disabled:opacity-60"
+            }
+          >
+            {cta}
+          </StripeCheckoutButton>
+        )}
       </div>
     </div>
   );
