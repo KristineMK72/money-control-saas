@@ -20,7 +20,7 @@ export default function PrivacyPage() {
           </p>
 
           <p className="mt-3 text-sm text-stone-400">
-            Last Updated: May 21, 2026
+            Last Updated: August 28, 2026
           </p>
         </div>
 
@@ -35,6 +35,20 @@ export default function PrivacyPage() {
             by users. This may include bills, debts, income records, spending
             information, payment tracking, goals, and other information used to
             help organize your finances.
+          </p>
+        </section>
+
+        <section className="mb-8 rounded-2xl border border-amber-300/20 bg-black/40 p-6">
+          <h2 className="mb-4 font-serif text-2xl text-amber-200">
+            How We Use It
+          </h2>
+
+          <p className="text-stone-200">
+            We use what you enter to rank bills, show a next action, keep your
+            ledger, process subscriptions, and improve the product. When you Ask
+            Ben, relevant ledger details you have already entered may be sent to
+            our AI provider so Ben can answer in context. We do not use your
+            ledger to train public advertising models, and we do not sell it.
           </p>
         </section>
 
@@ -66,6 +80,7 @@ export default function PrivacyPage() {
             </li>
             <li>✅ We do not share your data with advertisers.</li>
             <li>✅ We do not publish your financial information.</li>
+            <li>✅ We do not ask for a Social Security number or bank password.</li>
           </ul>
         </section>
 
@@ -75,9 +90,10 @@ export default function PrivacyPage() {
           </h2>
 
           <p className="text-stone-200">
-            AskBen uses trusted providers including Supabase, Stripe, and Vercel
-            for infrastructure, authentication, data storage, application
-            hosting, and subscription processing.
+            AskBen uses trusted providers including Supabase (accounts and data),
+            Stripe (subscriptions), Vercel (hosting), and OpenAI (Ask Ben
+            replies). Those providers process only what is needed to run the
+            feature you used.
           </p>
         </section>
 
@@ -89,9 +105,10 @@ export default function PrivacyPage() {
           <p className="text-stone-200">
             You remain in control of the information you choose to enter into
             AskBen. You may update or remove information within your account as
-            features allow. We encourage users not to store highly sensitive
-            personal information such as Social Security numbers, banking
-            credentials, or account passwords within the platform.
+            features allow. Email support@askben.buzz to request account or data
+            deletion. We encourage users not to store highly sensitive personal
+            information such as Social Security numbers, banking credentials, or
+            account passwords within the platform.
           </p>
         </section>
 

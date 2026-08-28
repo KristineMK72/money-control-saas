@@ -21,7 +21,7 @@ export default function TermsPage() {
           </p>
 
           <p className="mt-3 text-sm text-stone-400">
-            Last Updated: May 21, 2026
+            Last Updated: August 28, 2026
           </p>
         </div>
 
@@ -32,9 +32,9 @@ export default function TermsPage() {
           <p className="text-stone-200">
             AskBen provides budgeting, financial organization, educational, and
             informational tools. AskBen is not a bank, lender, brokerage,
-            attorney, accountant, or licensed financial advisor. Information
-            provided through the platform should not be considered professional
-            financial advice.
+            attorney, accountant, or licensed financial advisor. Ben’s replies
+            are generated from the ledger you enter and should not be treated as
+            professional financial, tax, or legal advice. You decide what to pay.
           </p>
         </section>
 
@@ -55,8 +55,10 @@ export default function TermsPage() {
             Subscriptions & Payments
           </h2>
           <p className="text-stone-200">
-            Certain AskBen features may require a paid subscription. Payments
-            are securely processed through Stripe. Subscription pricing,
+            The ledger is free to start. Certain AskBen features may require a
+            paid subscription. Payments are securely processed through Stripe.
+            You can manage or cancel a subscription through the Stripe customer
+            portal or by emailing support@askben.buzz. Subscription pricing,
             features, and availability may change over time as the platform
             evolves.
           </p>

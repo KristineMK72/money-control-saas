@@ -2,7 +2,7 @@
 
 Personal finance triage with a colonial counselor named Ben.
 
-Live: [money-control-saas.vercel.app](https://money-control-saas.vercel.app)
+Live: [askben.buzz](https://www.askben.buzz)
 
 AskBen ranks bills, debts, income, and payments, then tells you the next useful move — without a bank login or a lecture.
 
@@ -13,7 +13,7 @@ AskBen ranks bills, debts, income, and payments, then tells you the next useful 
 - **Ledger you control.** You type what you want. No bank passwords. No SSN.
 - **Progress that sticks.** Payments, streaks, XP, and Franklin’s Landing.
 
-## First-run path (polished)
+## First-run path
 
 1. Sign up
 2. Choose how Ben should speak
@@ -47,3 +47,10 @@ Apply migrations in `supabase/migrations/` before expecting AI quotas or XP colu
 ## Product rule
 
 If a new user cannot add a bill and hear one next step in under two minutes, the colonial town can wait.
+
+## Public pages
+
+- [Privacy](https://www.askben.buzz/privacy)
+- [Terms](https://www.askben.buzz/terms)
+- [Security](https://www.askben.buzz/security)
+- Support: support@askben.buzz

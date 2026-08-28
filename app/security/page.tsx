@@ -21,7 +21,7 @@ export default function SecurityPage() {
           </p>
 
           <p className="mt-3 text-sm text-stone-400">
-            Last Updated: May 21, 2026
+            Last Updated: August 28, 2026
           </p>
         </div>
 
@@ -47,8 +47,10 @@ export default function SecurityPage() {
 
           <p className="text-stone-200">
             AskBen is built using industry-leading technology partners,
-            including Supabase for secure data storage, Stripe for payment
-            processing, and Vercel for application hosting and delivery.
+            including Supabase for secure data storage and authentication,
+            Stripe for payment processing, Vercel for application hosting, and
+            OpenAI for Ask Ben replies. Ledger details are sent to the AI
+            provider only when you ask Ben a question.
           </p>
         </section>
 
@@ -74,7 +76,7 @@ export default function SecurityPage() {
             financial lives without requiring unnecessary sensitive information.
             Users should avoid entering confidential banking credentials, Social
             Security numbers, or other highly sensitive personal information
-            into the platform.
+            into the platform. Core features work without a bank connection.
           </p>
         </section>
 
