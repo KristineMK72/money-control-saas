@@ -33,7 +33,7 @@ const imFell = IM_Fell_English({
 
 export const metadata: Metadata = {
   title: "AskBen - Financial Triage",
-  description: "Stop financial chaos. See exactly what to pay first.",
+  description: "Add one bill. Get one next move. No bank login, no lecture.",
   metadataBase: new URL("https://www.askben.buzz"),
   manifest: "/manifest.json",
   icons: {
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "AskBen",
-    description: "AI financial triage. Know what bill to pay first.",
+    description: "Add one bill. Get one next move. No bank login, no lecture.",
     url: "https://www.askben.buzz/",
     siteName: "AskBen",
     type: "website",
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "AskBen",
-    description: "AI financial triage. Know what bill to pay first.",
+    description: "Add one bill. Get one next move. No bank login, no lecture.",
     images: ["/askben-social.jpeg"],
   },
 };
@@ -477,13 +477,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   fontSize: 11.5,
                 }}
               >
-                {["Privacy", "Terms", "Why AskBen"].map((label) => {
+                {["Privacy", "Terms", "Security", "Why AskBen"].map((label) => {
                   const href =
                     label === "Privacy"
                       ? "/privacy"
                       : label === "Terms"
                         ? "/terms"
-                        : "/whyben";
+                        : label === "Security"
+                          ? "/security"
+                          : "/whyben";
 
                   return (
                     <a
