@@ -4,10 +4,7 @@ import { useGLTF } from "@react-three/drei";
 import { WORLD_ASSETS } from "./worldAssets";
 import type { WorldAsset } from "./types";
 
-const SKIP_ON_MOBILE = new Set([
-  "lightning",
-  "stone-house",
-]);
+const HEAVY_ASSETS = new Set(["lightning", "stone-house"]);
 
 function GlbAsset({ asset }: { asset: WorldAsset }) {
   const gltf = useGLTF(asset.url);
@@ -23,7 +20,8 @@ function GlbAsset({ asset }: { asset: WorldAsset }) {
 
 export default function WorldGlbModels({ isMobile }: { isMobile: boolean }) {
   const assets = WORLD_ASSETS.filter((asset) => {
-    if (isMobile && SKIP_ON_MOBILE.has(asset.id)) return false;
+    if (HEAVY_ASSETS.has(asset.id) && isMobile) return false;
+    if (asset.id === "lightning") return false;
     return true;
   });
 
@@ -37,7 +35,7 @@ export default function WorldGlbModels({ isMobile }: { isMobile: boolean }) {
 }
 
 for (const asset of WORLD_ASSETS) {
-  if (!SKIP_ON_MOBILE.has(asset.id)) {
+  if (!HEAVY_ASSETS.has(asset.id)) {
     useGLTF.preload(asset.url);
   }
 }
