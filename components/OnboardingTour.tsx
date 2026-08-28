@@ -32,11 +32,11 @@ const steps = [
   },
   {
     eyebrow: "Last step",
-    title: "Then visit the town",
+    title: "Town comes after the ledger",
     icon: "🏦",
-    text: "Franklin’s Landing is the celebration layer. Come back when you want the walk, the badges, or a different Ben voice.",
-    href: "/world",
-    cta: "Peek at the town",
+    text: "Franklin’s Landing is the celebration layer. Walk it after you have one bill or debt on the books.",
+    href: "/bills",
+    cta: "Add a bill first",
   },
 ];
 
@@ -66,7 +66,7 @@ export default function OnboardingTour() {
     }
   }
 
-  async function finishTour() {
+  async function finishTour(goToBills = true) {
     if (userId) {
       await supabase
         .from("profiles")
@@ -75,6 +75,7 @@ export default function OnboardingTour() {
     }
     playCoins();
     setOpen(false);
+    if (goToBills) window.location.assign("/bills");
   }
 
   function goNext() {
@@ -100,32 +101,26 @@ export default function OnboardingTour() {
              fontFamily: "EB Garamond, serif",
            }}>
 
-        {/* Decorative top rule */}
         <div className="h-px w-full mb-5"
              style={{ background: "linear-gradient(90deg, transparent, #c9a84c, transparent)" }} />
 
-        {/* Icon */}
         <div className="text-4xl text-center mb-3">{current.icon}</div>
 
-        {/* Eyebrow */}
         <p className="text-center text-[10px] uppercase tracking-[0.25em] font-cinzel font-bold"
            style={{ color: "#6b4423" }}>
           {current.eyebrow}
         </p>
 
-        {/* Title */}
         <h2 className="mt-2 text-center font-cinzel text-3xl font-bold"
             style={{ color: "#c9a84c" }}>
           {current.title}
         </h2>
 
-        {/* Body */}
         <p className="mt-4 text-center text-base leading-7"
            style={{ color: "#9a7d5a" }}>
           {current.text}
         </p>
 
-        {/* XP reward */}
         <div className="mt-5 rounded-xl px-4 py-3 text-center"
              style={{ background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)" }}>
           <p className="text-sm font-cinzel font-bold" style={{ color: "#c9a84c" }}>
@@ -133,7 +128,6 @@ export default function OnboardingTour() {
           </p>
         </div>
 
-        {/* Action buttons */}
         <div className="mt-6 flex flex-wrap gap-3">
           {step > 0 && (
             <button onClick={() => setStep(s => s - 1)}
@@ -151,10 +145,10 @@ export default function OnboardingTour() {
               Next →
             </button>
           ) : (
-            <button onClick={finishTour}
+            <button onClick={() => void finishTour(true)}
                     className="rounded-xl px-6 py-3 text-sm font-cinzel font-bold transition"
                     style={{ background: "#c9a84c", color: "#1a0f0a" }}>
-              Enter the Colony ✦
+              Open the ledger ✦
             </button>
           )}
 
@@ -165,14 +159,13 @@ export default function OnboardingTour() {
             {current.cta}
           </Link>
 
-          <button onClick={finishTour}
+          <button onClick={() => void finishTour(true)}
                   className="ml-auto rounded-xl px-5 py-3 text-xs font-cinzel transition"
                   style={{ color: "#6b4423" }}>
-            Skip tour
+            Skip to ledger
           </button>
         </div>
 
-        {/* Progress bar */}
         <div className="mt-6">
           <div className="flex justify-between mb-1.5">
             {steps.map((_, i) => (
@@ -192,7 +185,6 @@ export default function OnboardingTour() {
           </p>
         </div>
 
-        {/* Bottom rule */}
         <div className="h-px w-full mt-5"
              style={{ background: "linear-gradient(90deg, transparent, #c9a84c, transparent)" }} />
       </div>
