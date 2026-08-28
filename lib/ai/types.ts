@@ -3,12 +3,7 @@ export type ChatMessage = {
   content: string;
 };
 
-export type AiMode =
-  | "general"
-  | "money"
-  | "shop"
-  | "resources"
-  | "spatial";
+export type AiMode = "general" | "money";
 
 export type AiRequestBody = {
   mode?: AiMode;
