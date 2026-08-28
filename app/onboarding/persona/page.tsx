@@ -64,7 +64,6 @@ export default function PersonaOnboardingPage() {
       {
         user_id: user.id,
         ben_voice: selected,
-        onboarding_complete: true,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" },
@@ -76,7 +75,7 @@ export default function PersonaOnboardingPage() {
       return;
     }
 
-    window.location.assign("/world");
+    window.location.assign("/bills?welcome=1");
   }
 
   if (checkingUser) {
@@ -144,9 +143,9 @@ export default function PersonaOnboardingPage() {
           disabled={saving}
           className="mx-auto mt-8 block w-full max-w-md rounded-xl bg-[#c9a84c] px-6 py-4 font-cinzel text-lg font-bold text-[#1a0f0a] shadow-lg disabled:opacity-60"
         >
-          {saving ? "Recording thy choice…" : "Enter Franklin’s Landing →"}
+          {saving ? "Recording thy choice…" : "Meet Ben at the ledger →"}
         </button>
-        <p className="mt-3 text-center text-sm text-[#9a7d5a]">You can change Ben’s voice later in Settings.</p>
+        <p className="mt-3 text-center text-sm text-[#9a7d5a]">Voice first, then one bill. The town can wait until the ledger has something to say. You can change Ben later in Settings.</p>
       </section>
     </main>
   );
