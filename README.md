@@ -1,10 +1,17 @@
-# AskBen
+# AskBen — Personal Finance Triage with a Colonial Counselor
 
-Personal finance triage with a colonial counselor named Ben.
+[![Live Demo](https://img.shields.io/badge/Live-askben.buzz-blue?style=for-the-badge)](https://www.askben.buzz)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
+[![Supabase](https://img.shields.io/badge/Supabase-green?style=for-the-badge&logo=supabase)](https://supabase.com)
 
-Live: [askben.buzz](https://www.askben.buzz)
+**AskBen ranks your bills, debts, and payments, then tells you the next useful move — without a bank login or a lecture.**
 
-AskBen ranks bills, debts, income, and payments, then tells you the next useful move — without a bank login or a lecture.
+Live at **[askben.buzz](https://www.askben.buzz)**
+
+> ⭐ Star this repo if you want more practical, no-judgment finance tools for real people.
+
+---
 
 ## What it does
 
@@ -26,7 +33,7 @@ The 3D town (`/world`) is the reward loop. The ledger is the product.
 
 Next.js 14 · React 18 · Supabase · Stripe · OpenAI · Zustand · Three.js
 
-## Local
+## Local development
 
 ```bash
 npm install
@@ -48,9 +55,13 @@ Apply migrations in `supabase/migrations/` before expecting AI quotas or XP colu
 
 If a new user cannot add a bill and hear one next step in under two minutes, the colonial town can wait.
 
-## Public pages
+## Links
 
 - [Privacy](https://www.askben.buzz/privacy)
 - [Terms](https://www.askben.buzz/terms)
 - [Security](https://www.askben.buzz/security)
 - Support: support@askben.buzz
+
+---
+
+Built in Minnesota. Open to collaborators who care about practical tools for real financial stress.
