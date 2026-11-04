@@ -282,6 +282,7 @@ export default function BillsPage() {
       due_date: bDue || null,
       due_day: getDueDay(bDue),
       is_monthly: bMo,
+      kind: "bill",
     };
 
     const { error } = editingBillId
@@ -591,7 +592,6 @@ export default function BillsPage() {
   }
 
   return (
-
     <main
       className="min-h-screen bg-black text-[#f5e6c8]"
       style={{ fontFamily: "EB Garamond, serif" }}
@@ -750,11 +750,11 @@ export default function BillsPage() {
                       onClick={goToPaymentPage}
                       className="rounded-xl px-3 py-2 text-sm font-bold"
                       style={{
-                        background: "rgba(201,168,76,.18)",
-                        border: "1px solid rgba(201,168,76,.55)",
+                        background: "#1a0f0a",
+                        border: "1px solid rgba(201,168,76,.45)",
                       }}
                     >
-                      Pay Page
+                      Pay
                     </button>
 
                     <button
@@ -767,37 +767,47 @@ export default function BillsPage() {
                       }
                       className="rounded-xl px-3 py-2 text-sm font-bold"
                       style={{
-                        background: "rgba(59,130,246,.22)",
-                        border: "1px solid rgba(147,197,253,.65)",
+                        background: "#1a0f0a",
+                        border: "1px solid rgba(201,168,76,.45)",
                       }}
                     >
                       Edit
                     </button>
 
                     <button
-                      onClick={() => setShowRecent((v) => !v)}
+                      onClick={() =>
+                        activeTab === "bill" && activeBill
+                          ? deleteBill(activeBill.id)
+                          : activeDebt
+                            ? deleteDebt(activeDebt.id)
+                            : null
+                      }
                       className="rounded-xl px-3 py-2 text-sm font-bold"
                       style={{
-                        background: "rgba(0,0,0,.35)",
-                        border: "1px solid rgba(201,168,76,.45)",
+                        background: "#7f1d1d",
+                        border: "1px solid #f87171",
                       }}
                     >
-                      Payments
+                      Delete
                     </button>
                   </div>
                 </>
               ) : (
-                <p className="pt-20 text-[#9a7d5a]">
-                  No {activeTab === "bill" ? "bills" : "debts"} posted yet.
-                </p>
+                <div className="flex h-full flex-col items-center justify-center">
+                  <p className="text-lg">No {activeTab}s yet.</p>
+                  <button
+                    onClick={openAdd}
+                    className="mt-4 rounded-xl bg-green-800 px-4 py-2 font-bold"
+                  >
+                    Add one
+                  </button>
+                </div>
               )}
             </div>
 
             <button
               onClick={() =>
-                setCardIndex((i) =>
-                  Math.min(Math.max(roomItems.length - 1, 0), i + 1)
-                )
+                setCardIndex((i) => Math.min(roomItems.length - 1, i + 1))
               }
               className="h-14 rounded-full font-cinzel sm:h-16"
               style={{ border: "1px solid rgba(201,168,76,.45)" }}
@@ -806,134 +816,37 @@ export default function BillsPage() {
             </button>
           </div>
 
-          <div className="mb-6 flex justify-center gap-2">
-            {roomItems.slice(0, 8).map((_, i) => (
-              <span
-                key={i}
-                className="h-3 w-3 rounded-full"
-                style={{
-                  background: i === cardIndex ? "#c9a84c" : "#5f5748",
-                }}
-              />
-            ))}
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Metric icon="📋" label="Bills" value={money(totalBillsAmt)} />
+            <Metric icon="💳" label="Debt mins" value={money(totalDebtMins)} />
+            <Metric icon="⚠️" label="Overdue" value={money(overdue)} color="#f87171" />
+            <Metric icon="🔥" label="Due soon" value={money(dueSoon)} color="#fbbf24" />
           </div>
 
-          {showRecent && activeItem && (
-            <div
-              className="mb-6 rounded-2xl p-4"
-              style={{
-                background: "rgba(15,8,4,.9)",
-                border: "1px solid rgba(201,168,76,.35)",
-              }}
-            >
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h3 className="font-cinzel text-xl font-bold text-[#c9a84c]">
-                  Recent Payments
-                </h3>
-
-                <button
-                  onClick={() => router.push("/payments")}
-                  className="rounded-lg px-3 py-2 text-sm"
-                  style={{
-                    border: "1px solid rgba(201,168,76,.45)",
-                  }}
-                >
-                  View All
-                </button>
-              </div>
-
-              {activePayments.length ? (
-                <div className="grid gap-2">
-                  {activePayments.map((p) => (
-                    <div
-                      key={p.id}
-                      className="flex items-center justify-between rounded-xl px-3 py-2"
-                      style={{
-                        background: "rgba(0,0,0,.45)",
-                        border: "1px solid rgba(201,168,76,.2)",
-                      }}
-                    >
-                      <div>
-                        <p className="font-bold">{p.date_iso}</p>
-                        <p className="text-sm text-[#d6c09a]">
-                          {p.note || p.merchant || "Payment recorded"}
-                        </p>
-                      </div>
-
-                      <p className="font-bold text-[#4ade80]">
-                        {money(clampMoney(p.amount))}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[#d6c09a]">
-                  No payments recorded for this{" "}
-                  {activeTab === "bill" ? "bill" : "debt"} yet.
-                </p>
-              )}
-            </div>
-          )}
-
-          <div
-            className="mb-6 grid grid-cols-2 overflow-hidden rounded-2xl sm:grid-cols-4"
-            style={{
-              border: "1px solid rgba(201,168,76,.4)",
-              background: "rgba(0,0,0,.58)",
-            }}
-          >
-            <Metric
-              icon="🪙"
-              label="This Month Paid"
-              value={money(paidThisMonth)}
-              color="#4ade80"
-            />
-            <Metric icon="📋" label="Total Due" value={money(totalDue)} />
-            <Metric
-              icon="⏳"
-              label="Overdue"
-              value={money(overdue)}
-              color="#ef4444"
-            />
-            <Metric icon="📅" label="Due Soon" value={money(dueSoon)} />
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <button
-              onClick={goToPaymentPage}
-              className="rounded-xl py-4 font-cinzel text-lg"
-              style={{ border: "1px solid rgba(201,168,76,.35)" }}
-            >
-              ✍️ Make Payment
-            </button>
-
+          <div className="mb-4 flex gap-2">
             <button
               onClick={openAdd}
-              className="rounded-xl py-4 font-cinzel text-lg"
-              style={{
-                background: "#166534",
-                border: "1px solid #4ade80",
-              }}
+              className="rounded-xl bg-green-800 px-4 py-2 font-bold"
             >
               + Add {activeTab === "bill" ? "Bill" : "Debt"}
             </button>
-
             <button
-              onClick={() => setShowRecent((v) => !v)}
-              className="rounded-xl py-4 font-cinzel text-lg"
-              style={{ border: "1px solid rgba(201,168,76,.35)" }}
+              onClick={() => setShowRecent((s) => !s)}
+              className="rounded-xl px-4 py-2 font-bold"
+              style={{
+                background: "#1a0f0a",
+                border: "1px solid rgba(201,168,76,.45)",
+              }}
             >
-              🧾 Recent Payments
-            </button>
-
-            <button
-              onClick={() => router.push("/world")}
-              className="rounded-xl py-4 font-cinzel text-lg"
-              style={{ border: "1px solid rgba(201,168,76,.35)" }}
-            >
-              ↪ Exit to Town
+              Recent
             </button>
           </div>
+
+          {message && (
+            <p className="mb-4 rounded-lg bg-black/50 p-3 text-center text-sm">
+              {message}
+            </p>
+          )}
 
           {showAdd && (
             <div
@@ -1076,49 +989,56 @@ export default function BillsPage() {
             </div>
           )}
 
-          {message && (
-            <p className="mt-4 rounded-xl bg-[#c9a84c]/20 px-4 py-3 text-center text-[#f5e6c8]">
-              {message}
-            </p>
+          {showRecent && (
+            <div className="mt-5 rounded-2xl bg-black/40 p-4">
+              <h3 className="mb-3 font-cinzel text-lg text-[#c9a84c]">
+                Recent payments
+              </h3>
+              {activePayments.length === 0 ? (
+                <p className="text-sm text-[#d6c09a]">None yet.</p>
+              ) : (
+                <ul className="space-y-2 text-sm">
+                  {activePayments.map((p) => (
+                    <li key={p.id} className="flex justify-between">
+                      <span>{p.merchant || p.note || "Payment"}</span>
+                      <span>
+                        {money(clampMoney(p.amount))} · {p.date_iso}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
 
-          <p className="mt-6 text-center italic text-[#c9a84c]">
-            “Well done is better than well said.” — Benjamin Franklin
-          </p>
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Metric icon="💰" label="Paid this mo" value={money(paidThisMonth)} />
+            <Metric icon="📊" label="Still due" value={money(remaining)} />
+            <Metric icon="📅" label="Items" value={String(rankedItems.length)} />
+            <Metric icon="🎯" label="Focus" value={String(rankedItems.filter(r => r.item.focus).length)} />
+          </div>
         </div>
       </section>
 
       {showBenNotice && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div
-            className="max-w-md rounded-3xl p-5"
+            className="max-w-md rounded-2xl p-6"
             style={{
-              background: "#fff7df",
-              border: "2px solid #c9a84c",
-              color: "#1a0f0a",
-              boxShadow: "0 30px 80px rgba(0,0,0,.7)",
+              background: "linear-gradient(180deg, #1a0f0a, #0a0503)",
+              border: "1px solid rgba(201,168,76,.45)",
             }}
           >
-            <div className="flex gap-3">
-              <img
-                src="/ben.png"
-                alt="Ben"
-                className="h-16 w-16 rounded-xl border border-[#c9a84c] object-cover"
-              />
+            <p className="font-cinzel text-sm uppercase tracking-widest text-[#c9a84c]">
+              Ben&apos;s Almanack
+            </p>
 
-              <div>
-                <p className="font-cinzel text-xs uppercase tracking-[0.25em] text-[#8a3a12]">
-                  Ben&apos;s Almanack
-                </p>
+            <p className="mt-2 text-lg font-bold leading-snug">
+              Ben says: I see {bills.length} bills and {debts.length} debts
+              in the colony. Keeping due dates visible prevents ambushes.
+            </p>
 
-                <p className="mt-2 text-lg font-bold leading-snug">
-                  Ben says: I see {bills.length} bills and {debts.length} debts
-                  in the colony. Keeping due dates visible prevents ambushes.
-                </p>
-
-                <p className="mt-3 text-sm">{ben.text}</p>
-              </div>
-            </div>
+            <p className="mt-3 text-sm">{ben.text}</p>
 
             <button
               onClick={() => setShowBenNotice(false)}
